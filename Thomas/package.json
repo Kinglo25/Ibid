@@ -1,0 +1,19 @@
+{
+  "name": "thomas",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "addin",
+    "api",
+    "shared"
+  ],
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w api && npm run build -w addin",
+    "dev": "npm run dev -w addin",
+    "lint": "npm run lint -w addin && npm run lint -w api && npm run lint -w shared"
+  },
+  "devDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.14.0",
+    "rollup": "^4.14.0"
+  }
+}
