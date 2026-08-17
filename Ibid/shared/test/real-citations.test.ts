@@ -112,6 +112,30 @@ describe('real citations — short forms resolved from the document', () => {
     assert.equal(one(15).caseNumber, 'C-413/14 P');
     assert.deepEqual(one(15).pinpoint, { paragraphs: [133] });
   });
+
+  test('a numbered back-reference reaches five footnotes back to the judgment it names', () => {
+    assert.equal(one(19).resolutionMethod, 'numbered_footnote');
+    assert.equal(one(19).caseNumber, 'C-413/14 P');
+    assert.equal(one(19).backReference?.footnote, 14);
+    assert.deepEqual(one(19).pinpoint, { paragraphs: [140] });
+  });
+
+  test('a bare Ibid. takes both the authority and the pinpoint from the reference before it', () => {
+    assert.equal(one(20).resolutionMethod, 'preceding_citation');
+    assert.equal(one(20).caseNumber, 'C-413/14 P');
+    assert.equal(one(20).backReference?.footnote, 19);
+    assert.deepEqual(one(20).pinpoint, { paragraphs: [140] },
+      'inherited from footnote 19, which was itself a back-reference — the chain has to hold');
+  });
+
+  test('back-references add no authority of their own to the review list', () => {
+    // They resolve to the Intel judgment footnote 14 already establishes, so the reviewer's
+    // pick-list must come out identical to the same memo without them. Compared whole
+    // rather than counted per case number: Intel legitimately holds two entries there — the
+    // judgment and Advocate General Wahl's opinion in it — and counting would hide which.
+    const withoutBackReferences = citedAuthorities(detectCitationsAcrossFootnotes(MEMO_FOOTNOTES.slice(0, 18)));
+    assert.deepEqual(citedAuthorities(resolved), withoutBackReferences);
+  });
 });
 
 describe('real citations — the ambiguity that a real document actually produces', () => {

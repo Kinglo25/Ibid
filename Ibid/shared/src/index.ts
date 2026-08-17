@@ -41,8 +41,15 @@ export type CitationStatus = 'resolved' | 'unresolved_ambiguous' | 'unresolved_n
  * How a short form was tied back to a full citation, in descending confidence.
  * Absent on a citation that states its own identifier — nothing was resolved.
  * `user_confirmed` is set by the client when a reviewer picks a candidate.
+ *
+ * The two back-reference methods are positional rather than name-based: they come
+ * from where the reference sits, not from what it is called. They carry more
+ * warrant than `generated_variant`, not less — `Ibid.` naming the authority cited
+ * immediately before it is what the word means, whereas a generated variant rests
+ * on a drafter plausibly shortening a case name the way we guessed they would.
  */
-export type ResolutionMethod = 'explicit_alias' | 'generated_variant' | 'fallback_table' | 'user_confirmed';
+export type ResolutionMethod = 'explicit_alias' | 'generated_variant' | 'fallback_table' | 'user_confirmed'
+  | 'preceding_citation' | 'numbered_footnote';
 
 /**
  * The single passage the source adapters narrow a fetched document to. This is
@@ -90,6 +97,19 @@ export type CitationMatch = {
   pinpoint?: Pinpoint;
   resolutionMethod?: ResolutionMethod;
   candidates?: CitationCandidate[];
+  /**
+   * Present on a back-reference — `Ibid.`, `Id.`, `supra note 4` — whatever came of it,
+   * including when nothing did. `footnote` is the 1-based footnote it was read against,
+   * absent only where there was none to read.
+   *
+   * A consumer needs this marker rather than inferring one from `resolutionMethod`, which
+   * says nothing on a reference that did not resolve. What turns on it is scope: a name
+   * means the same thing throughout a document, so confirming it once settles every use,
+   * whereas `Ibid.` means whatever precedes it and means something different each time it
+   * appears. Carrying one reviewer's confirmation across them would be exactly the
+   * confidently-wrong citation the rest of this module refuses to produce.
+   */
+  backReference?: { footnote?: number };
 };
 
 export type CitationContext = CitationMatch & { context: string };
@@ -686,7 +706,7 @@ type RegisteredCitation = Pick<CitationMatch, 'label' | 'source' | 'celex' | 'ec
 
 type RegistryEntry = {
   key: string;
-  method: Exclude<ResolutionMethod, 'fallback_table'>;
+  method: 'explicit_alias' | 'generated_variant';
   /** Reading-order rank, so the *nearest preceding* entry wins when a key was registered more than once. */
   order: number;
   citation: RegisteredCitation;
@@ -912,6 +932,35 @@ function hasAdjacentPinpoint(text: string, endIndex: number, limit: number): boo
 }
 
 /**
+ * `Ibid.` and its spellings. Anchored to the start of its segment, because that is
+ * where the word actually occurs in drafting — it leads a citation, it never sits in
+ * the middle of one. The anchor is what makes the match safe: the bare token is
+ * otherwise short and common enough ("id.") that scanning for it anywhere in a
+ * footnote would eventually read prose as a citation.
+ *
+ * A lead-in is allowed before it ("See ibid."), and `id` is the one spelling that
+ * requires its period — unlike the others it is a word fragment in both English and
+ * French, and the period is what marks it as the abbreviation.
+ */
+const IBID_REFERENCE = new RegExp(
+  String.raw`^[\s(«"'“‘]*(?:(?:see(?:\s+also)?|cf\.?|voir|but\s+see|compare|accord|and)\s+)?((?:ibidem|ibid|idem)\.?|id\.)(?![\p{L}\p{N}])`,
+  'iu',
+);
+
+/**
+ * `supra note 4` — a back-reference that names the footnote it points at instead of
+ * relying on position. It is the safest back-reference there is: no adjacency to
+ * judge, no convention to read, just a number the drafter wrote down. Unlike `Ibid.`
+ * it is not anchored, because it conventionally trails the name it repeats ("Akzo
+ * Nobel, supra note 4"); the caller's rule that a segment already naming an authority
+ * is left alone keeps that case from being reported twice.
+ */
+const SUPRA_NOTE_REFERENCE = new RegExp(
+  String.raw`\b(?:supra|above)\s*,?\s*(?:notes?|nn?\.?)\s*(\d{1,3})(?![\p{L}\p{N}])`,
+  'iu',
+);
+
+/**
  * A capitalised name carrying a pinpoint and nothing else — the shape of every
  * short-form citation, whether or not Ibid can resolve it. Used only to find
  * spans that resolution has already failed on, so they can be reported as gaps
@@ -1035,8 +1084,19 @@ function withoutOverlaps(spans: ShortFormSpan[]): ShortFormSpan[] {
 export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[]): CitationMatch[][] {
   const registry: RegistryEntry[] = [];
   let order = 0;
+  /**
+   * What each footnote established, indexed by its position. Back-references are numbered
+   * against this: `footnoteTexts` is the document's own footnote order, so position `i`
+   * is footnote `i + 1` and `supra note 4` reads `history[3]`.
+   *
+   * Filled as we go rather than in a second pass, which is also what makes a chain of
+   * `Ibid.` work: footnote 13's back-reference resolves to an authority, becomes an
+   * established citation like any other, and is therefore already there to be found when
+   * footnote 14 looks back at it.
+   */
+  const history: EstablishedAuthority[][] = [];
 
-  return footnoteTexts.map((text) => {
+  return footnoteTexts.map((text, position) => {
     const hardMatches = detectCitations(text).map((citation) => {
       if (citation.source !== 'curia') return citation;
       const typed = borrowCaseNumberForRelatedDocument(inheritStatedDocumentType(citation, registry), registry);
@@ -1093,7 +1153,16 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[])
       existing.order = Math.max(existing.order, entry.order);
     }
 
-    return [...hardMatches, ...shorthand].sort((a, b) => a.index - b.index);
+    // Back-references run after name resolution and before the unresolved scan, so that a
+    // `supra note 4` trailing a name the document never defined suppresses the report of
+    // that name — the reference did resolve, just not by the name.
+    const named = [...hardMatches, ...shorthand];
+    const backReferences = resolveBackReferences(text, segments, named, history, position + 1);
+    const identified = [...named, ...backReferences];
+    history.push(establishedAuthorities(identified));
+
+    return [...identified, ...unresolvedShortForms(text, segments, hardMatches, [...shorthand, ...backReferences])]
+      .sort((a, b) => a.index - b.index);
   });
 }
 
@@ -1214,7 +1283,7 @@ function resolveShortForms(
     }
   }
 
-  return [...resolved, ...unresolvedShortForms(text, segments, hardMatches, resolved)];
+  return resolved;
 }
 
 function ambiguous(span: ShortFormSpan, candidates: RegisteredCitation[], parsed: ReturnType<typeof parsePinpoint>): CitationMatch {
@@ -1223,6 +1292,131 @@ function ambiguous(span: ShortFormSpan, candidates: RegisteredCitation[], parsed
     status: 'unresolved_ambiguous', candidates: candidates.map(toCandidate),
     locator: parsed?.locator, pinpoint: parsed?.pinpoint,
   };
+}
+
+/**
+ * What a footnote actually established, in the order it established it, so a later
+ * back-reference has something definite to point at.
+ *
+ * Only `resolved` citations holding a real identifier count. An ambiguous span, a
+ * frequent-case suggestion, or a name the document never defined must never become
+ * the target of an `Ibid.`, because the back-reference would then inherit a guess and
+ * present it one step further from the doubt that produced it.
+ *
+ * An authority cited twice keeps its *latest* position and pinpoint: `Ibid.` means the
+ * most recent mention, so that is the one it should find.
+ */
+type EstablishedAuthority = { citation: RegisteredCitation; locator?: CitationLocator; pinpoint?: Pinpoint };
+
+function establishedAuthorities(matches: readonly CitationMatch[], before = Number.POSITIVE_INFINITY): EstablishedAuthority[] {
+  const established: EstablishedAuthority[] = [];
+  for (const citation of [...matches].sort((a, b) => a.index - b.index)) {
+    if (citation.index >= before || citation.status !== 'resolved') continue;
+    const registered = toRegistered(citation);
+    if (!registered.ecli && !registered.celex && !registered.caseNumber) continue;
+
+    const existing = established.findIndex((authority) => sameAuthority(authority.citation, registered));
+    const merged = existing === -1 ? registered : mergeCitations(registered, established[existing].citation);
+    if (existing !== -1) established.splice(existing, 1);
+    established.push({ citation: merged, locator: citation.locator, pinpoint: citation.pinpoint });
+  }
+  return established;
+}
+
+/**
+ * Resolves the back-references — `Ibid.`, `Id.`, `supra note 4` — that name no authority
+ * of their own and mean only what the document around them already said.
+ *
+ * These are not guesses to be confirmed. When the text they point at established exactly
+ * one authority, `Ibid.` *is* that authority by the definition of the word, which is a
+ * firmer warrant than the case-name inference already resolved silently elsewhere. Asking
+ * a reviewer to confirm it would be asking them to sign off on what the document states
+ * outright — the reflex-prompt failure the resolution-method note exists to avoid.
+ *
+ * The genuine ambiguity is narrow and specific: the text pointed at established *several*
+ * authorities, and `Ibid.` does not say which. Convention reads it as the nearest one, and
+ * the candidates are ordered accordingly — but ordering is offered, never applied, so the
+ * reviewer picks rather than inheriting a convention this tool decided to trust.
+ *
+ * `Ibid.` looks to the nearest authority before it, which may be earlier in its own
+ * footnote before it is the previous footnote's. `supra note 4` ignores position entirely
+ * and reads the footnote it names, refusing a forward or self reference: *supra* means
+ * above, and a number pointing anywhere else is a drafting error, not an instruction.
+ */
+function resolveBackReferences(
+  text: string,
+  segments: Array<{ start: number; end: number }>,
+  identified: readonly CitationMatch[],
+  history: readonly EstablishedAuthority[][],
+  footnoteNumber: number,
+): CitationMatch[] {
+  const found: CitationMatch[] = [];
+
+  for (const segment of segments) {
+    // A segment that already names an authority is not making a back-reference; the words
+    // are part of that citation ("Akzo Nobel, supra note 4" is one reference, not two).
+    if (identified.some((citation) => citation.index >= segment.start && citation.index < segment.end)) continue;
+    const body = text.slice(segment.start, segment.end);
+
+    const ibid = IBID_REFERENCE.exec(body);
+    const supra = SUPRA_NOTE_REFERENCE.exec(body);
+    if (!ibid && !supra) continue;
+
+    // Both spellings in one segment ("Ibid., supra note 4") is not drafting we should
+    // guess at, and the numbered form is the one that says what it means, so it wins.
+    const useSupra = supra !== null;
+    const match = useSupra ? supra : ibid!;
+    const value = useSupra ? match[0] : match[1];
+    // The token is the last thing either pattern consumes, so it is always the tail of the
+    // whole match — which locates it without searching for it inside a lead-in that could
+    // contain the same letters.
+    const index = segment.start + match.index + match[0].length - value.length;
+
+    let referencedFootnote: number | undefined;
+    let source: EstablishedAuthority[];
+    if (useSupra) {
+      referencedFootnote = Number(match[1]);
+      source = referencedFootnote >= 1 && referencedFootnote < footnoteNumber
+        ? [...(history[referencedFootnote - 1] ?? [])]
+        : [];
+    } else {
+      const withinFootnote = establishedAuthorities(identified, index);
+      // An `Ibid.` in the first footnote has nothing above it to point at. Left undefined
+      // rather than reported as footnote 0, which is not a place the reviewer could look.
+      referencedFootnote = withinFootnote.length ? footnoteNumber : footnoteNumber - 1 || undefined;
+      source = withinFootnote.length ? withinFootnote : [...(history[footnoteNumber - 2] ?? [])];
+    }
+
+    const backReference = { footnote: referencedFootnote };
+    const parsed = parsePinpoint(text, index + value.length, segment.end);
+    if (source.length === 1) {
+      const [authority] = source;
+      found.push({
+        ...authority.citation, value, index, status: 'resolved',
+        resolutionMethod: useSupra ? 'numbered_footnote' : 'preceding_citation',
+        backReference,
+        // A bare `Ibid.` repeats the pinpoint as well as the authority; `Ibid., para. 44`
+        // keeps the authority and states a new one. Inherited as a pair, never mixed: a
+        // new locator with a stale pinpoint would report paragraphs the footnote does not
+        // cite, which is the one failure this tool exists to prevent.
+        locator: parsed?.locator ?? authority.locator,
+        pinpoint: parsed?.pinpoint ?? authority.pinpoint,
+      });
+    } else if (source.length > 1) {
+      found.push({
+        ...ambiguous({ index, value, key: value.toLowerCase() }, [...source].reverse().map((authority) => authority.citation), parsed),
+        label: 'Unconfirmed back-reference', backReference,
+      });
+    } else {
+      found.push({
+        label: 'Unresolved back-reference', value, index, source: 'curia',
+        status: 'unresolved_not_found', backReference,
+        locator: parsed?.locator, pinpoint: parsed?.pinpoint,
+      });
+    }
+  }
+
+  return found;
 }
 
 /**
@@ -1316,8 +1510,12 @@ export function citedAuthorities(footnoteMatches: CitationMatch[][]): CitationCa
  * without ever being declared (3→4), two short forms sharing a footnote and keeping their
  * own pinpoints (8), Advocate General opinions that must not take the judgment's CELEX
  * (5, 16), legislation cited with the provision on either side of it (1, 9), a genuinely
- * ambiguous short form (12 — both Schrems judgments are cited in full above it), and a
- * case the memo never cites at all (18).
+ * ambiguous short form (12 — both Schrems judgments are cited in full above it), a case the
+ * memo never cites at all (18), and a back-reference chain (19 names footnote 14; 20 is a
+ * bare `Ibid.` that takes both the authority and the pinpoint from 19).
+ *
+ * 19 and 20 add no identifier of their own — they resolve to the Intel judgment already
+ * verified at footnote 14 — so the verification rule above is not weakened by them.
  */
 export const PREVIEW_FOOTNOTES: readonly string[] = [
   'Regulation (EU) 2016/679 of the European Parliament and of the Council of 27 April 2016 (the “GDPR”), Article 17.',
@@ -1338,6 +1536,8 @@ export const PREVIEW_FOOTNOTES: readonly string[] = [
   'Opinion of Advocate General Wahl of 20 October 2016 in Intel, ECLI:EU:C:2016:788, §§ 73-75.',
   'Article 102 TFEU.',
   'Post Danmark, para. 44.',
+  'Supra note 14, para. 140.',
+  'Ibid.',
 ];
 
 function toContexts(matches: CitationMatch[], text: string, radius: number): CitationContext[] {

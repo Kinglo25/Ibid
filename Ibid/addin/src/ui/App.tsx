@@ -57,6 +57,20 @@ function citationKey(citation: CitationContext, footnoteId: string) {
   return `${footnoteId}-${citation.index}-${citation.value}`;
 }
 
+/**
+ * How far a confirmation reaches.
+ *
+ * A short form is a name, and a name means one thing throughout a document, so settling
+ * "Akzo Nobel" once settles every later use of it — that is the whole point of confirming
+ * it. A back-reference is positional: `Ibid.` means whatever precedes it, so two of them
+ * in the same document are two different citations that merely happen to be spelled the
+ * same. Keying those by their text would take one reviewer's decision about footnote 13
+ * and apply it, unasked and invisibly, to every other `Ibid.` in the document.
+ */
+function confirmationKey(citation: CitationContext, footnoteId: string) {
+  return citation.backReference ? citationKey(citation, footnoteId) : citation.value.toLowerCase();
+}
+
 function curiaSearchUrl(query: string): string {
   return `https://curia.europa.eu/juris/liste.jsf?language=en&num=${encodeURIComponent(query)}`;
 }
@@ -109,8 +123,15 @@ function candidateLabel(candidate: CitationCandidate): string {
  * forced click on the ones that are not in doubt.
  */
 function resolutionNote(citation: CitationContext): string {
+  const footnote = citation.backReference?.footnote;
   switch (citation.resolutionMethod) {
-    case 'user_confirmed': return 'Confirmed by you for this document.';
+    case 'user_confirmed': return citation.backReference
+      ? 'Confirmed by you for this reference.'
+      : 'Confirmed by you for this document.';
+    case 'preceding_citation': return footnote
+      ? `Read as the authority cited immediately before it, in footnote ${footnote}.`
+      : 'Read as the authority cited immediately before it.';
+    case 'numbered_footnote': return `Read from footnote ${footnote}, which this reference names.`;
     case 'explicit_alias': return 'Resolved from the short form this document defines for it.';
     case 'generated_variant': return 'Inferred from a case name this document cites in full earlier.';
     // Currently unreachable: a frequent-case suggestion is never `resolved` until a
@@ -127,8 +148,9 @@ function resolutionNote(citation: CitationContext): string {
  * because a wrong citation shown with full confidence is worse for the reviewer than a
  * flagged gap — but declining to guess must not leave the reviewer stuck, so this is where
  * they decide. An ambiguous span offers its candidates; a span with no candidates at all
- * offers every authority the document itself establishes. Confirming applies to that short
- * form for the whole document, not just this footnote.
+ * offers every authority the document itself establishes. Confirming a short form applies
+ * for the whole document; confirming a back-reference applies to that one reference, since
+ * the next `Ibid.` means whatever precedes *it* — see `confirmationKey`.
  */
 function UnresolvedReview({ citation, authorities, onConfirm }: {
   citation: CitationContext;
@@ -137,11 +159,18 @@ function UnresolvedReview({ citation, authorities, onConfirm }: {
 }) {
   const suggested = citation.candidates ?? [];
   const options = suggested.length ? suggested : authorities;
+  const footnote = citation.backReference?.footnote;
   const message = citation.status === 'unconfirmed_suggestion'
     ? `This document does not define "${citation.value}". Ibid recognises the name from its list of frequently cited cases — confirm before relying on it.`
-    : suggested.length
-      ? `"${citation.value}" could refer to more than one authority, and this document does not say which.`
-      : `"${citation.value}" reads like a reference to an authority, but nothing in this document defines it.`;
+    : citation.backReference
+      ? suggested.length
+        ? `Footnote ${footnote} cites more than one authority, so "${citation.value}" does not say which of them is meant.`
+        : footnote
+          ? `"${citation.value}" points back to footnote ${footnote}, which does not establish an authority to point at.`
+          : `"${citation.value}" points back to an authority cited before it, but nothing before it establishes one.`
+      : suggested.length
+        ? `"${citation.value}" could refer to more than one authority, and this document does not say which.`
+        : `"${citation.value}" reads like a reference to an authority, but nothing in this document defines it.`;
 
   return <div className="unresolved-review">
     <p className="error">{message}</p>
@@ -216,7 +245,7 @@ export default function App() {
 
   const confirmCitation = async (candidate: CitationCandidate) => {
     if (!selected) return;
-    setConfirmations((current) => ({ ...current, [selected.citation.value.toLowerCase()]: candidate }));
+    setConfirmations((current) => ({ ...current, [confirmationKey(selected.citation, selected.footnote.id)]: candidate }));
     const confirmed: CitationContext = {
       ...selected.citation, ...candidate, status: 'resolved', resolutionMethod: 'user_confirmed', candidates: undefined,
     };
@@ -246,12 +275,12 @@ export default function App() {
   // reviewer's choices never change how the document itself is read — refreshing re-derives
   // the same citations, and only what a person explicitly settled is layered over them.
   const citationsByFootnote = useMemo(
-    () => detected.map((citations) => citations.map((citation) => {
+    () => detected.map((citations, index) => citations.map((citation) => {
       if (citation.status === 'resolved') return citation;
-      const confirmed = confirmations[citation.value.toLowerCase()];
+      const confirmed = confirmations[confirmationKey(citation, footnotes[index].id)];
       return confirmed ? { ...citation, ...confirmed, status: 'resolved' as const, resolutionMethod: 'user_confirmed' as const, candidates: undefined } : citation;
     })),
-    [detected, confirmations],
+    [detected, confirmations, footnotes],
   );
 
   const authorities = useMemo(() => citedAuthorities(detected), [detected]);

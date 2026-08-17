@@ -199,6 +199,177 @@ describe('Layer 2 — ambiguity policy', () => {
   });
 });
 
+describe('Layer 3 — back-references (Ibid., Id., supra note n)', () => {
+  const LEAD = 'Case C-293/12 Digital Rights Ireland, ECLI:EU:C:2014:238, para. 40.';
+
+  test('reads Ibid. as the authority the preceding footnote established', () => {
+    const citation = only(at([LEAD, 'Ibid., para. 44.'], 1));
+    assert.equal(citation.status, 'resolved');
+    assert.equal(citation.caseNumber, 'C-293/12');
+    assert.equal(citation.celex, '62012CJ0293');
+    assert.equal(citation.resolutionMethod, 'preceding_citation');
+    assert.equal(citation.backReference?.footnote, 1);
+  });
+
+  test('is not a prompt: the resolution is stated, not put to the reviewer', () => {
+    // The distinction this layer turns on. `Ibid.` naming the authority cited immediately
+    // before it is what the word means, so confirming it would ask the reviewer to sign off
+    // on what the document says outright — the reflex-prompt this tool refuses to become.
+    const citation = only(at([LEAD, 'Ibid., para. 44.'], 1));
+    assert.equal(citation.status, 'resolved');
+    assert.equal(citation.candidates, undefined);
+  });
+
+  test('a bare Ibid. repeats the pinpoint as well as the authority', () => {
+    assert.deepEqual(only(at([LEAD, 'Ibid.'], 1)).pinpoint, { paragraphs: [40] });
+  });
+
+  test('an Ibid. carrying its own pinpoint keeps the authority and states a new one', () => {
+    assert.deepEqual(only(at([LEAD, 'Ibid., para. 44.'], 1)).pinpoint, { paragraphs: [44] });
+  });
+
+  test('inherits the locator and the pinpoint as a pair, never mixing a new one with a stale one', () => {
+    // A new locator carrying the previous citation's paragraph list would report paragraphs
+    // the footnote does not cite — a wrong pinpoint shown with full confidence.
+    const citation = only(at([LEAD, 'Ibid., paras 51–53.'], 1));
+    assert.deepEqual(citation.locator, { kind: 'point', start: 51, paragraph: undefined, end: 53 });
+    assert.deepEqual(citation.pinpoint, { paragraphs: [51, 52, 53] });
+  });
+
+  test('carries an article locator across, for legislation as much as case law', () => {
+    const footnotes = ['Regulation (EU) 2016/679, Article 6(1).', 'Ibid., Article 9(2).', 'Ibid.'];
+    assert.deepEqual(only(at(footnotes, 1)).locator, { kind: 'article', start: 9, paragraph: 2, end: undefined });
+    assert.deepEqual(only(at(footnotes, 2)).locator, { kind: 'article', start: 9, paragraph: 2, end: undefined },
+      'the bare Ibid. repeats the article the one before it stated, not the one the act opened with');
+  });
+
+  test('chains: each Ibid. resolves against the one before it, pinpoint and all', () => {
+    // The common shape in real drafting, and the reason resolution has to run in document
+    // order — footnote 4 is three steps from the only footnote that names the case.
+    const footnotes = [LEAD, 'Ibid., para. 44.', 'Ibid.', 'Id., para. 51.'];
+    for (const index of [1, 2, 3]) {
+      assert.equal(only(at(footnotes, index)).caseNumber, 'C-293/12', `footnote ${index + 1}`);
+    }
+    assert.deepEqual(only(at(footnotes, 2)).pinpoint, { paragraphs: [44] }, 'the bare Ibid. inherits from the Ibid. before it');
+    assert.deepEqual(only(at(footnotes, 3)).pinpoint, { paragraphs: [51] });
+  });
+
+  test('accepts the spellings drafters actually use, including the French', () => {
+    for (const form of ['Ibid., para. 44.', 'Ibidem, para. 44.', 'Id., para. 44.', 'Idem, para. 44.', 'See ibid., para. 44.', 'Cf. ibid., para. 44.']) {
+      assert.equal(only(at([LEAD, form], 1)).caseNumber, 'C-293/12', form);
+    }
+  });
+
+  test('resolves against the preceding citation in its own footnote before the preceding footnote', () => {
+    const citations = at([LEAD, 'See Case C-131/12 Google Spain, para. 5; ibid., para. 9.'], 1);
+    assert.equal(citations.length, 2);
+    assert.equal(citations[1].caseNumber, 'C-131/12', 'the nearest citation is the one in the same footnote, not the one before it');
+    assert.deepEqual(citations[1].pinpoint, { paragraphs: [9] });
+  });
+
+  test('reports an Ibid. after a multi-authority footnote as ambiguous, nearest candidate first', () => {
+    // The one case the handoff flagged as genuinely undecidable. Convention reads Ibid. as
+    // the last authority cited, and the ordering says so — but ordering is offered, never
+    // applied, because a convention this tool decided to trust is still a guess.
+    const citation = only(at(['Case C-293/12, para. 40; Case C-131/12, para. 20.', 'Ibid., para. 44.'], 1));
+    assert.equal(citation.status, 'unresolved_ambiguous');
+    assert.deepEqual(citation.candidates?.map((candidate) => candidate.caseNumber), ['C-131/12', 'C-293/12']);
+    assert.equal(citation.celex, undefined, 'an unresolved back-reference carries no identifier to fetch on');
+    assert.equal(citation.backReference?.footnote, 1, 'it still says where it looked');
+  });
+
+  test('never resolves against an authority the document itself never established', () => {
+    // The preceding footnote holds a frequent-case suggestion, which is Ibid's own outside
+    // knowledge rather than something the document said. An Ibid. inheriting it would
+    // present that guess one step further from the doubt that produced it.
+    const suggestion = only(at(['Van Gend en Loos, para. 12.'], 0));
+    assert.equal(suggestion.status, 'unconfirmed_suggestion');
+
+    const citation = only(at(['Van Gend en Loos, para. 12.', 'Ibid., para. 14.'], 1));
+    assert.equal(citation.status, 'unresolved_not_found');
+    assert.equal(citation.celex, undefined);
+  });
+
+  test('an Ibid. with nothing above it is reported, not silently dropped', () => {
+    const citation = only(at(['Ibid., para. 12.'], 0));
+    assert.equal(citation.status, 'unresolved_not_found');
+    assert.ok(citation.backReference, 'still marked a back-reference, so a confirmation stays scoped to it');
+    assert.equal(citation.backReference?.footnote, undefined, 'there is no footnote 0 for the reviewer to look at');
+  });
+
+  test('supra note n reads the footnote it names, across intervening footnotes', () => {
+    const citation = only(at([LEAD, 'Commentary carrying no citation at all.', 'Supra note 1, para. 33.'], 2));
+    assert.equal(citation.status, 'resolved');
+    assert.equal(citation.caseNumber, 'C-293/12');
+    assert.equal(citation.resolutionMethod, 'numbered_footnote');
+    assert.equal(citation.backReference?.footnote, 1);
+    assert.deepEqual(citation.pinpoint, { paragraphs: [33] });
+  });
+
+  test('accepts the abbreviated note forms', () => {
+    for (const form of ['Supra note 1, para. 33.', 'Supra n. 1, para. 33.', 'Supra n 1, para. 33.', 'Above n 1, para. 33.']) {
+      assert.equal(only(at([LEAD, form], 1)).caseNumber, 'C-293/12', form);
+    }
+  });
+
+  test('refuses a forward or self reference, because supra means above', () => {
+    const [, forward, self] = detectCitationsAcrossFootnotes([LEAD, 'Supra note 3, para. 5.', 'Supra note 3, para. 5.']);
+    assert.equal(only(forward).status, 'unresolved_not_found', 'footnote 2 cannot cite footnote 3');
+    assert.equal(only(self).status, 'unresolved_not_found', 'footnote 3 cannot cite itself');
+  });
+
+  test('a supra note trailing the name it repeats is one citation, not two', () => {
+    const citations = at([LEAD, 'Digital Rights Ireland, supra note 1, para. 44.'], 1);
+    assert.equal(citations.length, 1, `expected one citation, got ${citations.map((match) => match.value).join(' | ')}`);
+    assert.equal(citations[0].caseNumber, 'C-293/12');
+  });
+
+  test('the name in front of a supra note is not separately reported as an unresolved gap', () => {
+    // The reference did resolve — just not by the name — so reporting the name as a gap
+    // would send the reviewer to check something that is already settled.
+    const citations = at([LEAD, 'Some Unregistered Name, supra note 1, para. 44.'], 1);
+    assert.equal(citations.length, 1, `expected one citation, got ${citations.map((match) => match.value).join(' | ')}`);
+    assert.equal(citations[0].status, 'resolved');
+  });
+
+  test('a supra note pointing at a multi-authority footnote is ambiguous too', () => {
+    const citation = only(at(['Case C-293/12, para. 40; Case C-131/12, para. 20.', 'Supra note 1, para. 5.'], 1));
+    assert.equal(citation.status, 'unresolved_ambiguous');
+    assert.equal(citation.candidates?.length, 2);
+  });
+
+  test('every back-reference is marked as one, whatever came of it', () => {
+    // What confirmation scope keys on: `Ibid.` means something different at every
+    // occurrence, so a reviewer settling one must not settle the rest. An unresolved
+    // back-reference has no resolution method to infer that from, hence the marker.
+    const footnotes = [LEAD, 'Ibid.', 'Supra note 9, para. 3.', 'Case C-293/12, para. 1; Case C-131/12, para. 2.', 'Ibid.'];
+    const statuses = [1, 2, 4].map((index) => only(at(footnotes, index)));
+    assert.deepEqual(statuses.map((citation) => citation.status), ['resolved', 'unresolved_not_found', 'unresolved_ambiguous']);
+    for (const citation of statuses) assert.ok(citation.backReference, citation.value);
+  });
+
+  test('does not read the words out of ordinary prose', () => {
+    // The tokens are short and common; only their position makes them citations. A footnote
+    // that merely contains them is narrating, and putting a source panel behind that would
+    // be the confidently-wrong reference this tool exists to prevent.
+    for (const prose of [
+      'The applicant did not identify the id. of the record, nor was ibid relevant.',
+      'The Commission considered this identical to the earlier finding.',
+      'That reasoning applies a fortiori to the present case, see above.',
+    ]) {
+      assert.deepEqual(at([LEAD, prose], 1), [], prose);
+    }
+  });
+
+  test('the real document is unaffected: it makes no back-reference', () => {
+    // REAL_DOCUMENT is transcribed verbatim from the sample docx and contains none of these
+    // forms, so this layer must add nothing to it.
+    for (const citations of detectCitationsAcrossFootnotes(REAL_DOCUMENT)) {
+      for (const citation of citations) assert.equal(citation.backReference, undefined, citation.value);
+    }
+  });
+});
+
 describe('Layer 5 — frequent-case fallback table', () => {
   test('offers a landmark case as a suggestion to confirm, never as an established citation', () => {
     // Everything else Ibid reports is the reviewer's own document read back to them.

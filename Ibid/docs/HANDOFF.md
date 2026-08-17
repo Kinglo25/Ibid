@@ -47,7 +47,7 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 264 tests (204 detection and resolution, 60 resolver and contract).
+- `npm run test` passes: 288 tests (228 detection and resolution, 60 resolver and contract).
 - `npm run typecheck:test` passes (`tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
@@ -638,10 +638,6 @@ worse than the failure mode of missing:
   but it is an ordinary word and the scan reaches 160 characters past the
   citation, so prose could produce a confidently wrong paragraph.
 - **`at [40]`.** Indistinguishable from a footnote marker.
-- **`Ibid.` / `supra note 4`.** Mechanically resolvable in principle — "ibid"
-  means the preceding authority — but which authority that is gets ambiguous the
-  moment the preceding footnote cites two. Worth building, as a decision rather
-  than a guess; see the open items below.
 - **`Regulation (EEC) No 1612/68`.** The pre-1994 two-digit-year form, already a
   documented gap: the century is not resolved and the number order is genuinely
   ambiguous in that convention.
@@ -707,6 +703,8 @@ only where Ibid genuinely does not know:
 | `explicit_alias` | no | The drafter wrote the definition; asking is asking them to confirm their own document |
 | `generated_variant`, one authority | no | Inferred, but from a name the document states in full, and shown as such |
 | `generated_variant`, several | **yes** | Genuinely ambiguous |
+| `preceding_citation` / `numbered_footnote`, one authority | no | Positional, not inferred — see the back-reference section |
+| back-reference, several | **yes** | The text it points at cites more than one authority |
 | `unresolved_not_found` | **yes** | Ibid has nothing |
 | `fallback_table` | **yes** | Outside knowledge, not something the document said |
 
@@ -734,6 +732,62 @@ authority" while offering no way to do it, which is worse than saying nothing:
   their document type, because the judgment, the AG opinion, and the order in one
   case share a name exactly and are otherwise indistinguishable at the moment of
   choosing.
+
+### Back-references — `Ibid.`, `Id.`, `supra note 4`
+
+Resolved by `resolveBackReferences`, running after name resolution and before the
+unresolved scan, per footnote, in document order.
+
+These are the references the product is named after, and the key point is that most
+of them are **not inferences at all**. Where the text a reference points at
+established exactly one authority, `Ibid.` *is* that authority by the definition of
+the word — a firmer warrant than `generated_variant`, which rests on a drafter having
+shortened a case name the way we guessed they would. So they resolve without a prompt,
+and say so: "Read as the authority cited immediately before it, in footnote 12."
+
+The earlier objection to building this — which authority is meant when the preceding
+footnote cites two — turned out to need no new machinery. It is the ambiguity policy
+that already exists. What each form does:
+
+| Situation | Outcome |
+| --- | --- |
+| Text pointed at established exactly one authority | `resolved`, `preceding_citation` or `numbered_footnote` |
+| It established several | `unresolved_ambiguous`, candidates ordered nearest-cited first |
+| It established none, or the reference is the first footnote | `unresolved_not_found` |
+
+Ordering the candidates nearest-first encodes the OSCOLA reading — *ibid* means the
+immediately preceding *citation* — as a hint to the reviewer, never as a pick. A
+convention this tool decided to trust would still be a guess.
+
+Details that are load-bearing:
+
+- **Only `resolved` citations holding an identifier are targets.** A back-reference
+  can never point at an ambiguous span or a `fallback_table` suggestion, which would
+  launder a guess one step further from the doubt that produced it.
+- **`Ibid.` looks inside its own footnote first.** In `… Case C-1/10, para 5; ibid.,
+  para 9`, the nearest citation is in the same footnote, not the previous one.
+- **Chains resolve transitively**, because `history` is filled as each footnote is
+  processed: a resolved `Ibid.` becomes an established citation like any other, so the
+  next one finds it. Footnotes 19–20 of the preview memo exercise this.
+- **Pinpoints inherit as a pair, or not at all.** A bare `Ibid.` repeats the authority
+  *and* the locator/pinpoint; `Ibid., para. 44` keeps the authority and states a new
+  one. A new locator married to a stale paragraph list would report paragraphs the
+  footnote does not cite.
+- **`supra note n` refuses to point forward or at itself.** *Supra* means above.
+- **`Ibid.` is anchored to the start of its segment; `supra note n` is not.** The ibid
+  tokens are short and common enough that scanning for them anywhere would eventually
+  read prose as a citation; position is what makes them citations. `supra note n`
+  carries its own structure and conventionally trails the name it repeats ("Akzo
+  Nobel, supra note 4"), which the "segment already names an authority" rule keeps
+  from being reported twice.
+- **Confirmation is scoped per occurrence, not per text** (`confirmationKey` in the
+  pane). A name means one thing throughout a document; `Ibid.` means something
+  different every time it appears. This is why `backReference` is a marker on the
+  match rather than something inferred from `resolutionMethod` — an unresolved
+  back-reference has no resolution method, and is exactly the case that gets confirmed.
+
+Not built: resolving a back-reference by skipping past a footnote that establishes
+nothing. See the known limits.
 
 **Frequent-case fallback table** (`FREQUENT_CASES`). Citation frequency is
 heavily skewed, and landmark cases are exactly the ones named without ever being
@@ -765,8 +819,11 @@ needs deciding before the list grows ad hoc.
 
 **Known limits, left visible rather than papered over:**
 
-- `Ibid., para. 12` and bare back-references are not resolved to the preceding
-  citation. They are excluded from the unresolved scan too, so they are silent.
+- A back-reference is read only against the citation *immediately* before it. If the
+  preceding footnote establishes no authority — it is pure commentary, or its own
+  citation went unresolved — the reference is reported unresolved rather than
+  skipping further back to the last footnote that did. Skipping would usually be
+  right and occasionally, silently, wrong.
 - Pre-1989 case numbers as actually written (`Case 26/62`, no `C-` prefix) are
   still not detected — an existing gap, unchanged by this round.
 - A generated variant needs a pinpoint, so a genuine short-form reference written
@@ -888,7 +945,7 @@ Then sideload `addin/manifest.xml` in Word and open the sample document. Select 
 
 1. Run the Word end-to-end validation above and fix Office.js compatibility/UI issues that appear.
 2. Add explicit Commission-family classification (competition, state aid, merger, infringement) from citation context, then route each family to the appropriate official register. The current generic Commission adapter is intentionally conservative.
-3. Add task-pane tests for `addin/src/ui/App.tsx`. There is no DOM/React test dependency installed yet, so this needs a deliberate choice of runner before it can start.
+3. Add task-pane tests for `addin/src/ui/App.tsx`. There is no DOM/React test dependency installed yet, so this needs a deliberate choice of runner before it can start. This is now the largest untested surface in the repo, and back-references raised the stakes: `confirmationKey` is what stops one reviewer's decision about one `Ibid.` being applied to every other `Ibid.` in the document, and nothing but a type currently holds it in place.
 4. Replace in-memory cache/rate limiting with shared, observable infrastructure before horizontal scaling.
 5. Broaden `documentTypeNear` in `shared/src/index.ts` if real documents surface more opinion/order phrasings than the current signal set (English "Opinion of [the] Advocate General" / "Order of the [General] Court", French "conclusions de l'avocat général" / "ordonnance"). Missing a signal is safe — it only causes an unnecessary fetch attempt that 404s and falls back to the link — but it is worth tightening once real client documents are seen.
 6. Clean up the legislation title heuristic in `resolveCellarPreview` (`api/src/index.ts`) — it currently surfaces the document's internal filename for at least the GDPR instead of a human title. Cosmetic; the excerpt text is unaffected.
