@@ -46,3 +46,17 @@ button.candidate-confirm { flex: 0 0 auto; padding: 3px 8px; border: 1px solid #
 button.candidate-confirm:hover { background: #10357f; }
 .candidate-name { font-weight: 600; }
 .candidate-check { font-size: 11px; }
+
+/* Shown above a passage that is not the authentic text — a machine translation, or a
+   document published only in French. Deliberately not styled as an error: nothing has gone
+   wrong, the reader simply needs to know what they are looking at before relying on it. */
+.source-note {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid #b8860b;
+  background: rgba(184, 134, 11, 0.08);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.source-note a { font-weight: 600; }

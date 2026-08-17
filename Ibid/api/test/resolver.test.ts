@@ -159,12 +159,14 @@ describe('CURIA case-law text retrieval', () => {
   });
 
   test('falls back to the case-record link when CELLAR does not have the document in either format', async () => {
-    // A 404 means "try the other Accept header" (see fetchCellarDocument) — both must be attempted before falling back.
-    const { fetcher, calls } = stubFetcher([new Response('missing', { status: 404 }), new Response('missing', { status: 404 })]);
+    // A 404 means "try the next thing" at two levels (see fetchCellarDocument): the other
+    // Accept header, then the next language. Every combination must be refused before the
+    // document counts as unavailable and the link becomes the answer.
+    const { fetcher, calls } = stubFetcher(Array.from({ length: 4 }, () => new Response('missing', { status: 404 })));
     const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
     const [preview] = await resolver.resolve(curiaJudgmentLookup());
 
-    assert.equal(calls.length, 2, 'both content-negotiated formats must be attempted before falling back');
+    assert.equal(calls.length, 4, 'two formats across two languages before falling back');
     assert.equal(preview.url, 'https://curia.europa.eu/juris/liste.jsf?language=en&num=C-293%2F12');
     assert.ok(preview.excerpt.includes('Open the official CURIA case record'));
   });
@@ -685,6 +687,84 @@ describe('what a preview is called', () => {
   });
 });
 
+describe('source language', () => {
+  const french = (body: string) => html(body);
+  const missing = () => new Response('missing', { status: 404 });
+
+  test('prefers the published English text where one exists', async () => {
+    const { fetcher, calls } = stubFetcher([html('<p>Article 17</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const preview = (await resolver.resolve(eurLexLookup()))[0];
+    assert.equal(new Headers(calls[0].init.headers).get('accept-language'), 'eng');
+    assert.equal(preview.language, 'en');
+    assert.equal(preview.translation, undefined, 'nothing to explain when the text is the authentic English');
+    assert.equal(calls.length, 1, 'French is never requested when English answered');
+  });
+
+  test('falls back to French only once English is refused in every format', async () => {
+    // Today this case yields no text at all: both English attempts 404 and the whole
+    // retrieval degrades to a bare link, so the lawyer reads nothing.
+    const { fetcher, calls } = stubFetcher([missing(), missing(), french('<p>Article 17</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const preview = (await resolver.resolve(eurLexLookup()))[0];
+    assert.deepEqual(calls.map((call) => new Headers(call.init.headers).get('accept-language')), ['eng', 'eng', 'fra']);
+    assert.equal(preview.language, 'fr');
+    assert.ok(preview.excerpt.includes('Article 17'));
+  });
+
+  test('a French passage is labelled, never passed off as English', async () => {
+    const { fetcher } = stubFetcher([missing(), missing(), french('<p>Article 17</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const preview = (await resolver.resolve(eurLexLookup()))[0];
+    assert.equal(preview.language, 'fr');
+    assert.equal(preview.translation, undefined, 'not a translation — it is the authentic text, in French');
+  });
+
+  test('translates a French-only passage and says the authentic text is elsewhere', async () => {
+    const { fetcher } = stubFetcher([missing(), missing(), french('<p>Article 17</p>')]);
+    const { resolver } = makeResolver({
+      fetcher, minRequestIntervalMs: 0,
+      translate: async (text, from) => `[EN of ${from}] ${text}`,
+    });
+    const preview = (await resolver.resolve(eurLexLookup()))[0];
+    assert.match(preview.excerpt, /^\[EN of fr\]/);
+    assert.equal(preview.language, 'en');
+    assert.deepEqual(preview.translation, { from: 'fr', officialUrl: preview.url });
+  });
+
+  test('never translates a passage that was already English', async () => {
+    // The Court's own English is the authority; replacing it with a machine's would be a
+    // strict loss, and would put a "not the authentic text" warning on text that is.
+    let called = false;
+    const { fetcher } = stubFetcher([html('<p>Article 17</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, translate: async (text) => { called = true; return text; } });
+    const preview = (await resolver.resolve(eurLexLookup()))[0];
+    assert.equal(called, false);
+    assert.equal(preview.translation, undefined);
+  });
+
+  test('a translator that fails leaves the published French in place', async () => {
+    // The document is in hand and is worth more than nothing; a translation failure must
+    // not turn a successful retrieval into an error.
+    const { fetcher } = stubFetcher([missing(), missing(), french('<p>Article 17</p>')]);
+    const { resolver } = makeResolver({
+      fetcher, minRequestIntervalMs: 0,
+      translate: async () => { throw new Error('translator unavailable'); },
+    });
+    const preview = (await resolver.resolve(eurLexLookup()))[0];
+    assert.ok(preview.excerpt.includes('Article 17'));
+    assert.equal(preview.language, 'fr');
+    assert.equal(preview.translation, undefined);
+  });
+
+  test('the language preference is configurable', async () => {
+    const { fetcher, calls } = stubFetcher([html('<p>Article 17</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, preferredLanguages: ['fr', 'en'] });
+    await resolver.resolve(eurLexLookup());
+    assert.equal(new Headers(calls[0].init.headers).get('accept-language'), 'fra');
+  });
+});
+
 describe('how the resolver identifies itself', () => {
   test('names the application, because an unidentified caller is what gets blocked', async () => {
     // Node's `fetch` sends `User-Agent: node` unless told otherwise, which is exactly the
@@ -763,12 +843,12 @@ describe('EUR-Lex retry and backoff', () => {
     assert.deepEqual(clock.slept, [400, 800], 'backoff must grow between attempts');
   });
 
-  test('tries both content-negotiated formats on a 404 and surfaces the status when neither exists', async () => {
-    const { fetcher, calls } = stubFetcher([new Response('missing', { status: 404 }), new Response('missing', { status: 404 })]);
+  test('tries every format and language on a 404 and surfaces the status when none exists', async () => {
+    const { fetcher, calls } = stubFetcher(Array.from({ length: 4 }, () => new Response('missing', { status: 404 })));
     const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
 
     await assert.rejects(resolver.resolve(eurLexLookup()), /EUR-Lex\/CELLAR lookup failed \(404\)/);
-    assert.equal(calls.length, 2, 'a 404 tries the other Accept header once before giving up; neither is retried beyond that');
+    assert.equal(calls.length, 4, 'two formats across two languages, each tried once and not retried beyond that');
   });
 
   test('does not try the other format on a non-404 client error', async () => {
@@ -827,13 +907,13 @@ describe('EUR-Lex retry and backoff', () => {
 
   test('a failed lookup is not cached', async () => {
     const { fetcher, calls } = stubFetcher([
-      new Response('boom', { status: 404 }), new Response('boom', { status: 404 }), html('<p>ok</p>'),
+      ...Array.from({ length: 4 }, () => new Response('boom', { status: 404 })), html('<p>ok</p>'),
     ]);
     const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
 
     await assert.rejects(resolver.resolve(eurLexLookup()));
     const [preview] = await resolver.resolve(eurLexLookup());
-    assert.equal(calls.length, 3, 'the first call exhausts both formats (2 requests), the retry is a fresh third');
+    assert.equal(calls.length, 5, 'the first call exhausts both formats in both languages (4), the retry is a fresh fifth');
     assert.ok(preview.excerpt.includes('ok'));
   });
 });

@@ -41,6 +41,31 @@ For genuine bulk work, harvest rather than hammer the REST endpoint: see the Pub
 Office's [Cellar documentation](https://op.europa.eu/en/web/cellar/documentation) and its
 dataset guide for developers.
 
+## Language and translation
+
+Retrieval negotiates language with CELLAR, which answers `404` for a language a document was
+never published in — so `IBID_LANGUAGES` is a real fallback chain, not a hint. It defaults to
+`en,fr`: the published English text where one exists, the French where it does not. Both
+Accept headers are tried for a language before that language is judged absent, because an
+older document is `text/html` only and a format `404` means something different from a
+language `404`.
+
+Before this, `Accept-Language` was pinned to English, so a document published only in French
+returned nothing at all and the pane degraded to a bare link.
+
+A French passage is shown in French and labelled. To show it in English instead, supply a
+`translate` function to `createEuSourceResolver`:
+
+```ts
+createEuSourceResolver({ translate: async (text, from) => /* → English */ });
+```
+
+There is deliberately no default. A translation is not the authority, so whenever one is
+shown the pane says so and links to the authentic text, and the Court's own English is
+always preferred over a machine's. A translator that throws or times out degrades to the
+published French rather than failing the retrieval — the real text is worth more than
+nothing.
+
 ## Server environment
 
 Configure limits in the server environment—never in Vite variables or the add-in:
@@ -48,6 +73,7 @@ Configure limits in the server environment—never in Vite variables or the add-
 ```bash
 IBID_EURLEX_CELLAR_BASE_URL=https://publications.europa.eu/resource/celex
 IBID_USER_AGENT='Ibid/0.1 (EU-law citation review; +mailto:you@example.com)'
+IBID_LANGUAGES=en,fr                    # retrieval preference order
 IBID_EURLEX_API_KEY=...                 # only if you front CELLAR with your own gateway
 IBID_EURLEX_BEARER_TOKEN=...            # only if you front CELLAR with your own gateway
 IBID_EURLEX_MIN_INTERVAL_MS=1000

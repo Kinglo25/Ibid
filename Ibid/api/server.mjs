@@ -7,6 +7,9 @@ if (process.env.IBID_EURLEX_BEARER_TOKEN) eurLexHeaders.Authorization = `Bearer 
 const resolver = createEuSourceResolver({
   cellarBaseUrl: process.env.IBID_EURLEX_CELLAR_BASE_URL,
   userAgent: process.env.IBID_USER_AGENT,
+  // Order of preference, e.g. "en,fr". CELLAR answers 404 for a language a document was
+  // never published in, so this is a real fallback chain.
+  preferredLanguages: process.env.IBID_LANGUAGES?.split(',').map((l) => l.trim()).filter(Boolean),
   minRequestIntervalMs: Number(process.env.IBID_EURLEX_MIN_INTERVAL_MS ?? 1000),
   maxRetries: Number(process.env.IBID_EURLEX_MAX_RETRIES ?? 2),
   eurLexHeaders,

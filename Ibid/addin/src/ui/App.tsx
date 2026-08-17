@@ -5,7 +5,11 @@ import {
   officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage, type ReviewFootnote,
 } from './citation-view';
 
-type ReviewDocument = { title: string; excerpt: string; url: string; source: string };
+type ReviewDocument = {
+  title: string; excerpt: string; url: string; source: string;
+  language?: 'en' | 'fr';
+  translation?: { from: 'en' | 'fr'; officialUrl: string };
+};
 type ReviewState =
   | { kind: 'idle' }
   | { kind: 'loading' }
@@ -69,6 +73,30 @@ async function resolveSource(citation: CitationContext): Promise<ReviewDocument[
   if (!response.ok) throw new Error(`Source lookup failed (${response.status}).`);
   const payload = await response.json() as { documents?: ReviewDocument[] };
   return payload.documents ?? [];
+}
+
+/**
+ * Says so when the passage above is not the authentic text.
+ *
+ * A translation is not the authority, and a lawyer arguing from a paragraph has to know
+ * whether the words in front of them are the Court's or a machine's. So a translated
+ * passage is labelled and the official version is one click away; a French passage shown
+ * untranslated is labelled too, because a reader expecting English should be told why they
+ * did not get it rather than left to work it out. Where the excerpt is the published
+ * English text this renders nothing at all — that is the case that needs no explaining.
+ */
+function SourceLanguageNote({ document }: { document: ReviewDocument }) {
+  if (document.translation) {
+    return <p className="source-note">
+      Translated from the official {document.translation.from === 'fr' ? 'French' : 'English'};
+      this is not the authentic text.{' '}
+      <a href={document.translation.officialUrl} target="_blank" rel="noreferrer">Open the official version</a>
+    </p>;
+  }
+  if (document.language && document.language !== 'en') {
+    return <p className="source-note">Published only in French. Shown in the official language.</p>;
+  }
+  return null;
 }
 
 /**
@@ -265,7 +293,13 @@ export default function App() {
           <p className="context-label">Footnote {selected.footnote.number} context</p>
           <blockquote>{selected.citation.context}</blockquote>
           {review.kind === 'loading' && <p>Retrieving the official source passage…</p>}
-          {review.kind === 'success' && <div className="source-results">{review.documents.map((document) => <article key={document.url}><p className="source-provider">{document.source}</p><a href={document.url} target="_blank" rel="noreferrer">{document.title}</a><p>{document.excerpt}</p></article>)}</div>}
+          {review.kind === 'success' && <div className="source-results">{review.documents.map((document) =>
+            <article key={document.url}>
+              <p className="source-provider">{document.source}</p>
+              <a href={document.url} target="_blank" rel="noreferrer">{document.title}</a>
+              <SourceLanguageNote document={document} />
+              <p>{document.excerpt}</p>
+            </article>)}</div>}
           {review.kind === 'empty' && <p>No official source passage was found for this reference. You can open the official record directly.</p>}
           {review.kind === 'unresolved' && <UnresolvedReview
             citation={selected.citation}

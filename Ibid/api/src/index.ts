@@ -28,12 +28,25 @@ export type EuLookup = {
   paragraphs?: number[];
 };
 
+export type SourceLanguage = 'en' | 'fr';
+
 export type SourcePreview = {
   title: string;
   excerpt: string;
   url: string;
   source: 'CURIA' | 'EUR-Lex' | 'European Commission';
   locator?: string;
+  /** The language `excerpt` is actually in. Absent where no document was retrieved. */
+  language?: SourceLanguage;
+  /**
+   * Set only when `excerpt` is a machine translation rather than the published text.
+   *
+   * A translation is not the authority. A lawyer arguing from a paragraph needs to know
+   * that the words in front of them were produced by a machine and that the authentic text
+   * is somewhere else, so this carries the link to it and the pane says so plainly. Nothing
+   * downstream may present a translated excerpt as the official source.
+   */
+  translation?: { from: SourceLanguage; officialUrl: string };
 };
 
 /**
@@ -42,6 +55,9 @@ export type SourcePreview = {
  * recognisable, so that a rate problem can be raised with someone instead of being met with
  * a block. Override it with `IBID_USER_AGENT` to carry a real contact address.
  */
+/** CELLAR negotiates on ISO 639-2/B codes, not the two-letter tags used everywhere else. */
+const CELLAR_LANGUAGE: Record<SourceLanguage, string> = { en: 'eng', fr: 'fra' };
+
 const DEFAULT_USER_AGENT = 'Ibid/0.1 (EU-law citation review add-in; +https://github.com/Kinglo25/OfficesAddins)';
 
 /**
@@ -94,6 +110,20 @@ export type ResolverOptions = {
    * Set `IBID_USER_AGENT` in production so it carries a real contact address.
    */
   userAgent?: string;
+  /**
+   * Which language to retrieve, in order of preference. CELLAR answers `404` for a language
+   * a document was never published in, so this is a genuine fallback chain rather than a
+   * hint: English first because the pane is in English, French next because that is the
+   * language this tool's users draft in and the Court's own working language.
+   */
+  preferredLanguages?: SourceLanguage[];
+  /**
+   * Translates a passage into English. Optional, and absent by default: without it a
+   * French-only document is shown in French and labelled as such, which is honest. With it,
+   * the excerpt is translated and marked as a translation alongside a link to the authentic
+   * text. Server-side only — it is given document text, not user credentials.
+   */
+  translate?: (text: string, from: SourceLanguage) => Promise<string>;
   /** Server-side credentials only; never pass these to the Word client. */
   eurLexHeaders?: Record<string, string>;
   sleep?: (milliseconds: number) => Promise<void>;
@@ -368,6 +398,7 @@ export function createApiHealthCheck() { return { status: 'ok' as const }; }
 export function createEuSourceResolver(options: ResolverOptions = {}) {
   const fetcher = options.fetcher ?? fetch;
   const userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
+  const preferredLanguages = options.preferredLanguages?.length ? options.preferredLanguages : (['en', 'fr'] as SourceLanguage[]);
   const minRequestIntervalMs = options.minRequestIntervalMs ?? 1_000;
   const maxRetries = options.maxRetries ?? 2;
   const timeoutMs = options.timeoutMs ?? 12_000;
@@ -377,7 +408,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
   const cache = new Map<string, SourcePreview>();
   let nextRequestAt = 0;
 
-  async function fetchEurLex(url: string, accept: string): Promise<Response> {
+  async function fetchEurLex(url: string, accept: string, language: SourceLanguage): Promise<Response> {
     const wait = nextRequestAt - now();
     if (wait > 0) await sleep(wait);
     nextRequestAt = now() + minRequestIntervalMs;
@@ -387,7 +418,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetcher(url, {
-          headers: { Accept: accept, 'Accept-Language': 'eng', 'User-Agent': userAgent, ...options.eurLexHeaders },
+          headers: { Accept: accept, 'Accept-Language': CELLAR_LANGUAGE[language], 'User-Agent': userAgent, ...options.eurLexHeaders },
           signal: controller.signal,
         });
         if (response.ok || (response.status !== 429 && response.status < 500) || attempt >= maxRetries) return response;
@@ -415,19 +446,29 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
    * different kind of problem that a different Accept header would not fix,
    * so it fails immediately rather than doubling up on a struggling server.
    */
-  async function fetchCellarDocument(url: string): Promise<string> {
+  /**
+   * Retrieves the document in the best available language, and says which it got.
+   *
+   * The language loop is outermost because a `404` means something different at each level:
+   * across Accept headers it is a format the document does not have (older documents are
+   * `text/html` only), and across languages it is a language it was never published in. Only
+   * once every format has been refused for a language is that language genuinely absent.
+   */
+  async function fetchCellarDocument(url: string): Promise<{ html: string; language: SourceLanguage }> {
     let lastResponse: Response | undefined;
-    for (const accept of ['application/xhtml+xml', 'text/html']) {
-      const response = await fetchEurLex(url, accept);
-      lastResponse = response;
-      if (response.status === 404) continue;
-      if (!response.ok) throw new Error(`EUR-Lex/CELLAR lookup failed (${response.status}).`);
-      const html = await response.text();
-      if (looksLikeCellarDocument(html)) return html;
-      // A 200 without a recognisable document body is CELLAR's bot-verification
-      // page, not a format-availability issue — the other Accept header would
-      // not help, and would cost another request against the same block.
-      throw new Error('EUR-Lex/CELLAR did not return a recognisable document (possibly a bot-verification page).');
+    for (const language of preferredLanguages) {
+      for (const accept of ['application/xhtml+xml', 'text/html']) {
+        const response = await fetchEurLex(url, accept, language);
+        lastResponse = response;
+        if (response.status === 404) continue;
+        if (!response.ok) throw new Error(`EUR-Lex/CELLAR lookup failed (${response.status}).`);
+        const html = await response.text();
+        if (looksLikeCellarDocument(html)) return { html, language };
+        // A 200 without a recognisable document body is CELLAR's bot-verification
+        // page, not a format-availability issue — the other Accept header would
+        // not help, and would cost another request against the same block.
+        throw new Error('EUR-Lex/CELLAR did not return a recognisable document (possibly a bot-verification page).');
+      }
     }
     throw new Error(`EUR-Lex/CELLAR lookup failed (${lastResponse!.status}).`);
   }
@@ -443,21 +484,46 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     if (cached) return cached;
 
     const url = cellarUrl(celex, cellarBaseUrl);
-    const html = await fetchCellarDocument(url);
+    const { html, language } = await fetchCellarDocument(url);
 
     // Judgments and legislative acts use different paragraph-numbering
-    // markup (see extractByHeadingAnchor), so they need different extraction —
+    // markup (see sliceByHeadingAnchor), so they need different extraction —
     // both run on the raw HTML, before it is decoded.
-    const preview: SourcePreview = source === 'CURIA'
-      ? { title: describeDocument(lookup), excerpt: extractJudgmentPoint(html, lookup), url, source, locator: locatorLabel(lookup) }
+    const base: SourcePreview = source === 'CURIA'
+      ? { title: describeDocument(lookup), excerpt: extractJudgmentPoint(html, lookup), url, source, locator: locatorLabel(lookup), language }
       : {
           // Legislation states its own title in the document, which beats anything derived
           // from the citation; the derived name is the fallback when extraction comes up empty.
           title: decodeHtml(html).slice(0, 260).split('Official Journal')[0].trim() || describeDocument(lookup),
-          excerpt: extractLegislativeLocator(html, lookup.locator, lookup.paragraphs), url, source, locator: locatorLabel(lookup),
+          excerpt: extractLegislativeLocator(html, lookup.locator, lookup.paragraphs), url, source, locator: locatorLabel(lookup), language,
         };
+    const preview = await translateIfNeeded(base);
     cache.set(key, preview);
     return preview;
+  }
+
+  /**
+   * Renders a passage in English when the document itself is not.
+   *
+   * Only reached when the document was never published in English — the language chain has
+   * already preferred the authentic English text wherever one exists, and a real translation
+   * by the Court always beats a machine's. When no translator is configured the French is
+   * shown as it stands and labelled; showing it unlabelled, as though it were what was
+   * asked for, is the one thing that must not happen.
+   *
+   * A failure here is not a retrieval failure. The published text is in hand and is worth
+   * more than nothing, so a translator that errors or times out degrades to the French.
+   */
+  async function translateIfNeeded(preview: SourcePreview): Promise<SourcePreview> {
+    const from = preview.language;
+    if (!options.translate || !from || from === 'en' || !preview.excerpt.trim()) return preview;
+    try {
+      const translated = await options.translate(preview.excerpt, from);
+      if (!translated.trim()) return preview;
+      return { ...preview, excerpt: translated, language: 'en', translation: { from, officialUrl: preview.url } };
+    } catch {
+      return preview;
+    }
   }
 
   async function resolveEurLex(lookup: EuLookup): Promise<SourcePreview[]> {
