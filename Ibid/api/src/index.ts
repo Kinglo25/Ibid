@@ -12,6 +12,12 @@ export type EuLookup = {
    * whatever CELEX it is given.
    */
   documentType?: 'judgment' | 'opinion' | 'order';
+  /**
+   * The party-versus-party name, where the document established one. Supplied so a preview
+   * can be titled with the authority it is showing rather than with `value` — see
+   * `describeDocument`.
+   */
+  caseName?: string;
   locator?: { kind: 'point' | 'article'; start: number; paragraph?: number; end?: number };
 };
 
@@ -30,6 +36,38 @@ export type SourcePreview = {
  * a block. Override it with `IBID_USER_AGENT` to carry a real contact address.
  */
 const DEFAULT_USER_AGENT = 'Ibid/0.1 (EU-law citation review add-in; +https://github.com/Kinglo25/OfficesAddins)';
+
+/**
+ * What to call the document a preview is showing.
+ *
+ * `value` — the text the footnote actually used — is only a description of the document
+ * when the footnote spelled it out. A back-reference does not: titling its preview with
+ * `value` heads the panel "Ibid." or "Supra note 7", which tells a reader nothing about
+ * what they are reading and leaves them to work out which judgment it is. That is the
+ * work this tool exists to save them, and it was visible in the first real Word session.
+ *
+ * So the name is built from what the citation resolved *to*, preferring what a lawyer
+ * would actually call it: the case name, qualified by document type because a judgment,
+ * the Advocate General's opinion, and the order in one case share a name exactly. The
+ * matched text is the last resort rather than the first.
+ */
+function describeDocument(lookup: EuLookup): string {
+  const qualifier = lookup.documentType && lookup.documentType !== 'judgment' ? ` (${lookup.documentType})` : '';
+  if (lookup.caseName) {
+    return `${lookup.caseName}${lookup.caseNumber ? `, ${lookup.caseNumber}` : ''}${qualifier}`;
+  }
+  if (lookup.caseNumber) return `${lookup.caseNumber}${qualifier}`;
+  // A back-reference carries no name of its own, so anything identifying beats echoing it.
+  if (BACK_REFERENCE_VALUE.test(lookup.value)) return lookup.ecli ?? lookup.celex ?? lookup.value;
+  return lookup.value;
+}
+
+/**
+ * Recognises a value that describes no document — the back-reference spellings, which mean
+ * something only in the footnote they were written in. Matched here rather than flagged by
+ * the caller so the resolver stays a standalone service that trusts nothing it is told.
+ */
+const BACK_REFERENCE_VALUE = /^\s*(?:ibidem|ibid|idem|id)\b\.?\s*$|^\s*(?:supra|above)\b/i;
 
 export type ResolverOptions = {
   fetcher?: typeof fetch;
@@ -325,9 +363,11 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     // markup (see extractByHeadingAnchor), so they need different extraction —
     // both run on the raw HTML, before it is decoded.
     const preview: SourcePreview = source === 'CURIA'
-      ? { title: lookup.value, excerpt: extractJudgmentPoint(html, lookup.locator), url, source, locator: locatorLabel(lookup.locator) }
+      ? { title: describeDocument(lookup), excerpt: extractJudgmentPoint(html, lookup.locator), url, source, locator: locatorLabel(lookup.locator) }
       : {
-          title: decodeHtml(html).slice(0, 260).split('Official Journal')[0].trim() || lookup.value,
+          // Legislation states its own title in the document, which beats anything derived
+          // from the citation; the derived name is the fallback when extraction comes up empty.
+          title: decodeHtml(html).slice(0, 260).split('Official Journal')[0].trim() || describeDocument(lookup),
           excerpt: extractLegislativeLocator(html, lookup.locator), url, source, locator: locatorLabel(lookup.locator),
         };
     cache.set(key, preview);
@@ -340,7 +380,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
   }
 
   function resolveCuriaLink(lookup: EuLookup): SourcePreview {
-    return { title: lookup.value, source: 'CURIA', url: curiaUrl(lookup), locator: locatorLabel(lookup.locator),
+    return { title: describeDocument(lookup), source: 'CURIA', url: curiaUrl(lookup), locator: locatorLabel(lookup.locator),
       excerpt: `Open the official CURIA case record${lookup.locator ? ` and inspect ${locatorLabel(lookup.locator)?.toLowerCase()}` : ''}.` };
   }
 
@@ -367,7 +407,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
 
   function resolveCommission(lookup: EuLookup): SourcePreview[] {
     const locator = locatorLabel(lookup.locator);
-    return [{ title: lookup.value, source: 'European Commission', url: commissionUrl(lookup), locator,
+    return [{ title: describeDocument(lookup), source: 'European Commission', url: commissionUrl(lookup), locator,
       excerpt: `Open the European Commission case register to inspect the published decision and related documents${locator ? `, focusing on ${locator.toLowerCase()}` : ''}.` }];
   }
 

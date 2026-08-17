@@ -58,7 +58,8 @@ async function resolveSource(citation: CitationContext): Promise<ReviewDocument[
   const apiBase = import.meta.env.VITE_IBID_API_BASE_URL?.replace(/\/$/, '') ?? '/api';
   const lookup = {
     source: citation.source, value: citation.value, celex: citation.celex, ecli: citation.ecli,
-    caseNumber: citation.caseNumber, documentType: citation.documentType, locator: citation.locator,
+    caseNumber: citation.caseNumber, caseName: citation.caseName,
+    documentType: citation.documentType, locator: citation.locator,
   };
   const response = await fetch(`${apiBase}/sources?lookup=${encodeURIComponent(JSON.stringify(lookup))}`);
   if (!response.ok) throw new Error(`Source lookup failed (${response.status}).`);

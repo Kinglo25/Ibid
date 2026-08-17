@@ -548,6 +548,58 @@ describe('EUR-Lex retrieval', () => {
   });
 });
 
+describe('what a preview is called', () => {
+  // The reviewer reads a paragraph and has to know which document it came from. `value` is
+  // the footnote's own words, which describe a document only when the footnote spelled it
+  // out — a back-reference titled by its value heads the panel "Ibid.".
+  const curia = (overrides: Partial<EuLookup> = {}): EuLookup => ({
+    source: 'curia', value: 'Ibid.', celex: '62012CJ0293', caseNumber: 'C-293/12',
+    caseName: 'Digital Rights Ireland and Seitlinger and Others', ...overrides,
+  });
+
+  test('names the authority a back-reference resolved to, not the word Ibid.', async () => {
+    const { fetcher } = stubFetcher([html('<p class="count" id="point62">62</p>text')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curia({ locator: { kind: 'point', start: 62 } }));
+    assert.equal(preview.title, 'Digital Rights Ireland and Seitlinger and Others, C-293/12');
+  });
+
+  test('separates an opinion from the judgment sharing its case', async () => {
+    const { fetcher } = stubFetcher([html('<p class="count" id="point74">74</p>text')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curia({
+      celex: '62014CC0413', caseNumber: 'C-413/14 P', caseName: 'Intel v Commission',
+      documentType: 'opinion', locator: { kind: 'point', start: 74 },
+    }));
+    assert.equal(preview.title, 'Intel v Commission, C-413/14 P (opinion)');
+  });
+
+  test('falls back to the case number when the document establishes no name', async () => {
+    const { fetcher } = stubFetcher([html('<p class="count" id="point62">62</p>text')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curia({ caseName: undefined, locator: { kind: 'point', start: 62 } }));
+    assert.equal(preview.title, 'C-293/12');
+  });
+
+  test('a citation that spelled its authority out keeps its own words', async () => {
+    // Only back-references are overridden. "Case C-131/12" is a perfectly good title, and
+    // second-guessing it would lose the form the drafter chose.
+    const { fetcher } = stubFetcher([html('<p class="count" id="point80">80</p>text')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve({
+      source: 'curia', value: 'Case C-131/12', celex: '62012CJ0131', locator: { kind: 'point', start: 80 },
+    });
+    assert.equal(preview.title, 'Case C-131/12');
+  });
+
+  test('a back-reference with nothing but a CELEX is still not called Ibid.', async () => {
+    const { fetcher } = stubFetcher([html('<p>Article 9</p>')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve({ source: 'eur-lex', value: 'Ibid.', celex: '32016R0679' });
+    assert.ok(!/Ibid/.test(preview.title), `titled ${preview.title}`);
+  });
+});
+
 describe('how the resolver identifies itself', () => {
   test('names the application, because an unidentified caller is what gets blocked', async () => {
     // Node's `fetch` sends `User-Agent: node` unless told otherwise, which is exactly the

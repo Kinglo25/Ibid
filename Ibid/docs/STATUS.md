@@ -20,7 +20,7 @@ Ibid is an EU-law Word add-in for lawyers. It identifies references in footnotes
 ## Development
 Run `npm run dev` from the repository root. This builds and starts the local resolver and Vite task-pane server. If port 4000 is occupied, use `IBID_API_PORT=4001 npm run dev` so both the API and Vite proxy use the same alternate port.
 
-Run `npm run verify` to lint, type-check the tests, run the 323 tests, and build.
+Run `npm run verify` to lint, type-check the tests, run the 328 tests, and build.
 
 For the detailed implementation handoff and test checklist, see [HANDOFF.md](HANDOFF.md).
 

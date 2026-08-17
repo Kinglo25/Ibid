@@ -54,7 +54,7 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 323 tests (240 detection and resolution, 62 resolver and contract, 21 task pane).
+- `npm run test` passes: 328 tests (240 detection and resolution, 67 resolver and contract, 21 task pane).
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
@@ -986,7 +986,7 @@ Then sideload `addin/manifest.xml` in Word and open the sample document. Select 
 3. Extend the task-pane tests. The runner now exists (see "Task-pane tests" below) and covers the presentation logic and the confirmation flow; the retrieval states — loading, success, retrieval error — are still only exercised through a stubbed `fetch` that always returns no documents.
 4. Replace in-memory cache/rate limiting with shared, observable infrastructure before horizontal scaling.
 5. Broaden `documentTypeNear` in `shared/src/index.ts` if real documents surface more opinion/order phrasings than the current signal set (English "Opinion of [the] Advocate General" / "Order of the [General] Court", French "conclusions de l'avocat général" / "ordonnance"). Missing a signal is safe — it only causes an unnecessary fetch attempt that 404s and falls back to the link — but it is worth tightening once real client documents are seen.
-6. Clean up the legislation title heuristic in `resolveCellarPreview` (`api/src/index.ts`) — it currently surfaces the document's internal filename for at least the GDPR instead of a human title. Cosmetic; the excerpt text is unaffected.
+6. Clean up the legislation title heuristic in `resolveCellarPreview` (`api/src/index.ts`) — it currently surfaces the document's internal filename for at least the GDPR instead of a human title. Cosmetic; the excerpt text is unaffected, and `describeDocument` now supplies a usable name whenever extraction returns nothing at all.
 
 ### Resolved: post-2015 legislation citations
 
