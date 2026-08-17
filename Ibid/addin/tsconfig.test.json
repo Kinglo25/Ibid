@@ -1,0 +1,15 @@
+{
+  // The addin's own test config. `tsconfig.json` deliberately includes only `src`, so a
+  // test file falls outside it and the JSX transform silently reverts to the classic
+  // runtime — which fails at run time with "React is not defined". This config covers the
+  // tests as well, and is what both the test runner and the type-check are pointed at.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "office-js", "vite/client"],
+    // Tests import source directly with an explicit .ts/.tsx extension, so Node can run
+    // them through the loader without a build step.
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src", "test"]
+}

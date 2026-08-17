@@ -33,6 +33,11 @@ Ibid is a Word task-pane add-in for lawyers. It detects EU-law citations in Word
 | `shared/test/real-citations.test.ts` | A realistic memo built from real, live-verified citations; also the browser-preview document |
 | `api/test/resolver.test.ts` | Adapters, excerpt focusing, cache, retry, throttling |
 | `api/test/lookup-contract.test.ts` | Type-level guard that `api`'s `EuLookup` still accepts a shared `CitationMatch` |
+| `addin/src/ui/citation-view.ts` | The pane's presentation decisions, kept JSX-free so they can be tested directly |
+| `addin/test/citation-view.test.ts` | Confirmation scope, resolution and gap wording, source URLs |
+| `addin/test/App.test.tsx` | The pane rendered and clicked through, against the browser-preview document |
+| `addin/test/setup-dom.ts` | Registers happy-dom and a non-networked `fetch`; loaded with `--import` |
+| `addin/tsconfig.test.json` | Covers `test` as well as `src`, so the JSX transform applies to tests |
 | `eslint.config.base.js` | Shared lint rules; each workspace has a thin config |
 | `tsconfig.test.json` | Type-checks the test files (not part of any build) |
 | `samples/ibid-demo-docx/EU_Data_Retention_Memo.docx` | Manual Word test document (all full citations; exercises detection, not resolution) |
@@ -47,14 +52,39 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 288 tests (228 detection and resolution, 60 resolver and contract).
-- `npm run typecheck:test` passes (`tsconfig.test.json`).
+- `npm run test` passes: 312 tests (234 detection and resolution, 60 resolver and contract, 18 task pane).
+- `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
 Tests use the Node built-in runner (`node:test`) against the TypeScript sources
 directly — Node strips the types, so there is no build step or test dependency.
 They live in `shared/test/` and `api/test/`, outside each workspace's `include`,
 so they never reach `dist`.
+
+### Task-pane tests
+
+`addin/test/` runs under the same Node test runner as everything else, with two additions
+Node cannot supply itself: `tsx` (Node cannot strip JSX, only types) and `happy-dom` via
+`@happy-dom/global-registrator`, registered through `--import` so the DOM exists before
+React is evaluated. `@testing-library/react` and `user-event` drive the rendered component.
+
+Two levels, deliberately:
+
+- `citation-view.test.ts` covers `addin/src/ui/citation-view.ts`, which holds the pane's
+  presentation decisions as plain functions — how far a confirmation reaches, what the
+  reviewer is told about a resolution or a gap, which URL a citation links to. No DOM, no
+  React, so these stay fast and are where the edge cases live.
+- `App.test.tsx` renders the pane and clicks through it. Outside Word the component falls
+  back to the browser-preview document, so this needs no Office.js mock — only a DOM and a
+  `fetch` that does not leave the machine.
+
+`addin/tsconfig.json` includes only `src`, which means a test file falls outside it and the
+JSX transform silently reverts to the classic runtime — failing at run time with "React is
+not defined". `addin/tsconfig.test.json` covers the tests too, and both the runner
+(`TSX_TSCONFIG_PATH`) and the type-check are pointed at it.
+
+What is stubbed is the source lookup, which has its own suite in `api/test`. The pane's
+retrieval states are therefore only seen in their 'empty' form.
 
 The resolver tests inject `fetcher`, `sleep`, and `now`, so retry, backoff, and
 request spacing are asserted deterministically without real network or timers.
@@ -945,7 +975,7 @@ Then sideload `addin/manifest.xml` in Word and open the sample document. Select 
 
 1. Run the Word end-to-end validation above and fix Office.js compatibility/UI issues that appear.
 2. Add explicit Commission-family classification (competition, state aid, merger, infringement) from citation context, then route each family to the appropriate official register. The current generic Commission adapter is intentionally conservative.
-3. Add task-pane tests for `addin/src/ui/App.tsx`. There is no DOM/React test dependency installed yet, so this needs a deliberate choice of runner before it can start. This is now the largest untested surface in the repo, and back-references raised the stakes: `confirmationKey` is what stops one reviewer's decision about one `Ibid.` being applied to every other `Ibid.` in the document, and nothing but a type currently holds it in place.
+3. Extend the task-pane tests. The runner now exists (see "Task-pane tests" below) and covers the presentation logic and the confirmation flow; the retrieval states — loading, success, retrieval error — are still only exercised through a stubbed `fetch` that always returns no documents.
 4. Replace in-memory cache/rate limiting with shared, observable infrastructure before horizontal scaling.
 5. Broaden `documentTypeNear` in `shared/src/index.ts` if real documents surface more opinion/order phrasings than the current signal set (English "Opinion of [the] Advocate General" / "Order of the [General] Court", French "conclusions de l'avocat général" / "ordonnance"). Missing a signal is safe — it only causes an unnecessary fetch attempt that 404s and falls back to the link — but it is worth tightening once real client documents are seen.
 6. Clean up the legislation title heuristic in `resolveCellarPreview` (`api/src/index.ts`) — it currently surfaces the document's internal filename for at least the GDPR instead of a human title. Cosmetic; the excerpt text is unaffected.

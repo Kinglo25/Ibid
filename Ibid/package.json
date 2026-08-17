@@ -11,8 +11,8 @@
   "scripts": {
     "build": "npm run build -w shared && npm run build -w api && npm run build -w addin",
     "dev": "npm run build -w api && (npm run dev -w api & npm run dev -w addin)",
-    "test": "npm run test -w shared && npm run test -w api",
-    "typecheck:test": "tsc -p tsconfig.test.json",
+    "test": "npm run test -w shared && npm run test -w api && npm run test -w addin",
+    "typecheck:test": "tsc -p tsconfig.test.json && npm run typecheck:test -w addin",
     "lint": "npm run lint -w addin && npm run lint -w api && npm run lint -w shared",
     "verify": "npm run lint && npm run typecheck:test && npm run test && npm run build"
   },
