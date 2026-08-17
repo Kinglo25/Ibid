@@ -548,6 +548,58 @@ describe('EUR-Lex retrieval', () => {
   });
 });
 
+describe('a cited range of paragraphs', () => {
+  // "paras 57-65" cites nine paragraphs. Returning only the first gives the lawyer the
+  // opening of an argument without the argument — and the pane's own locator label already
+  // read "Point 57-65", so the excerpt and the label contradicted each other on screen.
+  const judgment = (points: number[]) => html(points.map((n) =>
+    `<p class="count" id="point${n}">${n}</p><p>Text of paragraph ${n}.</p>`).join(''));
+  const lookup = (start: number, end?: number): EuLookup => ({
+    source: 'curia', value: 'x', celex: '62012CJ0293', locator: { kind: 'point', start, end },
+  });
+
+  test('returns every paragraph in the range', async () => {
+    const { fetcher } = stubFetcher([judgment([56, 57, 58, 59, 60, 61])]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(lookup(57, 60));
+    for (const n of [57, 58, 59, 60]) assert.match(preview.excerpt, new RegExp(`Text of paragraph ${n}\\.`), `paragraph ${n}`);
+  });
+
+  test('stops at the end of the range, not at the end of the document', async () => {
+    const { fetcher } = stubFetcher([judgment([56, 57, 58, 59, 60, 61])]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(lookup(57, 59));
+    assert.ok(!/Text of paragraph 60\./.test(preview.excerpt), 'paragraph 60 was not cited');
+    assert.ok(!/Text of paragraph 56\./.test(preview.excerpt), 'nor was 56');
+  });
+
+  test('a single paragraph is still a single paragraph', async () => {
+    const { fetcher } = stubFetcher([judgment([56, 57, 58])]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(lookup(57));
+    assert.match(preview.excerpt, /Text of paragraph 57\./);
+    assert.ok(!/Text of paragraph 58\./.test(preview.excerpt));
+  });
+
+  test('a range whose last paragraph is missing still terminates', async () => {
+    // The scan stops at the first anchor beyond the range rather than at a specific closing
+    // number, so a renumbered or absent endpoint does not run on to the safety cap.
+    const { fetcher } = stubFetcher([judgment([57, 58, 90])]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(lookup(57, 60));
+    assert.match(preview.excerpt, /Text of paragraph 58\./);
+    assert.ok(!/Text of paragraph 90\./.test(preview.excerpt));
+  });
+
+  test('the label and the excerpt agree', async () => {
+    const { fetcher } = stubFetcher([judgment([57, 58, 59, 60])]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(lookup(57, 59));
+    assert.equal(preview.locator, 'Point 57–59');
+    assert.match(preview.excerpt, /Text of paragraph 59\./);
+  });
+});
+
 describe('what a preview is called', () => {
   // The reviewer reads a paragraph and has to know which document it came from. `value` is
   // the footnote's own words, which describe a document only when the footnote spelled it

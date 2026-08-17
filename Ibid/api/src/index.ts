@@ -133,23 +133,40 @@ function decodeHtml(value: string): string {
  *    pair holding just the number, text following outside it,
  *    `<dt>128<dd></dd></dt>text...`.
  */
-function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: number, maxLength = 6_000): string | undefined {
+/**
+ * `through` extends the slice to the end of a cited range rather than stopping at the first
+ * boundary after its start. A citation to "paras 57-65" is a citation to nine paragraphs,
+ * and returning only paragraph 57 gives the lawyer the opening of an argument without the
+ * argument — while the pane's own locator label says "Point 57-65", so the excerpt and the
+ * label contradicted each other on screen.
+ *
+ * The scan stops at the first anchor numbered *beyond* the range, not at a specific closing
+ * number, so a range whose final paragraph is absent or renumbered still terminates at the
+ * right place instead of running to the safety cap.
+ */
+type SliceRange = { through?: number; maxLength?: number };
+
+function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: number, range: SliceRange = {}): string | undefined {
+  const last = Math.max(range.through ?? targetNumber, targetNumber);
+  // The cap scales with the span asked for: one paragraph's worth of raw markup is no use
+  // when nine were cited, and truncating mid-range is what this exists to stop.
+  const maxLength = range.maxLength ?? Math.min(60_000, 6_000 * (last - targetNumber + 1));
   let start = -1;
   let end = html.length;
   for (const match of html.matchAll(pattern)) {
+    const number = Number(match[1]);
     if (start < 0) {
-      if (Number(match[1]) === targetNumber) start = match.index;
+      if (number === targetNumber) start = match.index;
       continue;
     }
-    end = match.index;
-    break;
+    if (number > last) { end = match.index; break; }
   }
   if (start < 0) return undefined;
   return html.slice(start, Math.min(end, start + maxLength));
 }
 
-function extractByHeadingAnchor(html: string, pattern: RegExp, targetNumber: number): string | undefined {
-  const raw = sliceByHeadingAnchor(html, pattern, targetNumber);
+function extractByHeadingAnchor(html: string, pattern: RegExp, targetNumber: number, through?: number): string | undefined {
+  const raw = sliceByHeadingAnchor(html, pattern, targetNumber, { through });
   return raw ? decodeHtml(raw).trim() : undefined;
 }
 
@@ -189,16 +206,16 @@ const JUDGMENT_POINT_HEADINGS = [
 
 function extractLegislativeLocator(html: string, locator?: EuLookup['locator']): string {
   if (!locator) return decodeHtml(html).slice(0, 900);
-  if (locator.kind !== 'article') return extractByHeadingAnchor(html, RECITAL_HEADING, locator.start) ?? decodeHtml(html).slice(0, 900);
+  if (locator.kind !== 'article') return extractByHeadingAnchor(html, RECITAL_HEADING, locator.start, locator.end) ?? decodeHtml(html).slice(0, 900);
 
   // A generous cap here only bounds a safety limit on raw HTML scanned, not the
   // excerpt shown — articles with many paragraphs carry a lot of markup overhead
   // before reaching a later paragraph, so this must stay well above the final
   // excerpt-length cap applied below.
-  const articleHtml = sliceByHeadingAnchor(html, ARTICLE_HEADING, locator.start, 20_000);
+  const articleHtml = sliceByHeadingAnchor(html, ARTICLE_HEADING, locator.start, { through: locator.end, maxLength: 20_000 });
   if (!articleHtml) return decodeHtml(html).slice(0, 900);
   if (locator.paragraph) {
-    const paragraphHtml = sliceByHeadingAnchor(articleHtml, ARTICLE_PARAGRAPH_HEADING, locator.paragraph, 3_000);
+    const paragraphHtml = sliceByHeadingAnchor(articleHtml, ARTICLE_PARAGRAPH_HEADING, locator.paragraph, { maxLength: 3_000 });
     if (paragraphHtml) return decodeHtml(paragraphHtml).trim();
   }
   return decodeHtml(articleHtml).slice(0, 6_000).trim();
@@ -207,7 +224,7 @@ function extractLegislativeLocator(html: string, locator?: EuLookup['locator']):
 function extractJudgmentPoint(html: string, locator?: EuLookup['locator']): string {
   if (!locator || locator.kind !== 'point') return decodeHtml(html).slice(0, 900);
   for (const pattern of JUDGMENT_POINT_HEADINGS) {
-    const result = extractByHeadingAnchor(html, pattern, locator.start);
+    const result = extractByHeadingAnchor(html, pattern, locator.start, locator.end);
     if (result) return result;
   }
   return decodeHtml(html).slice(0, 900);
