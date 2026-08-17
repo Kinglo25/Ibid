@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"],
+    // Tests import source directly with an explicit .ts extension so Node's
+    // native type stripping can run them without a build step.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["shared/test", "api/test", "shared/src", "api/src"]
+}

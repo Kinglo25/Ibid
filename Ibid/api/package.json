@@ -1,0 +1,16 @@
+{
+  "name": "@ibid/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "node server.mjs",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "eslint": "^9.0.0"
+  }
+}

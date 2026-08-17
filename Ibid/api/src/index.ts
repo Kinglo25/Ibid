@@ -1,0 +1,362 @@
+export type EuLookup = {
+  source: 'curia' | 'eur-lex' | 'commission';
+  value: string;
+  celex?: string;
+  ecli?: string;
+  caseNumber?: string;
+  /**
+   * For `source: 'curia'` only, and purely descriptive here: `celex` is expected to
+   * already name the document this describes, because its sector is derived from this
+   * type (`CJ` judgment, `CC` Advocate General opinion, `CO`/`TO` order). Callers must
+   * not pass a judgment CELEX alongside `documentType: 'opinion'` — the resolver fetches
+   * whatever CELEX it is given.
+   */
+  documentType?: 'judgment' | 'opinion' | 'order';
+  locator?: { kind: 'point' | 'article'; start: number; paragraph?: number; end?: number };
+};
+
+export type SourcePreview = {
+  title: string;
+  excerpt: string;
+  url: string;
+  source: 'CURIA' | 'EUR-Lex' | 'European Commission';
+  locator?: string;
+};
+
+export type ResolverOptions = {
+  fetcher?: typeof fetch;
+  /** Minimum time between EUR-Lex/CELLAR requests. */
+  minRequestIntervalMs?: number;
+  maxRetries?: number;
+  timeoutMs?: number;
+  cellarBaseUrl?: string;
+  /** Server-side credentials only; never pass these to the Word client. */
+  eurLexHeaders?: Record<string, string>;
+  sleep?: (milliseconds: number) => Promise<void>;
+  now?: () => number;
+};
+
+function decodeHtml(value: string): string {
+  return value.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Finds the raw-HTML heading that anchors a cited article, recital, or
+ * judgment point, and extracts from there to the next such heading.
+ *
+ * This must run on the *raw* HTML, before `decodeHtml` strips tags, and it
+ * must anchor on a heading element — not search decoded running text for the
+ * number as a bare substring. EU legislative preambles routinely reference an
+ * article or recital number in passing before the provision itself appears
+ * ("...the measures referred to in Article 15(1)..." inside a recital, well
+ * before the actual "Article 15" heading) — a first-match substring search
+ * picks up that passing reference and silently shows the wrong passage, with
+ * no error. Confirmed against real documents: Directive 2002/58/EC's decoded
+ * text contains "Article 15" four times before the real heading.
+ *
+ * Each `pattern` must capture the heading's own number in group 1 and match
+ * only true headings, not inline references — verified against real markup:
+ *  - Legislative article heading: the whole paragraph is just "Article N"
+ *    (`<p id="..." class="oj-ti-art">Article 15</p>`, or plain `<p>Article 15</p>`
+ *    in older documents) — an inline reference always has other text in the
+ *    same paragraph, so requiring nothing else present rules it out.
+ *  - Legislative recital: "(N)" appears immediately after the paragraph opens
+ *    (`<p class="oj-normal">(1)</p>` with the text in a following paragraph
+ *    in newer documents; `<p>(1) Directive 95/46/EC ...` with the text in the
+ *    same paragraph in older ones) — an inline footnote-style marker like
+ *    "...Commission(1)," is never immediately preceded by a `<p>` open tag.
+ *  - Judgment point (modern, 2010s+): `<p class="count" id="point57">57</p>`.
+ *  - Judgment point (CURIA-native rendering, used for some very recent
+ *    judgments not yet migrated to the above): the number is a same-value
+ *    anchor name at the start of the numbered-point paragraph,
+ *    `<P class="C01PointnumeroteAltN"><A NAME="point87">87</A>text...`.
+ *  - Judgment point (legacy, ~1990s–2000s): a definition-term/definition-data
+ *    pair holding just the number, text following outside it,
+ *    `<dt>128<dd></dd></dt>text...`.
+ */
+function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: number, maxLength = 6_000): string | undefined {
+  let start = -1;
+  let end = html.length;
+  for (const match of html.matchAll(pattern)) {
+    if (start < 0) {
+      if (Number(match[1]) === targetNumber) start = match.index;
+      continue;
+    }
+    end = match.index;
+    break;
+  }
+  if (start < 0) return undefined;
+  return html.slice(start, Math.min(end, start + maxLength));
+}
+
+function extractByHeadingAnchor(html: string, pattern: RegExp, targetNumber: number): string | undefined {
+  const raw = sliceByHeadingAnchor(html, pattern, targetNumber);
+  return raw ? decodeHtml(raw).trim() : undefined;
+}
+
+const ARTICLE_HEADING = /<p[^>]*>\s*Article\s+(\d+)\s*<\/p>/gi;
+const RECITAL_HEADING = /<p[^>]*>\s*\(\s*(\d+)\s*\)/gi;
+
+/**
+ * A numbered paragraph within an already-isolated article. "Art. 8(5)" means
+ * paragraph 5 of Article 8, not the whole article — confirmed live that both
+ * markup eras place the paragraph number directly at the start of its own
+ * `<p>`, followed by a period, even though nothing else about their
+ * structure matches: modern OJ markup (`<p class="oj-normal">1.   text`,
+ * GDPR Article 8) and legacy markup (`<p>1. text`, Directive 2002/58/EC
+ * Article 15).
+ */
+const ARTICLE_PARAGRAPH_HEADING = /<p[^>]*>\s*(\d+)\.\s/gi;
+
+/**
+ * Tried in order; the first pattern that anchors the target point number
+ * wins. Several real, distinct markup conventions across document eras were
+ * found live, in one round of testing against real client citations — this
+ * is deliberately a list to try, not a single assumed format, because a
+ * fifth convention turning up would not be surprising.
+ */
+const JUDGMENT_POINT_HEADINGS = [
+  /<p[^>]*\bid="point(\d+)"[^>]*>/gi,
+  // Any paragraph class carrying a named point anchor, not one exact class name. The
+  // original pattern pinned `C01PointnumeroteAltN`, taken from a judgment; Advocate General
+  // opinions in the same era use the sibling class `C01PointAltN` and write the number with
+  // a trailing period (`<A NAME="point60">60.</A>`), so the cited point was never found and
+  // the excerpt silently fell back to the document's opening. Confirmed against AG Kokott's
+  // opinion in Akzo Nobel (62007CC0550). `NAME=` is what makes this safe to generalise: a
+  // cross-reference to a point is an `HREF="#pointN"`, never a `NAME`.
+  /<P[^>]*class="[^"]*Point[^"]*"[^>]*>\s*<A[^>]*\bNAME="point(\d+)"[^>]*>/gi,
+  /<dt>\s*(\d+)\s*<dd>\s*<\/dd>\s*<\/dt>/gi,
+];
+
+function extractLegislativeLocator(html: string, locator?: EuLookup['locator']): string {
+  if (!locator) return decodeHtml(html).slice(0, 900);
+  if (locator.kind !== 'article') return extractByHeadingAnchor(html, RECITAL_HEADING, locator.start) ?? decodeHtml(html).slice(0, 900);
+
+  // A generous cap here only bounds a safety limit on raw HTML scanned, not the
+  // excerpt shown — articles with many paragraphs carry a lot of markup overhead
+  // before reaching a later paragraph, so this must stay well above the final
+  // excerpt-length cap applied below.
+  const articleHtml = sliceByHeadingAnchor(html, ARTICLE_HEADING, locator.start, 20_000);
+  if (!articleHtml) return decodeHtml(html).slice(0, 900);
+  if (locator.paragraph) {
+    const paragraphHtml = sliceByHeadingAnchor(articleHtml, ARTICLE_PARAGRAPH_HEADING, locator.paragraph, 3_000);
+    if (paragraphHtml) return decodeHtml(paragraphHtml).trim();
+  }
+  return decodeHtml(articleHtml).slice(0, 6_000).trim();
+}
+
+function extractJudgmentPoint(html: string, locator?: EuLookup['locator']): string {
+  if (!locator || locator.kind !== 'point') return decodeHtml(html).slice(0, 900);
+  for (const pattern of JUDGMENT_POINT_HEADINGS) {
+    const result = extractByHeadingAnchor(html, pattern, locator.start);
+    if (result) return result;
+  }
+  return decodeHtml(html).slice(0, 900);
+}
+
+/**
+ * CELLAR can answer with HTTP 200 for a bot-verification interstitial page
+ * instead of the document — observed live, not hypothetical. `response.ok`
+ * does not catch this: the request genuinely succeeded, just not with a
+ * document. Anything that fails this check must not be decoded and shown as
+ * if it were the source text.
+ *
+ * Real CELLAR documents have turned out to use at least four distinct markup
+ * conventions across document era and family (see JUDGMENT_POINT_HEADINGS),
+ * and enumerating every one specifically has not converged — a further
+ * undiscovered convention would not be surprising. Two fast, specific
+ * positive signals are checked first (both confirmed live, neither present
+ * in the other's response, so no cross-contamination risk):
+ *  - Newer `application/xhtml+xml` documents (2010s onward): a generator
+ *    comment, `<!-- CONVEX ... -->` or `<!-- fmx2xhtml ... -->`.
+ *  - Older `text/html`-only legislation (e.g. Directive 2002/58/EC, 2002,
+ *    which has no `application/xhtml+xml` rendition at all — see
+ *    `fetchCellarDocument`): a `<meta name="DC.title" content="EUR-Lex - …">`
+ *    Dublin Core tag instead; these predate the newer converter pipeline.
+ * As a general fallback beyond those two, real documents run from tens of KB
+ * (plain older markup) to hundreds of KB (modern XHTML) once actual legal
+ * text is included; every bot-verification page observed or constructed for
+ * testing was well under 1 KB. A substantial response is accepted even
+ * without a recognised marker, rather than risk rejecting a genuine document
+ * in a convention not yet catalogued here.
+ */
+function looksLikeCellarDocument(html: string): boolean {
+  if (/<!--\s*(?:CONVEX|fmx2xhtml)\b/i.test(html)) return true;
+  if (/<meta\s+name="DC\.title"\s+content="EUR-Lex\b/i.test(html)) return true;
+  return html.length > 2_000;
+}
+
+function locatorLabel(locator?: EuLookup['locator']): string | undefined {
+  if (!locator) return undefined;
+  if (locator.kind === 'article') return `Article ${locator.start}${locator.paragraph ? `(${locator.paragraph})` : ''}${locator.end ? `–${locator.end}` : ''}`;
+  return `Point ${locator.start}${locator.end ? `–${locator.end}` : ''}`;
+}
+
+function cellarUrl(celex: string, baseUrl: string): string {
+  return `${baseUrl.replace(/\/$/, '')}/${encodeURIComponent(celex)}`;
+}
+
+function curiaUrl(lookup: EuLookup): string {
+  // CURIA's case-number search is its stable, official case record entry point.
+  const query = lookup.caseNumber ?? lookup.ecli ?? lookup.value;
+  return `https://curia.europa.eu/juris/liste.jsf?language=en&num=${encodeURIComponent(query)}`;
+}
+
+function commissionUrl(lookup: EuLookup): string {
+  return `https://competition-cases.ec.europa.eu/search?query=${encodeURIComponent(lookup.value)}`;
+}
+
+function retryDelay(response: Response | undefined, attempt: number): number {
+  const retryAfter = response?.headers.get('retry-after');
+  if (retryAfter && /^\d+$/.test(retryAfter)) return Number(retryAfter) * 1000;
+  return Math.min(8_000, 400 * 2 ** attempt);
+}
+
+export function createApiHealthCheck() { return { status: 'ok' as const }; }
+
+/**
+ * Resolves each official-source family through a deliberately small adapter.
+ * EUR-Lex/CELLAR mirrors most CJEU/General Court judgments under their own
+ * CELEX identifiers, so CURIA citations attempt the same fetch when the CELEX
+ * is confidently a judgment's; any failure — including the citation actually
+ * being an opinion or order, or an older case CELLAR does not mirror — falls
+ * back to the direct, always-available official CURIA case-record link.
+ * Commission records are always linked directly: there is no equivalent
+ * machine-fetchable mirror, so a changing search-result page cannot be
+ * mistaken for a source.
+ */
+export function createEuSourceResolver(options: ResolverOptions = {}) {
+  const fetcher = options.fetcher ?? fetch;
+  const minRequestIntervalMs = options.minRequestIntervalMs ?? 1_000;
+  const maxRetries = options.maxRetries ?? 2;
+  const timeoutMs = options.timeoutMs ?? 12_000;
+  const cellarBaseUrl = options.cellarBaseUrl ?? 'https://publications.europa.eu/resource/celex';
+  const sleep = options.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const now = options.now ?? Date.now;
+  const cache = new Map<string, SourcePreview>();
+  let nextRequestAt = 0;
+
+  async function fetchEurLex(url: string, accept: string): Promise<Response> {
+    const wait = nextRequestAt - now();
+    if (wait > 0) await sleep(wait);
+    nextRequestAt = now() + minRequestIntervalMs;
+
+    for (let attempt = 0; ; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetcher(url, {
+          headers: { Accept: accept, 'Accept-Language': 'eng', ...options.eurLexHeaders },
+          signal: controller.signal,
+        });
+        if (response.ok || (response.status !== 429 && response.status < 500) || attempt >= maxRetries) return response;
+        await sleep(retryDelay(response, attempt));
+      } catch (error) {
+        if (attempt >= maxRetries) throw error;
+        await sleep(retryDelay(undefined, attempt));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  /**
+   * CELLAR does not offer every document in every format. Confirmed live:
+   * recent documents (e.g. the GDPR, 2016) are only content-negotiated via
+   * `application/xhtml+xml` (a `303` to the real document; `text/html` 404s
+   * with "does not hold a content datastream of the requested type"). Older
+   * documents (e.g. Directive 2002/58/EC, 2002) are the reverse — no
+   * `application/xhtml+xml` rendition exists at all, only classic `text/html`
+   * (plus PDF, not used here). There is no single Accept header that works
+   * for both eras, so a `404` specifically — meaning this representation does
+   * not exist, not a transient failure — falls through to the other one.
+   * Any other status (429, 5xx, already retried by fetchEurLex) is a
+   * different kind of problem that a different Accept header would not fix,
+   * so it fails immediately rather than doubling up on a struggling server.
+   */
+  async function fetchCellarDocument(url: string): Promise<string> {
+    let lastResponse: Response | undefined;
+    for (const accept of ['application/xhtml+xml', 'text/html']) {
+      const response = await fetchEurLex(url, accept);
+      lastResponse = response;
+      if (response.status === 404) continue;
+      if (!response.ok) throw new Error(`EUR-Lex/CELLAR lookup failed (${response.status}).`);
+      const html = await response.text();
+      if (looksLikeCellarDocument(html)) return html;
+      // A 200 without a recognisable document body is CELLAR's bot-verification
+      // page, not a format-availability issue — the other Accept header would
+      // not help, and would cost another request against the same block.
+      throw new Error('EUR-Lex/CELLAR did not return a recognisable document (possibly a bot-verification page).');
+    }
+    throw new Error(`EUR-Lex/CELLAR lookup failed (${lastResponse!.status}).`);
+  }
+
+  async function resolveCellarPreview(celex: string, lookup: EuLookup, source: SourcePreview['source']): Promise<SourcePreview> {
+    const key = `${celex}:${lookup.locator?.kind ?? ''}:${lookup.locator?.start ?? ''}`;
+    const cached = cache.get(key);
+    if (cached) return cached;
+
+    const url = cellarUrl(celex, cellarBaseUrl);
+    const html = await fetchCellarDocument(url);
+
+    // Judgments and legislative acts use different paragraph-numbering
+    // markup (see extractByHeadingAnchor), so they need different extraction —
+    // both run on the raw HTML, before it is decoded.
+    const preview: SourcePreview = source === 'CURIA'
+      ? { title: lookup.value, excerpt: extractJudgmentPoint(html, lookup.locator), url, source, locator: locatorLabel(lookup.locator) }
+      : {
+          title: decodeHtml(html).slice(0, 260).split('Official Journal')[0].trim() || lookup.value,
+          excerpt: extractLegislativeLocator(html, lookup.locator), url, source, locator: locatorLabel(lookup.locator),
+        };
+    cache.set(key, preview);
+    return preview;
+  }
+
+  async function resolveEurLex(lookup: EuLookup): Promise<SourcePreview[]> {
+    if (!lookup.celex) return [];
+    return [await resolveCellarPreview(lookup.celex, lookup, 'EUR-Lex')];
+  }
+
+  function resolveCuriaLink(lookup: EuLookup): SourcePreview {
+    return { title: lookup.value, source: 'CURIA', url: curiaUrl(lookup), locator: locatorLabel(lookup.locator),
+      excerpt: `Open the official CURIA case record${lookup.locator ? ` and inspect ${locatorLabel(lookup.locator)?.toLowerCase()}` : ''}.` };
+  }
+
+  async function resolveCuria(lookup: EuLookup): Promise<SourcePreview[]> {
+    const celex = lookup.celex;
+    // Any CELEX that reaches here names the document that was cited, whatever kind it is:
+    // the sector is derived from the document type, so an Advocate General's opinion gets
+    // its own `CC` CELEX and an order its `CO`/`TO`. This used to refuse to fetch anything
+    // but a judgment, because only the judgment sector was ever derived and the CELEX would
+    // otherwise have named a different document — a limitation of the derivation rather
+    // than of what CELLAR holds. Confirmed live: opinions and orders retrieve normally and
+    // carry the same `id="pointN"` paragraph markup judgments do.
+    if (celex) {
+      try {
+        return [await resolveCellarPreview(celex, lookup, 'CURIA')];
+      } catch {
+        // EUR-Lex does not mirror every document (older cases in particular);
+        // the direct CURIA case record remains a safe, always-available fallback.
+        return [resolveCuriaLink(lookup)];
+      }
+    }
+    return [resolveCuriaLink(lookup)];
+  }
+
+  function resolveCommission(lookup: EuLookup): SourcePreview[] {
+    const locator = locatorLabel(lookup.locator);
+    return [{ title: lookup.value, source: 'European Commission', url: commissionUrl(lookup), locator,
+      excerpt: `Open the European Commission case register to inspect the published decision and related documents${locator ? `, focusing on ${locator.toLowerCase()}` : ''}.` }];
+  }
+
+  return {
+    async resolve(lookup: EuLookup): Promise<SourcePreview[]> {
+      if (lookup.source === 'curia') return resolveCuria(lookup);
+      if (lookup.source === 'commission') return resolveCommission(lookup);
+      return resolveEurLex(lookup);
+    },
+    clearCache() { cache.clear(); },
+  };
+}

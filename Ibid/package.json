@@ -1,0 +1,28 @@
+{
+  "name": "ibid",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "addin",
+    "api",
+    "shared"
+  ],
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w api && npm run build -w addin",
+    "dev": "npm run build -w api && (npm run dev -w api & npm run dev -w addin)",
+    "test": "npm run test -w shared && npm run test -w api",
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "lint": "npm run lint -w addin && npm run lint -w api && npm run lint -w shared",
+    "verify": "npm run lint && npm run typecheck:test && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@rollup/rollup-linux-x64-gnu": "^4.14.0",
+    "@types/node": "^24.13.3",
+    "eslint": "^9.39.5",
+    "globals": "^14.0.0",
+    "rollup": "^4.14.0",
+    "typescript-eslint": "^8.67.0"
+  }
+}

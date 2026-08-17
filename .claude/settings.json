@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --test test/)",
+      "Bash(node --test \"test/**/*.test.ts\")",
+      "Bash(node_modules/.bin/tsc --version)",
+      "Bash(timeout 120 npm install --save-dev @types/node@^24)",
+      "Bash(node --input-type=module -e ' *)"
+    ]
+  }
+}
