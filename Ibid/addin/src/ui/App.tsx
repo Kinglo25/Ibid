@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { citedAuthorities, getCitationContextsForFootnotes, reresolveBackReferences, PREVIEW_FOOTNOTES, type CitationCandidate, type CitationContext } from '../../../shared/src';
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
-  officialSourceUrl, resolutionNote, unresolvedMessage,
+  officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage, type ReviewFootnote,
 } from './citation-view';
 
-type Footnote = { id: string; number: number; text: string };
 type ReviewDocument = { title: string; excerpt: string; url: string; source: string };
 type ReviewState =
   | { kind: 'idle' }
@@ -18,7 +17,7 @@ type ReviewState =
 const sampleBody = 'Browser preview of a realistic EU data-protection and competition memo. Every case number and ECLI below is a real citation, verified against the official EUR-Lex/CELLAR record. Open Ibid in Word to review your own document.';
 // The preview document lives in `shared` so this and the `real citations` test suite use
 // one array rather than two copies that can silently drift apart.
-const sampleFootnotes: Footnote[] = PREVIEW_FOOTNOTES.map((text, index) => ({ id: `sample-${index + 1}`, number: index + 1, text }));
+const sampleFootnotes: ReviewFootnote[] = toReviewFootnotes(PREVIEW_FOOTNOTES);
 
 function isWordRuntimeAvailable(): boolean {
   return typeof Office !== 'undefined' && typeof Word !== 'undefined' && Boolean(Office.context?.document);
@@ -36,7 +35,7 @@ async function waitForWordRuntime(): Promise<boolean> {
   }
 }
 
-async function readWordDocument(): Promise<{ body: string; footnotes: Footnote[] }> {
+async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFootnote[] }> {
   return Word.run(async (context) => {
     const body = context.document.body;
     const footnotes = body.footnotes;
@@ -48,11 +47,9 @@ async function readWordDocument(): Promise<{ body: string; footnotes: Footnote[]
 
     return {
       body: body.text.trim(),
-      footnotes: footnotes.items.map((footnote, index) => ({
-        id: `footnote-${index + 1}`,
-        number: index + 1,
-        text: footnote.body.text.trim(),
-      })).filter((footnote) => footnote.text),
+      // Every footnote, empties included: numbering is what back-references count on, and
+      // dropping one here shifts every footnote after it. See `toReviewFootnotes`.
+      footnotes: toReviewFootnotes(footnotes.items.map((footnote) => footnote.body.text)),
     };
   });
 }
@@ -107,9 +104,9 @@ function UnresolvedReview({ citation, authorities, onConfirm }: {
 
 export default function App() {
   const [body, setBody] = useState('');
-  const [footnotes, setFootnotes] = useState<Footnote[]>([]);
+  const [footnotes, setFootnotes] = useState<ReviewFootnote[]>([]);
   const [status, setStatus] = useState('Loading source material…');
-  const [selected, setSelected] = useState<{ citation: CitationContext; footnote: Footnote } | null>(null);
+  const [selected, setSelected] = useState<{ citation: CitationContext; footnote: ReviewFootnote } | null>(null);
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
   // Keyed by the short form itself, so confirming "Intel" once settles every "Intel" in the
   // document rather than asking again at each footnote. Deliberately not persisted: a
@@ -140,7 +137,7 @@ export default function App() {
     }
   };
 
-  const selectCitation = async (citation: CitationContext, footnote: Footnote) => {
+  const selectCitation = async (citation: CitationContext, footnote: ReviewFootnote) => {
     setSelected({ citation, footnote });
     // A short form Ibid could not tie to a specific authority has nothing to look up.
     // Attempting a lookup anyway would either fail or, worse, retrieve whichever
@@ -202,6 +199,7 @@ export default function App() {
   );
 
   const authorities = useMemo(() => citedAuthorities(detected), [detected]);
+  const reviewable = useMemo(() => footnotes.filter((footnote) => footnote.text), [footnotes]);
 
   return (
     <main className="app-shell">
@@ -223,10 +221,13 @@ export default function App() {
       </section>
 
       <section className="panel">
-        <div className="panel-title"><h2>Footnotes</h2><span className="count">{footnotes.length}</span></div>
-        {footnotes.length === 0 ? <p>No footnotes available for review.</p> : (
+        <div className="panel-title"><h2>Footnotes</h2><span className="count">{reviewable.length}</span></div>
+        {reviewable.length === 0 ? <p>No footnotes available for review.</p> : (
           <ol className="footnote-list">
             {footnotes.map((footnote, index) => {
+              // Empty footnotes are carried through detection to keep the numbering honest,
+              // but there is nothing to show for them.
+              if (!footnote.text) return null;
               const citations = citationsByFootnote[index] ?? [];
               return <li key={footnote.id} className="footnote-item">
                 <div className="footnote-number">{footnote.number}</div>

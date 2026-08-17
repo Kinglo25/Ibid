@@ -52,7 +52,7 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 312 tests (234 detection and resolution, 60 resolver and contract, 18 task pane).
+- `npm run test` passes: 315 tests (234 detection and resolution, 60 resolver and contract, 21 task pane).
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
@@ -849,6 +849,12 @@ needs deciding before the list grows ad hoc.
 
 **Known limits, left visible rather than papered over:**
 
+- An empty footnote is carried through resolution rather than dropped, because numbering
+  is positional and dropping one shifts every footnote after it. A consequence worth
+  knowing: an `Ibid.` directly after an empty footnote points at the empty one, establishes
+  nothing, and is reported. That is the rule below doing its job — an empty footnote is
+  usually a citation someone deleted, which is exactly when the `Ibid.` after it has gone
+  stale — but it is a refusal a reviewer will meet in real documents.
 - A back-reference is read only against the citation *immediately* before it. If the
   preceding footnote establishes no authority — it is pure commentary, or its own
   citation went unresolved — the reference is reported unresolved rather than

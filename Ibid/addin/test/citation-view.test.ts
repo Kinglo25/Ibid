@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { confirmationKey, resolutionNote, unresolvedMessage, officialSourceUrl, candidateLabel } from '../src/ui/citation-view.ts';
+import { candidateLabel, confirmationKey, officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -11,6 +11,43 @@ const one = (footnotes: string[], index: number): CitationContext => {
 };
 
 const LEAD = 'Case C-293/12 Digital Rights Ireland, ECLI:EU:C:2014:238, para. 40.';
+
+describe('footnote numbering, which back-references count on', () => {
+  test('an empty footnote keeps its slot, so the ones after it keep their numbers', () => {
+    // The pane used to drop empty footnotes before handing them to resolution. Numbering is
+    // positional, so every later footnote shifted up — while the pane went on displaying
+    // true numbers beside them. Only reachable from Word: the preview memo has no empties.
+    const numbered = toReviewFootnotes(['first', '   ', 'third']);
+    assert.deepEqual(numbered.map((footnote) => footnote.number), [1, 2, 3]);
+    assert.deepEqual(numbered.map((footnote) => footnote.text), ['first', '', 'third']);
+  });
+
+  test('supra note n still names the right footnote across an empty one', () => {
+    const texts = [LEAD, '', '', 'Supra note 1, para. 33.'];
+    const footnotes = toReviewFootnotes(texts);
+    const citation = one(footnotes.map((footnote) => footnote.text), 3);
+    assert.equal(citation.status, 'resolved');
+    assert.equal(citation.caseNumber, 'C-293/12');
+    assert.equal(citation.backReference?.footnote, 1);
+    // And the number the reviewer is pointed at is the number shown beside footnote 1.
+    assert.equal(footnotes[0].number, citation.backReference?.footnote);
+  });
+
+  test('an Ibid. after an empty footnote is flagged, not quietly read past it', () => {
+    // Keeping the empty footnote is what makes numbering honest, and it has a consequence
+    // worth being deliberate about: the `Ibid.` in footnote 3 now points at footnote 2,
+    // which establishes nothing, so it is reported rather than resolved. That is the same
+    // rule as everywhere else — never skip back past a footnote with no authority in it —
+    // and here it is doing real work, because an empty footnote is usually a citation
+    // someone deleted, which is exactly when an `Ibid.` after it has gone stale.
+    const footnotes = toReviewFootnotes([LEAD, '', 'Ibid., para. 44.']);
+    const citations = getCitationContextsForFootnotes(footnotes.map((footnote) => footnote.text));
+    assert.equal(footnotes[2].number, 3, 'the citation sits at the position of footnote 3');
+    assert.equal(citations[2][0].status, 'unresolved_not_found');
+    assert.equal(citations[2][0].backReference?.footnote, 2, 'and says which footnote it looked at');
+    assert.equal(citations[2][0].celex, undefined);
+  });
+});
 
 describe('confirmation scope', () => {
   test('a short form is settled once for the whole document', () => {

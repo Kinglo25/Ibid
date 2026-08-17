@@ -11,6 +11,25 @@ import type { CitationCandidate, CitationContext } from '../../../shared/src';
  * through a rendered component.
  */
 
+export type ReviewFootnote = { id: string; number: number; text: string };
+
+/**
+ * The document's footnotes, every one of them, in document order and numbered by position.
+ *
+ * Empty footnotes are kept rather than dropped, and that is the whole point. Resolution
+ * numbers footnotes by their position in the array it is given, so removing one shifts
+ * every footnote after it: `supra note 14` would read the fourteenth *non-empty* footnote
+ * while the pane displayed true numbers beside each one, and the reviewer would be sent to
+ * an authority the document never cited there. A back-reference is only as good as the
+ * numbering it counts on.
+ *
+ * An empty footnote contributes no citations, so carrying it costs nothing. The list skips
+ * them at the point of display instead, which is where they are merely noise.
+ */
+export function toReviewFootnotes(texts: readonly string[]): ReviewFootnote[] {
+  return texts.map((text, index) => ({ id: `footnote-${index + 1}`, number: index + 1, text: text.trim() }));
+}
+
 export function citationKey(citation: CitationContext, footnoteId: string): string {
   return `${footnoteId}-${citation.index}-${citation.value}`;
 }
