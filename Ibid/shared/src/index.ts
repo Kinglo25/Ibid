@@ -391,8 +391,19 @@ const CITATION_LEAD_IN = /^(?:see(?:\s+also)?|cf\.?|voir|but\s+see|compare|e\.g\
  * name. Kept broad on purpose: registering a non-name as a case name would
  * generate short-form variants that go on to match ordinary prose elsewhere in
  * the document.
+ *
+ * The signal words at the end are here because `CITATION_LEAD_IN` cannot strip them in
+ * this position: it requires trailing whitespace, and a lead-in immediately followed by
+ * the pinpoint keyword has none to give ("See paragraph 41 above" leaves the bare word
+ * "See"). Found in a real Advocate General opinion, which used that exact sentence three
+ * times to cross-refer to its own text and had each one reported as an unidentified
+ * authority for the reviewer to go and resolve.
+ *
+ * Only words that cannot begin a real case name are listed. "Accord" is deliberately
+ * absent even though it is a citation signal, because Accord Healthcare is a real
+ * litigant — excluding it would lose a genuine case name to spare a rarer false positive.
  */
-const NOT_A_CASE_NAME = /^(?:ecli|celex|case|cases|joined|affaire|affaires|judgment|order|opinion|arr[êe]t|ordonnance|conclusions|regulation|directive|decision|d[ée]cision|r[èe]glement|recommendation|article|articles|art|paragraph|paragraphs|para|paras|point|points|recital|annex|chapter|section|title|part|ibid|id|supra|infra|the|this|that|these|those|it|its|at|and|but|for|january|february|march|april|may|june|july|august|september|october|november|december)\b/i;
+const NOT_A_CASE_NAME = /^(?:ecli|celex|case|cases|joined|affaire|affaires|judgment|order|opinion|arr[êe]t|ordonnance|conclusions|regulation|directive|decision|d[ée]cision|r[èe]glement|recommendation|article|articles|art|paragraph|paragraphs|para|paras|point|points|recital|annex|chapter|section|title|part|ibid|id|supra|infra|the|this|that|these|those|it|its|at|and|but|for|january|february|march|april|may|june|july|august|september|october|november|december|see|cf|voir|compare)\b/i;
 
 function looksLikeCaseName(candidate: string): boolean {
   if (candidate.length < 3 || candidate.length > 120) return false;

@@ -436,6 +436,16 @@ describe('Layer 3 — back-references (Ibid., Id., supra note n)', () => {
     assert.deepEqual(reresolveBackReferences(detected), detected);
   });
 
+  test('a cross-reference to the document\'s own text is not an authority', () => {
+    // From AG Jääskinen's opinion in Google Spain, which says this three times. "See" is
+    // capitalised and carries what looks like a pinpoint, so the short-form scan reported
+    // it as an unidentified authority and sent the reviewer off to resolve a phantom.
+    assert.deepEqual(at(['Case C-131/12 Google Spain, ECLI:EU:C:2014:317, para. 20.', 'See paragraph 41 above.'], 1), []);
+    for (const lead of ['Cf. paragraph 41 above.', 'Voir point 41 ci-dessus.', 'Compare paragraph 41 above.']) {
+      assert.deepEqual(at(['Case C-131/12 Google Spain, ECLI:EU:C:2014:317, para. 20.', lead], 1), [], lead);
+    }
+  });
+
   test('the real document is unaffected: it makes no back-reference', () => {
     // REAL_DOCUMENT is transcribed verbatim from the sample docx and contains none of these
     // forms, so this layer must add nothing to it.
