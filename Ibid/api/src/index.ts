@@ -19,6 +19,13 @@ export type EuLookup = {
    */
   caseName?: string;
   locator?: { kind: 'point' | 'article'; start: number; paragraph?: number; end?: number };
+  /**
+   * Every paragraph the citation actually names, ranges already expanded — so
+   * "paras 40-44, 46 and 48" arrives as [40,41,42,43,44,46,48]. `locator` describes only
+   * where retrieval is anchored; this is what the reader was pointed at, and a citation to
+   * separate paragraphs is a citation to all of them.
+   */
+  paragraphs?: number[];
 };
 
 export type SourcePreview = {
@@ -165,11 +172,6 @@ function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: numbe
   return html.slice(start, Math.min(end, start + maxLength));
 }
 
-function extractByHeadingAnchor(html: string, pattern: RegExp, targetNumber: number, through?: number): string | undefined {
-  const raw = sliceByHeadingAnchor(html, pattern, targetNumber, { through });
-  return raw ? decodeHtml(raw).trim() : undefined;
-}
-
 const ARTICLE_HEADING = /<p[^>]*>\s*Article\s+(\d+)\s*<\/p>/gi;
 const RECITAL_HEADING = /<p[^>]*>\s*\(\s*(\d+)\s*\)/gi;
 
@@ -204,9 +206,57 @@ const JUDGMENT_POINT_HEADINGS = [
   /<dt>\s*(\d+)\s*<dd>\s*<\/dd>\s*<\/dt>/gi,
 ];
 
-function extractLegislativeLocator(html: string, locator?: EuLookup['locator']): string {
+/**
+ * Groups cited paragraphs into the contiguous spans they actually form: [40,41,42,44] is
+ * two spans, not four lookups. Each span is one slice of the document, which keeps a range
+ * whole and a gap visible.
+ */
+function contiguousRuns(paragraphs: readonly number[]): Array<{ from: number; to: number }> {
+  const sorted = [...new Set(paragraphs)].sort((a, b) => a - b);
+  const runs: Array<{ from: number; to: number }> = [];
+  for (const number of sorted) {
+    const last = runs.at(-1);
+    if (last && number === last.to + 1) last.to = number;
+    else runs.push({ from: number, to: number });
+  }
+  return runs;
+}
+
+/** The single-anchor view of a citation, for callers that send no paragraph list. */
+function expandRange(start: number, end?: number): number[] {
+  if (!end || end <= start) return [start];
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+/** Bounds a pathological citation ("paras 1 to 400") without truncating an ordinary one. */
+const MAX_RUNS = 8;
+const MAX_EXCERPT = 20_000;
+
+/**
+ * Extracts every span the citation names, in order, with the gaps marked.
+ *
+ * A citation to "paras 62 and 65" is a citation to two paragraphs that the drafter chose
+ * deliberately and separately; returning 62 alone, or 62 through 65 as though the
+ * intervening text had been cited, are both misrepresentations of what was written. The
+ * ellipsis is what distinguishes them on screen.
+ */
+function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly number[]): string | undefined {
+  const runs = contiguousRuns(paragraphs).slice(0, MAX_RUNS);
+  const passages: string[] = [];
+  for (const run of runs) {
+    const raw = sliceByHeadingAnchor(html, pattern, run.from, { through: run.to });
+    if (raw) passages.push(decodeHtml(raw).trim());
+  }
+  if (!passages.length) return undefined;
+  return passages.join('\n\n…\n\n').slice(0, MAX_EXCERPT);
+}
+
+function extractLegislativeLocator(html: string, locator?: EuLookup['locator'], paragraphs?: number[]): string {
   if (!locator) return decodeHtml(html).slice(0, 900);
-  if (locator.kind !== 'article') return extractByHeadingAnchor(html, RECITAL_HEADING, locator.start, locator.end) ?? decodeHtml(html).slice(0, 900);
+  if (locator.kind !== 'article') {
+    return extractCitedRuns(html, RECITAL_HEADING, paragraphs?.length ? paragraphs : [locator.start])
+      ?? decodeHtml(html).slice(0, 900);
+  }
 
   // A generous cap here only bounds a safety limit on raw HTML scanned, not the
   // excerpt shown — articles with many paragraphs carry a lot of markup overhead
@@ -221,10 +271,14 @@ function extractLegislativeLocator(html: string, locator?: EuLookup['locator']):
   return decodeHtml(articleHtml).slice(0, 6_000).trim();
 }
 
-function extractJudgmentPoint(html: string, locator?: EuLookup['locator']): string {
+function extractJudgmentPoint(html: string, lookup: EuLookup): string {
+  const locator = lookup.locator;
   if (!locator || locator.kind !== 'point') return decodeHtml(html).slice(0, 900);
+  // The paragraph list is authoritative where the caller supplied one; `locator` is the
+  // single-anchor view of the same citation, kept for callers that send nothing else.
+  const cited = lookup.paragraphs?.length ? lookup.paragraphs : expandRange(locator.start, locator.end);
   for (const pattern of JUDGMENT_POINT_HEADINGS) {
-    const result = extractByHeadingAnchor(html, pattern, locator.start, locator.end);
+    const result = extractCitedRuns(html, pattern, cited);
     if (result) return result;
   }
   return decodeHtml(html).slice(0, 900);
@@ -262,10 +316,20 @@ function looksLikeCellarDocument(html: string): boolean {
   return html.length > 2_000;
 }
 
-function locatorLabel(locator?: EuLookup['locator']): string | undefined {
+/**
+ * What the excerpt below it is showing. Built from the paragraphs actually cited, so a
+ * disjoint citation reads "Points 62 and 65" rather than implying the span between them —
+ * the label and the excerpt have to describe the same thing.
+ */
+function locatorLabel(lookup: EuLookup): string | undefined {
+  const locator = lookup.locator;
   if (!locator) return undefined;
   if (locator.kind === 'article') return `Article ${locator.start}${locator.paragraph ? `(${locator.paragraph})` : ''}${locator.end ? `–${locator.end}` : ''}`;
-  return `Point ${locator.start}${locator.end ? `–${locator.end}` : ''}`;
+
+  const runs = contiguousRuns(lookup.paragraphs?.length ? lookup.paragraphs : expandRange(locator.start, locator.end));
+  const parts = runs.map((run) => (run.from === run.to ? `${run.from}` : `${run.from}–${run.to}`));
+  const listed = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
+  return `${runs.length === 1 && runs[0].from === runs[0].to ? 'Point' : 'Points'} ${listed}`;
 }
 
 function cellarUrl(celex: string, baseUrl: string): string {
@@ -369,7 +433,12 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
   }
 
   async function resolveCellarPreview(celex: string, lookup: EuLookup, source: SourcePreview['source']): Promise<SourcePreview> {
-    const key = `${celex}:${lookup.locator?.kind ?? ''}:${lookup.locator?.start ?? ''}`;
+    // Every part of the citation that changes the excerpt belongs in the key. The paragraph
+    // list especially: "para. 62" and "paras 62 and 65" share a kind and a start, so keying
+    // on those alone served one footnote's excerpt to the other — a passage the second
+    // footnote never cited, shown as though it had.
+    const key = [celex, lookup.locator?.kind ?? '', lookup.locator?.start ?? '',
+      lookup.locator?.paragraph ?? '', lookup.locator?.end ?? '', (lookup.paragraphs ?? []).join('.')].join(':');
     const cached = cache.get(key);
     if (cached) return cached;
 
@@ -380,12 +449,12 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     // markup (see extractByHeadingAnchor), so they need different extraction —
     // both run on the raw HTML, before it is decoded.
     const preview: SourcePreview = source === 'CURIA'
-      ? { title: describeDocument(lookup), excerpt: extractJudgmentPoint(html, lookup.locator), url, source, locator: locatorLabel(lookup.locator) }
+      ? { title: describeDocument(lookup), excerpt: extractJudgmentPoint(html, lookup), url, source, locator: locatorLabel(lookup) }
       : {
           // Legislation states its own title in the document, which beats anything derived
           // from the citation; the derived name is the fallback when extraction comes up empty.
           title: decodeHtml(html).slice(0, 260).split('Official Journal')[0].trim() || describeDocument(lookup),
-          excerpt: extractLegislativeLocator(html, lookup.locator), url, source, locator: locatorLabel(lookup.locator),
+          excerpt: extractLegislativeLocator(html, lookup.locator, lookup.paragraphs), url, source, locator: locatorLabel(lookup),
         };
     cache.set(key, preview);
     return preview;
@@ -397,8 +466,9 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
   }
 
   function resolveCuriaLink(lookup: EuLookup): SourcePreview {
-    return { title: describeDocument(lookup), source: 'CURIA', url: curiaUrl(lookup), locator: locatorLabel(lookup.locator),
-      excerpt: `Open the official CURIA case record${lookup.locator ? ` and inspect ${locatorLabel(lookup.locator)?.toLowerCase()}` : ''}.` };
+    const locator = locatorLabel(lookup);
+    return { title: describeDocument(lookup), source: 'CURIA', url: curiaUrl(lookup), locator,
+      excerpt: `Open the official CURIA case record${locator ? ` and inspect ${locator.toLowerCase()}` : ''}.` };
   }
 
   async function resolveCuria(lookup: EuLookup): Promise<SourcePreview[]> {
@@ -423,7 +493,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
   }
 
   function resolveCommission(lookup: EuLookup): SourcePreview[] {
-    const locator = locatorLabel(lookup.locator);
+    const locator = locatorLabel(lookup);
     return [{ title: describeDocument(lookup), source: 'European Commission', url: commissionUrl(lookup), locator,
       excerpt: `Open the European Commission case register to inspect the published decision and related documents${locator ? `, focusing on ${locator.toLowerCase()}` : ''}.` }];
   }

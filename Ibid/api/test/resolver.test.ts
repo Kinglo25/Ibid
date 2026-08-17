@@ -516,7 +516,7 @@ describe('EUR-Lex retrieval', () => {
     const { fetcher } = stubFetcher([html('(60) text')]);
     const { resolver } = makeResolver({ fetcher });
     const [preview] = await resolver.resolve(eurLexLookup({ locator: { kind: 'point', start: 60, end: 65 } }));
-    assert.equal(preview.locator, 'Point 60–65');
+    assert.equal(preview.locator, 'Points 60–65', 'plural, because a range is more than one point');
   });
 
   test('falls back to the opening passage when the locator is not present', async () => {
@@ -581,6 +581,39 @@ describe('a cited range of paragraphs', () => {
     assert.ok(!/Text of paragraph 58\./.test(preview.excerpt));
   });
 
+  test('returns every paragraph a disjoint citation names', async () => {
+    // "paras 62 and 65" names two paragraphs the drafter chose separately. Returning 62
+    // alone loses half the citation; returning 62 through 65 shows text that was never
+    // cited as though it had been. Both misrepresent the footnote.
+    const { fetcher } = stubFetcher([judgment([61, 62, 63, 64, 65, 66])]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve({ ...lookup(62), paragraphs: [62, 65] });
+    assert.match(preview.excerpt, /Text of paragraph 62\./);
+    assert.match(preview.excerpt, /Text of paragraph 65\./);
+    assert.ok(!/Text of paragraph 63\./.test(preview.excerpt), 'paragraph 63 was not cited');
+    assert.match(preview.excerpt, /…/, 'and the gap between them is marked');
+  });
+
+  test('labels a disjoint citation as the paragraphs it shows', async () => {
+    const { fetcher } = stubFetcher([judgment([57, 58, 59, 62, 65])]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve({ ...lookup(57, 59), paragraphs: [57, 58, 59, 62, 65] });
+    assert.equal(preview.locator, 'Points 57–59, 62 and 65');
+  });
+
+  test('does not serve one citation\'s excerpt to another of the same document', async () => {
+    // "para. 62" and "paras 62 and 65" share a locator kind and start. Keying the cache on
+    // those alone returned the two-paragraph excerpt for the one-paragraph citation — a
+    // passage the second footnote never cited, shown as though it had.
+    const { fetcher } = stubFetcher([judgment([61, 62, 63, 64, 65, 66]), judgment([61, 62, 63, 64, 65, 66])]);
+    const { resolver } = makeResolver({ fetcher });
+    const [both] = await resolver.resolve({ ...lookup(62), paragraphs: [62, 65] });
+    const [one] = await resolver.resolve({ ...lookup(62), paragraphs: [62] });
+    assert.match(both.excerpt, /Text of paragraph 65\./);
+    assert.ok(!/Text of paragraph 65\./.test(one.excerpt), 'the single-paragraph citation shows only its own paragraph');
+    assert.equal(one.locator, 'Point 62');
+  });
+
   test('a range whose last paragraph is missing still terminates', async () => {
     // The scan stops at the first anchor beyond the range rather than at a specific closing
     // number, so a renumbered or absent endpoint does not run on to the safety cap.
@@ -595,7 +628,7 @@ describe('a cited range of paragraphs', () => {
     const { fetcher } = stubFetcher([judgment([57, 58, 59, 60])]);
     const { resolver } = makeResolver({ fetcher });
     const [preview] = await resolver.resolve(lookup(57, 59));
-    assert.equal(preview.locator, 'Point 57–59');
+    assert.equal(preview.locator, 'Points 57–59');
     assert.match(preview.excerpt, /Text of paragraph 59\./);
   });
 });

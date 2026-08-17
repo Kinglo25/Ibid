@@ -60,6 +60,10 @@ async function resolveSource(citation: CitationContext): Promise<ReviewDocument[
     source: citation.source, value: citation.value, celex: citation.celex, ecli: citation.ecli,
     caseNumber: citation.caseNumber, caseName: citation.caseName,
     documentType: citation.documentType, locator: citation.locator,
+    // Every paragraph the footnote names, not just the one retrieval anchors on: a citation
+    // to "paras 62 and 65" is a citation to both, and the resolver cannot know that from the
+    // locator alone.
+    paragraphs: citation.pinpoint?.paragraphs,
   };
   const response = await fetch(`${apiBase}/sources?lookup=${encodeURIComponent(JSON.stringify(lookup))}`);
   if (!response.ok) throw new Error(`Source lookup failed (${response.status}).`);

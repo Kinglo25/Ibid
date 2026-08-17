@@ -23,6 +23,7 @@ const toLookup = (citation: CitationMatch): EuLookup => ({
   caseName: citation.caseName,
   documentType: citation.documentType,
   locator: citation.locator,
+  paragraphs: citation.pinpoint?.paragraphs,
 });
 
 describe('the detected-citation to lookup contract', () => {
