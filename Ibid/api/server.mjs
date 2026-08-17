@@ -6,6 +6,7 @@ if (process.env.IBID_EURLEX_API_KEY) eurLexHeaders['X-API-Key'] = process.env.IB
 if (process.env.IBID_EURLEX_BEARER_TOKEN) eurLexHeaders.Authorization = `Bearer ${process.env.IBID_EURLEX_BEARER_TOKEN}`;
 const resolver = createEuSourceResolver({
   cellarBaseUrl: process.env.IBID_EURLEX_CELLAR_BASE_URL,
+  userAgent: process.env.IBID_USER_AGENT,
   minRequestIntervalMs: Number(process.env.IBID_EURLEX_MIN_INTERVAL_MS ?? 1000),
   maxRetries: Number(process.env.IBID_EURLEX_MAX_RETRIES ?? 2),
   eurLexHeaders,

@@ -23,6 +23,14 @@ export type SourcePreview = {
   locator?: string;
 };
 
+/**
+ * Identifies the client to CELLAR when nothing better is configured. Deliberately names the
+ * tool and points at its source rather than imitating a browser: the aim is to be
+ * recognisable, so that a rate problem can be raised with someone instead of being met with
+ * a block. Override it with `IBID_USER_AGENT` to carry a real contact address.
+ */
+const DEFAULT_USER_AGENT = 'Ibid/0.1 (EU-law citation review add-in; +https://github.com/Kinglo25/OfficesAddins)';
+
 export type ResolverOptions = {
   fetcher?: typeof fetch;
   /** Minimum time between EUR-Lex/CELLAR requests. */
@@ -30,6 +38,17 @@ export type ResolverOptions = {
   maxRetries?: number;
   timeoutMs?: number;
   cellarBaseUrl?: string;
+  /**
+   * How this client identifies itself to CELLAR. An unidentified caller is the fingerprint
+   * anti-bot protection reacts to, and Node's `fetch` sends `User-Agent: node` unless told
+   * otherwise — which is precisely that. The Publications Office asks callers of its SPARQL
+   * endpoint for a descriptive agent naming the application, and the same courtesy applies
+   * to the REST interface: it is the difference between a recognisable tool and anonymous
+   * traffic, and it gives them somebody to contact instead of a reason to block.
+   *
+   * Set `IBID_USER_AGENT` in production so it carries a real contact address.
+   */
+  userAgent?: string;
   /** Server-side credentials only; never pass these to the Word client. */
   eurLexHeaders?: Record<string, string>;
   sleep?: (milliseconds: number) => Promise<void>;
@@ -229,6 +248,7 @@ export function createApiHealthCheck() { return { status: 'ok' as const }; }
  */
 export function createEuSourceResolver(options: ResolverOptions = {}) {
   const fetcher = options.fetcher ?? fetch;
+  const userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
   const minRequestIntervalMs = options.minRequestIntervalMs ?? 1_000;
   const maxRetries = options.maxRetries ?? 2;
   const timeoutMs = options.timeoutMs ?? 12_000;
@@ -248,7 +268,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetcher(url, {
-          headers: { Accept: accept, 'Accept-Language': 'eng', ...options.eurLexHeaders },
+          headers: { Accept: accept, 'Accept-Language': 'eng', 'User-Agent': userAgent, ...options.eurLexHeaders },
           signal: controller.signal,
         });
         if (response.ok || (response.status !== 429 && response.status < 500) || attempt >= maxRetries) return response;

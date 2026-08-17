@@ -20,10 +20,10 @@ Ibid is an EU-law Word add-in for lawyers. It identifies references in footnotes
 ## Development
 Run `npm run dev` from the repository root. This builds and starts the local resolver and Vite task-pane server. If port 4000 is occupied, use `IBID_API_PORT=4001 npm run dev` so both the API and Vite proxy use the same alternate port.
 
-Run `npm run verify` to lint, type-check the tests, run the 321 tests, and build.
+Run `npm run verify` to lint, type-check the tests, run the 323 tests, and build.
 
 For the detailed implementation handoff and test checklist, see [HANDOFF.md](HANDOFF.md).
 
 ## Production hardening
-- Provision authorised EUR-Lex/CELLAR access and configure the server-side environment variables described in `api/README.md`. Anonymous access was observed live being served a bot-verification page under normal-seeming request volume — authorised access is not just a courtesy, it is likely necessary for reliability. See HANDOFF.md for what was directly observed.
+- Set `IBID_USER_AGENT` to a descriptive agent carrying a real contact address, and configure the other server-side variables described in `api/README.md`. There is no authorised tier to provision: CELLAR's REST interface is public, and the registrable EUR-Lex web service is a SOAP *search* API that does not retrieve documents. What protects access is being an identifiable, well-behaved client — the resolver already spaces, backs off, and caches; identification was the missing piece. Anonymous access was once observed being served a bot-verification page under normal request volume, which is the failure this addresses.
 - Split the Commission adapter by decision family once citation metadata identifies competition, state-aid, merger, or infringement registers.

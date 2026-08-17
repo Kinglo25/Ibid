@@ -548,6 +548,30 @@ describe('EUR-Lex retrieval', () => {
   });
 });
 
+describe('how the resolver identifies itself', () => {
+  test('names the application, because an unidentified caller is what gets blocked', async () => {
+    // Node's `fetch` sends `User-Agent: node` unless told otherwise, which is exactly the
+    // fingerprint anti-bot protection reacts to — and CELLAR was observed live serving a
+    // verification page under an ordinary request rate. There is no credential to present
+    // here (the REST interface is public), so identification is the whole defence.
+    const { fetcher, calls } = stubFetcher([html('<p>Article 17</p>')]);
+    const { resolver } = makeResolver({ fetcher });
+    await resolver.resolve(eurLexLookup());
+    const agent = new Headers(calls[0].init.headers).get('user-agent');
+    assert.ok(agent, 'a User-Agent is always sent');
+    assert.notEqual(agent, 'node');
+    assert.match(agent, /Ibid/, 'and it names this application');
+  });
+
+  test('a deployment can supply its own contact address', async () => {
+    const { fetcher, calls } = stubFetcher([html('<p>Article 17</p>')]);
+    const userAgent = 'Ibid/1.0 (+mailto:someone@example.com)';
+    const { resolver } = makeResolver({ fetcher, userAgent });
+    await resolver.resolve(eurLexLookup());
+    assert.equal(new Headers(calls[0].init.headers).get('user-agent'), userAgent);
+  });
+});
+
 describe('EUR-Lex caching', () => {
   test('serves a repeated lookup from cache', async () => {
     const { fetcher, calls } = stubFetcher([html('<p>Directive text</p>')]);

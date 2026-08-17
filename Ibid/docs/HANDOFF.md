@@ -54,7 +54,7 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 321 tests (240 detection and resolution, 60 resolver and contract, 21 task pane).
+- `npm run test` passes: 323 tests (240 detection and resolution, 62 resolver and contract, 21 task pane).
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
@@ -975,7 +975,7 @@ Then sideload `addin/manifest.xml` in Word and open the sample document. Select 
 
 ## Production prerequisites
 
-1. Obtain and configure authorised EUR-Lex/CELLAR access. Set the server-only variables listed in `api/README.md`; never expose credentials through `VITE_*` variables or browser code.
+1. Set `IBID_USER_AGENT` and the other server-only variables listed in `api/README.md`; never expose configuration through `VITE_*` variables or browser code. Note that there is no authorised CELLAR tier to obtain — see "Access to CELLAR" in `api/README.md` for what was checked and what the registrable EUR-Lex service actually is.
 2. Deploy the API over HTTPS and set `IBID_ALLOWED_ORIGIN` to the deployed add-in origin.
 3. Validate CURIA, EUR-Lex, and Commission links with representative real client documents and record any unrecognised citation patterns.
 
