@@ -54,7 +54,7 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 342 tests (254 detection and resolution, 67 resolver and contract, 21 task pane).
+- `npm run test` passes: 347 tests (259 detection and resolution, 67 resolver and contract, 21 task pane).
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
@@ -681,14 +681,14 @@ worse than the failure mode of missing:
 Twenty-six Advocate General opinions were fetched from CELLAR and their 2346 footnotes run
 through resolution — the largest body of real drafting this has been tested against, and
 the cheapest bug-finding available: opinions are footnote-dense, use every convention the
-Court uses, and are free. 1833 citations, 93.6% resolved, in six seconds.
+Court uses, and are free. 1865 citations, 96.4% resolved, in six seconds.
 
 The corpus spans both citation eras deliberately, because they are different languages:
 2012-2018 opinions cite by ECLI, pre-2012 ones by European Court Reports volume. Older
 documents are served as `text/html` only — the same era split already documented for
 legislation — so the harvest must fall back to that Accept header or they 404.
 
-It found six defects that no hand-written case had:
+It found seven defects that no hand-written case had, the largest of them last:
 
 1. **The bare ECLI was not recognised.** Since 2014 the Court and its Advocates General
    write the identifier without its prefix and in parentheses — "Judgment in Achmea
@@ -714,8 +714,24 @@ It found six defects that no hand-written case had:
    Google France and Google" otherwise lost its name entirely, which is worse than the split
    it replaced. Caught by diffing corpus output before and after, not by any test.
 
-Net across the corpus: 48 citations newly resolved, none newly unresolved, and resolution
+7. **A short form declared in single quotation marks was invisible.** The Court declares its
+   own short forms as `(‘Hoffmann-La Roche’)`, and so does most EU and British drafting;
+   only double quotes were recognised. Every declared short form in every Court document
+   was therefore unreachable, and the drafter's own disambiguating labels — "Post Danmark
+   I" against "Post Danmark II", "Michelin I" against "Michelin II" — went with them. These
+   labels exist precisely because the bare name is ambiguous, so losing them cost exactly
+   the citations hardest to resolve any other way. Fixing it resolved 81 further citations
+   on its own and took the modern era from 93% to 98%.
+
+Net across the corpus: 129 citations newly resolved, none newly unresolved, and resolution
 runs about 40% faster because clean case names make for a smaller registry.
+
+Of the 68 short forms still unresolved, roughly half name an authority the document never
+cites in full anywhere — a reader is expected to know it — and the rest are non-EU sources
+(Strasbourg judgments, Article 29 Working Party opinions, ICSID awards) that this tool does
+not claim to resolve. The method for telling those apart is worth keeping: for each
+unresolved short form, ask whether its name appears next to a case number or ECLI anywhere
+in the same document. If it does, it is a resolution failure rather than a refusal.
 
 Back-references in the corpus went from 4 of 14 resolving to 11 of 14, including a
 three-deep `Ibid.` chain in AG Bot's opinion in Schrems. The three that still do not resolve

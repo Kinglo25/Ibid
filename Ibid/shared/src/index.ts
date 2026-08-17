@@ -749,7 +749,20 @@ function shortFormPattern(key: string): RegExp {
 // `ECLI:EU:C:2010:512, para. 40 ("Akzo Nobel")` or `Regulation (EU) 2022/1925 (the "DMA")`
 // — straight or curly quotes. This is ground truth: a quoted definition states, in the
 // document itself, exactly what the drafter means by that short form.
-const DEFINED_TERM = /\(\s*(?:the\s+)?["“]([^"”]{1,80})["”]\s*\)/i;
+/**
+ * A short form the drafter declares in parentheses: `(the "DMA")`, `(‘Hoffmann-La Roche’)`.
+ *
+ * Single quotation marks matter as much as double ones — they are the Court's own house
+ * style, and the style of most EU and British drafting. Recognising only double quotes made
+ * every declared short form in every Court document invisible, which is a large part of why
+ * a corpus of real Advocate General opinions left cases like "Michelin I" and "Post Danmark
+ * II" unresolved while the same opinion had defined them a few footnotes earlier.
+ *
+ * The captured content stops at the parenthesis rather than at the quote, and takes as much
+ * as it can: a name may itself contain an apostrophe indistinguishable from a closing
+ * quotation mark, and `(‘L’Oréal’)` has to yield "L’Oréal" rather than "L".
+ */
+const DEFINED_TERM = /\(\s*(?:the\s+)?["“'‘]([^)]{1,80})["”'’]\s*\)/i;
 const DEFINED_TERM_SCAN_WINDOW = 160;
 
 type RegisteredCitation = Pick<CitationMatch, 'label' | 'source' | 'celex' | 'ecli' | 'caseNumber' | 'caseName' | 'documentType' | 'documentTypeStated'>;

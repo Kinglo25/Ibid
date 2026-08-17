@@ -311,6 +311,62 @@ describe('Layer 1 — the European Court Reports era', () => {
   });
 });
 
+describe('Layer 2 — declared short forms, in the quotation marks drafters use', () => {
+  // The Court declares its short forms in single quotation marks — "(‘Hoffmann-La Roche’)" —
+  // as does most EU and British drafting. Recognising only double quotes made every declared
+  // short form in every Court document invisible. It was the single largest gap in a corpus
+  // of 26 real Advocate General opinions: fixing it resolved 81 further citations.
+  test('accepts the single quotation marks the Court itself uses', () => {
+    const citation = only(at([
+      'See judgment of 13 February 1979, Hoffmann-La Roche v Commission, 85/76, EU:C:1979:36 (‘Hoffmann-La Roche’).',
+      'See Hoffmann-La Roche, paragraph 90.',
+    ], 1));
+    assert.equal(citation.status, 'resolved');
+    assert.equal(citation.resolutionMethod, 'explicit_alias');
+    assert.equal(citation.ecli, 'ECLI:EU:C:1979:36');
+  });
+
+  test('still accepts double quotation marks', () => {
+    assert.equal(only(at(['ECLI:EU:C:2010:512 ("Leading Case").', 'Leading Case, para. 40.'], 1)).resolutionMethod, 'explicit_alias');
+  });
+
+  test('reads a declared name that contains an apostrophe', () => {
+    // "(‘L’Oréal’)" — the apostrophe is the same character as the closing quotation mark, so
+    // stopping at the first one would register the case under "L".
+    const citation = only(at([
+      'Judgment of 12 July 2011, L’Oréal and Others, C-324/09, EU:C:2011:474 (‘L’Oréal’).',
+      'See L’Oréal, paragraph 60.',
+    ], 1));
+    assert.equal(citation.status, 'resolved');
+    assert.equal(citation.caseNumber, 'C-324/09');
+  });
+
+  test('reads the numbering a drafter assigns to distinguish two judgments in one case', () => {
+    // "Post Danmark I" and "Post Danmark II" are the drafter's labels, not the Court's, and
+    // exist precisely because the bare name is ambiguous — so they have to be resolvable.
+    const footnotes = [
+      'Judgment of 27 March 2012, Post Danmark, C-209/10, EU:C:2012:172 (‘Post Danmark I’).',
+      'Judgment of 6 October 2015, Post Danmark, C‑23/14, EU:C:2015:651 (‘Post Danmark II’), paragraph 68.',
+      'See Post Danmark II, paragraph 47.',
+      'See Post Danmark I, paragraph 22.',
+    ];
+    assert.equal(only(at(footnotes, 2)).caseNumber, 'C-23/14');
+    assert.equal(only(at(footnotes, 3)).caseNumber, 'C-209/10');
+  });
+
+  test('a parenthetical that merely contains a quotation is not a declaration', () => {
+    // The declaration has to open with the quotation mark. Otherwise any quoted word in a
+    // parenthetical would become an alias for the citation next to it, and a later mention
+    // of that ordinary word would be reported as a citation of the case.
+    const citation = only(at([
+      'Judgment of 12 July 2011, L’Oréal and Others, C-324/09, EU:C:2011:474 (see also the discussion of ‘use’ and ‘sign’).',
+      'See Sign, paragraph 60.',
+    ], 1));
+    assert.equal(citation.status, 'unresolved_not_found', 'flagged as a gap, never resolved to L’Oréal');
+    assert.equal(citation.caseNumber, undefined);
+  });
+});
+
 describe('Layer 3 — back-references (Ibid., Id., supra note n)', () => {
   const LEAD = 'Case C-293/12 Digital Rights Ireland, ECLI:EU:C:2014:238, para. 40.';
 
