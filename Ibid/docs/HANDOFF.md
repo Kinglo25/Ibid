@@ -54,7 +54,7 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 333 tests (245 detection and resolution, 67 resolver and contract, 21 task pane).
+- `npm run test` passes: 342 tests (254 detection and resolution, 67 resolver and contract, 21 task pane).
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
@@ -678,12 +678,17 @@ worse than the failure mode of missing:
 
 ### Validated against a corpus of real Advocate General opinions
 
-Fourteen Advocate General opinions were fetched from CELLAR and their 1384 footnotes run
+Twenty-six Advocate General opinions were fetched from CELLAR and their 2346 footnotes run
 through resolution — the largest body of real drafting this has been tested against, and
 the cheapest bug-finding available: opinions are footnote-dense, use every convention the
-Court uses, and are free. 1021 citations, 92% resolved, in three seconds.
+Court uses, and are free. 1833 citations, 93.6% resolved, in six seconds.
 
-It found three defects that no hand-written case had:
+The corpus spans both citation eras deliberately, because they are different languages:
+2012-2018 opinions cite by ECLI, pre-2012 ones by European Court Reports volume. Older
+documents are served as `text/html` only — the same era split already documented for
+legislation — so the harvest must fall back to that Accept header or they 404.
+
+It found six defects that no hand-written case had:
 
 1. **The bare ECLI was not recognised.** Since 2014 the Court and its Advocates General
    write the identifier without its prefix and in parentheses — "Judgment in Achmea
@@ -697,6 +702,20 @@ It found three defects that no hand-written case had:
 3. **"Above, point 19." was reported as an authority named "Above"** — four times in one
    opinion. The same family as the "See" false positive; a position word can never begin a
    case name.
+4. **The European Court Reports reference was swallowed into the case name.** "Case C-558/08
+   Portakabin [2010] ECR I-6963" registered the case under "Portakabin [2010] ECR I-6963", a
+   key no later short form could match — so effectively every case name in a pre-2012
+   document was unreachable. The single highest-value fix of the round.
+5. **A joined-cases range read as two authorities.** "Joined Cases C-87/90 to C-89/90" — the
+   group pattern knew list separators but not range ones, and the range form carries no
+   shared ECLI to fall back on.
+6. **A group named after its last number went nameless.** Once ranges collapsed correctly,
+   the name had to be read past the rest of the group; "Joined Cases C-236/08 to C-238/08
+   Google France and Google" otherwise lost its name entirely, which is worse than the split
+   it replaced. Caught by diffing corpus output before and after, not by any test.
+
+Net across the corpus: 48 citations newly resolved, none newly unresolved, and resolution
+runs about 40% faster because clean case names make for a smaller registry.
 
 Back-references in the corpus went from 4 of 14 resolving to 11 of 14, including a
 three-deep `Ibid.` chain in AG Bot's opinion in Schrems. The three that still do not resolve
@@ -899,8 +918,12 @@ needs deciding before the list grows ad hoc.
   citation went unresolved — the reference is reported unresolved rather than
   skipping further back to the last footnote that did. Skipping would usually be
   right and occasionally, silently, wrong.
-- Pre-1989 case numbers as actually written (`Case 26/62`, no `C-` prefix) are
-  still not detected — an existing gap, unchanged by this round.
+- Pre-1989 case numbers as written (`Case 26/62`, no `C-` prefix) *are* detected — the
+  `Case`/`Affaire` keyword carries them — and derive the right CELEX. They are normalised to
+  the modern `C-26/62` spelling, which that era never used, so the pane displays a form the
+  document did not write. Cosmetic: retrieval turns on the CELEX. Left alone because the
+  `C-`/`T-` prefix is what `courtOf` reads to keep an appeal and the judgment under appeal
+  apart, and destabilising identity matching to fix a display string is a bad trade.
 - A generated variant needs a pinpoint, so a genuine short-form reference written
   without one is missed. This is the deliberate direction to fail in.
 - A short form is only available to footnotes *after* the one that declares it, so

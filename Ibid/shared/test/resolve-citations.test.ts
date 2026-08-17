@@ -247,6 +247,70 @@ describe('Layer 1 — the modern CJEU citation style', () => {
   });
 });
 
+describe('Layer 1 — the European Court Reports era', () => {
+  // Pre-2012 drafting cites the report volume rather than an ECLI: "Case C-558/08 Portakabin
+  // [2010] ECR I-6963". Found across 12 real Advocate General opinions from 1998 to 2011.
+  test('does not swallow the report reference into the case name', () => {
+    // It was registering the case under "Portakabin [2010] ECR I-6963", a key no later short
+    // form could ever match — so every case name in a pre-2012 document was unreachable.
+    assert.equal(only(detectCitations('Case C-558/08 Portakabin [2010] ECR I-6963, paragraph 25.')).caseName, 'Portakabin');
+  });
+
+  test('reads the name of a joined-cases group stated after its last number', () => {
+    const citation = only(detectCitations('Joined Cases C-236/08 to C-238/08 Google France and Google [2010] ECR I-2417.'));
+    assert.equal(citation.caseName, 'Google France and Google');
+    assert.equal(citation.caseNumber, 'C-236/08');
+  });
+
+  test('a joined-cases range is one judgment, not one authority per endpoint', () => {
+    const citations = detectCitations('Joined Cases C-87/90 to C-89/90 Verholen and Others [1991] ECR I-3757, paragraph 13.');
+    assert.equal(citations.length, 1, `expected one citation, got ${citations.map((c) => c.value).join(' | ')}`);
+    assert.deepEqual(citations[0].pinpoint, { paragraphs: [13] });
+  });
+
+  test('reads a mixed list-and-range group, which begins with a comma', () => {
+    const citation = only(detectCitations('Joined Cases C-49/98, C-50/98, C-52/98 to C-54/98 and C-68/98 to C-71/98 Finalarte and Others [2001] ECR I-7831, paragraph 33.'));
+    assert.equal(citation.caseName, 'Finalarte and Others');
+  });
+
+  test('two genuinely separate cases are still two authorities', () => {
+    // The range forms must not collapse citations that merely sit next to each other.
+    assert.deepEqual(detectCitations('See Case C-1/10, para. 5; and Case C-2/11, para. 8.').map((c) => c.caseNumber),
+      ['C-1/10', 'C-2/11']);
+  });
+
+  test('and the short form of a joined group resolves later in the document', () => {
+    const citation = only(at([
+      'Joined Cases C-236/08 to C-238/08 Google France and Google [2010] ECR I-2417.',
+      'See Google France and Google, paragraph 23.',
+    ], 1));
+    assert.equal(citation.status, 'resolved');
+    assert.equal(citation.caseNumber, 'C-236/08');
+  });
+
+  test('a report volume number is not an authority', () => {
+    // "ECHR 2002-VII, §§ 45 to 48" put a capitalised Roman numeral in front of a pinpoint —
+    // the shape of a short-form citation — and reported "VII" as something to resolve.
+    assert.deepEqual(at(['Case C-131/12, ECLI:EU:C:2014:317, para. 20.',
+      'ECtHR Meftah and Others v. France (Application No 32911/96, ECHR 2002-VII, §§ 45 to 48).'], 1), []);
+  });
+
+  test('a case name ending in a Roman numeral is untouched', () => {
+    const citation = only(at(['Case T-203/01 Michelin v Commission, ECLI:EU:T:2003:250, para. 10 ("Michelin II").',
+      'Michelin II, para. 58.'], 1));
+    assert.equal(citation.status, 'resolved');
+  });
+
+  test('pre-1989 numbering is detected, and derives the right CELEX', () => {
+    // Contrary to a stale note in the handoff, "Case 13/68" is read — the keyword carries it.
+    // The number is normalised to the modern C- spelling, which the era did not use; the
+    // CELEX, which is what retrieval turns on, is correct.
+    const citation = only(detectCitations('Case 13/68 Salgoil [1968] ECR 679.'));
+    assert.equal(citation.celex, '61968CJ0013');
+    assert.equal(citation.caseNumber, 'C-13/68');
+  });
+});
+
 describe('Layer 3 — back-references (Ibid., Id., supra note n)', () => {
   const LEAD = 'Case C-293/12 Digital Rights Ireland, ECLI:EU:C:2014:238, para. 40.';
 

@@ -295,8 +295,14 @@ const CASE_NUMBER_SOURCE = String.raw`\b([CT])${CASE_HYPHENS}?(\d{1,4})\/(\d{2})
 /** The same pattern with no capture groups, so it can be embedded in a larger one. */
 const CASE_NUMBER_INLINE = String.raw`\b[CT]${CASE_HYPHENS}?\d{1,4}\/\d{2}(?!\d)(?:\s+(?:${CASE_SUFFIX})(?![\w(]))?`;
 
+// The separator list includes the range forms, because a joined-cases group is routinely
+// written as a span rather than a list — "Joined Cases C-87/90 to C-89/90 Verholen and
+// Others" is one judgment, and without `to` its endpoints read as two unrelated
+// authorities, leaving any `Ibid.` after them ambiguous between a case and its own
+// sibling. Found in real Advocate General opinions; the same defect as the parenthetical
+// form, in the spelling that carries no shared ECLI to fall back on.
 const JOINED_GROUP = new RegExp(
-  String.raw`\b(?:joined\s+cases?|affaires?\s+jointes?)\s+((?:${CASE_NUMBER_INLINE}(?:\s*(?:,|and|et)\s*)?)+)`,
+  String.raw`\b(?:joined\s+cases?|affaires?\s+jointes?)\s+((?:${CASE_NUMBER_INLINE}(?:\s*(?:,|and|et|to|à|-|–)\s*)?)+)`,
   'gi',
 );
 
@@ -408,6 +414,11 @@ const NOT_A_CASE_NAME = /^(?:ecli|celex|case|cases|joined|affaire|affaires|judgm
 function looksLikeCaseName(candidate: string): boolean {
   if (candidate.length < 3 || candidate.length > 120) return false;
   if (!/^[A-ZÀ-Þ]/.test(candidate)) return false;
+  // A bare Roman numeral names no case. Reached through Strasbourg reports cited in EU
+  // pleadings — "ECHR 2002-VII, §§ 45 to 48" put a capitalised "VII" in front of a pinpoint,
+  // the exact shape of a short-form citation, and reported it as an authority to resolve.
+  // Case names *ending* in one ("Michelin II") are untouched: this matches the whole span.
+  if (/^[IVXLCDM]+$/.test(candidate)) return false;
   if (DOCUMENT_PREFIX.test(candidate) || NOT_A_CASE_NAME.test(candidate)) return false;
   // "Commission", "Council", a bare Member State: these end hundreds of cases and name
   // none of them. Reached via a real document, where "Akzo Nobel v Commission, para. 40"
@@ -479,9 +490,28 @@ function caseNameBefore(text: string, index: number, segmentStart: number): stri
   return undefined;
 }
 
+/**
+ * The rest of a joined-cases group, when the name is being read from after its first case
+ * number. "Joined Cases C-236/08 to C-238/08 Google France and Google" states its name once,
+ * after the last number — so a group read from its head has to step over the remaining
+ * numbers to find it, or it finds nothing and the case goes nameless. Nameless means no
+ * short-form variants, so every later "Google France and Google, paragraph 23" in the
+ * document stops resolving. Found in AG Jääskinen's opinion in Google Spain.
+ */
+const GROUP_CONTINUATION = new RegExp(String.raw`^(?:\s*(?:,|and|et|to|à|-|–)\s*${CASE_NUMBER_INLINE})+`, 'i');
+
 function caseNameAfter(text: string, endIndex: number, segmentEnd: number): string | undefined {
-  const after = text.slice(endIndex, Math.min(segmentEnd, endIndex + 160)).replace(/^[\s,:]+/, '');
-  const candidate = tidyCaseName(after.split(/[,;(]/)[0] ?? '');
+  // The group continuation runs first, while its leading separator is still there: a mixed
+  // group ("C-49/98, C-50/98, C-52/98 to C-54/98 and C-68/98 to C-71/98") begins with a
+  // comma, and stripping punctuation before matching leaves the pattern facing a bare case
+  // number it cannot recognise as a continuation.
+  const after = text.slice(endIndex, Math.min(segmentEnd, endIndex + 160))
+    .replace(GROUP_CONTINUATION, '').replace(/^[\s,:]+/, '');
+  // Split on `[` as well as the sentence punctuation: pre-2012 citations carry a European
+  // Court Reports reference immediately after the name ("Portakabin [2010] ECR I-6963"),
+  // and swallowing it into the name registers the case under a key no later short form can
+  // match. Every case name in a pre-2012 document was affected.
+  const candidate = tidyCaseName(after.split(/[,;([]/)[0] ?? '');
   return looksLikeCaseName(candidate) ? candidate : undefined;
 }
 
