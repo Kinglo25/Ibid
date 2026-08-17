@@ -42,6 +42,8 @@ Ibid is a Word task-pane add-in for lawyers. It detects EU-law citations in Word
 | `tsconfig.test.json` | Type-checks the test files (not part of any build) |
 | `samples/ibid-demo-docx/EU_Data_Retention_Memo.docx` | Manual Word test document (all full citations; exercises detection, not resolution) |
 | `samples/ibid-demo-docx/eu-case-law-citation-test.docx` | The 20 collected citation patterns; the document-context test case. Its footnotes are pinned as a fixture in `resolve-citations.test.ts` |
+| `samples/ibid-demo-docx/back-reference-test.docx` | Manual Word check for back-references; 22 footnotes, also pinned in `resolve-citations.test.ts`. Expected results per footnote are in that folder's README.md |
+| `samples/ibid-demo-docx/build-back-reference-test.py` | Regenerates that document. Not part of any build — python-docx cannot write real footnotes, so the OOXML is assembled by hand |
 
 ## Current verification
 
@@ -52,7 +54,7 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 315 tests (234 detection and resolution, 60 resolver and contract, 21 task pane).
+- `npm run test` passes: 321 tests (240 detection and resolution, 60 resolver and contract, 21 task pane).
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
