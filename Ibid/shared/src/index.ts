@@ -403,7 +403,7 @@ const CITATION_LEAD_IN = /^(?:see(?:\s+also)?|cf\.?|voir|but\s+see|compare|e\.g\
  * absent even though it is a citation signal, because Accord Healthcare is a real
  * litigant — excluding it would lose a genuine case name to spare a rarer false positive.
  */
-const NOT_A_CASE_NAME = /^(?:ecli|celex|case|cases|joined|affaire|affaires|judgment|order|opinion|arr[êe]t|ordonnance|conclusions|regulation|directive|decision|d[ée]cision|r[èe]glement|recommendation|article|articles|art|paragraph|paragraphs|para|paras|point|points|recital|annex|chapter|section|title|part|ibid|id|supra|infra|the|this|that|these|those|it|its|at|and|but|for|january|february|march|april|may|june|july|august|september|october|november|december|see|cf|voir|compare)\b/i;
+const NOT_A_CASE_NAME = /^(?:ecli|celex|case|cases|joined|affaire|affaires|judgment|order|opinion|arr[êe]t|ordonnance|conclusions|regulation|directive|decision|d[ée]cision|r[èe]glement|recommendation|article|articles|art|paragraph|paragraphs|para|paras|point|points|recital|annex|chapter|section|title|part|ibid|id|supra|infra|the|this|that|these|those|it|its|at|and|but|for|january|february|march|april|may|june|july|august|september|october|november|december|see|cf|voir|compare|above|below)\b/i;
 
 function looksLikeCaseName(candidate: string): boolean {
   if (candidate.length < 3 || candidate.length > 120) return false;
@@ -437,7 +437,7 @@ function tidyCaseName(candidate: string): string {
  * is itself corroboration that what precedes it is a case name.
  */
 const BARE_IDENTIFIER_FRAGMENT = new RegExp(
-  String.raw`^(?:(?:joined\s+)?(?:cases?|affaires?(?:\s+jointes?)?)\s+)?(?:${CASE_NUMBER_INLINE}|ECLI:EU:[CT]:\d{4}:\d+)(?:\s*(?:,|and|et|&)\s*(?:${CASE_NUMBER_INLINE}|ECLI:EU:[CT]:\d{4}:\d+))*$`,
+  String.raw`^(?:(?:joined\s+)?(?:cases?|affaires?(?:\s+jointes?)?)\s+)?(?:${CASE_NUMBER_INLINE}|(?:ECLI:)?EU:[CT]:\d{4}:\d+)(?:\s*(?:,|and|et|&)\s*(?:${CASE_NUMBER_INLINE}|(?:ECLI:)?EU:[CT]:\d{4}:\d+))*$`,
   'i',
 );
 
@@ -571,7 +571,15 @@ export function detectCitations(text: string): CitationMatch[] {
   const representedCaseNumbers = new Set<string>();
   const caseNumberPattern = new RegExp(CASE_NUMBER_SOURCE, 'gi');
 
-  for (const match of text.matchAll(/\bECLI:EU:([CT]):(\d{4}):(\d+)\b/gi)) {
+  // The `ECLI:` prefix is optional because the Court itself usually omits it. Since 2014 the
+  // standard CJEU and Advocate General style writes the identifier bare and parenthesised —
+  // "Judgment in Achmea (C-284/16, EU:C:2018:158, paragraph 35)" — so requiring the prefix
+  // missed the ECLI in the dominant form of modern EU legal writing. Found across a corpus
+  // of 14 real Advocate General opinions, where it also silently split every joined-cases
+  // group: with no ECLI recognised, "(C-293/12 and C-594/12, EU:C:2014:238)" read as two
+  // separate authorities rather than one case cited under both its numbers, and any `Ibid.`
+  // after such a footnote was reported ambiguous between a case and its own sibling.
+  for (const match of text.matchAll(/\b(?:ECLI:)?EU:([CT]):(\d{4}):(\d+)\b/gi)) {
     const index = match.index ?? 0;
     const segment = segmentAt(segments, index);
     const before = text.slice(Math.max(segment.start, index - 500), index);
@@ -580,8 +588,9 @@ export function detectCitations(text: string): CitationMatch[] {
     for (const caseMatch of caseMatches) representedCaseNumbers.add(normaliseCaseNumber(caseMatch[0]));
     const caseNumber = (caseMatches[0] ?? caseMatches.at(-1)) ? normaliseCaseNumber((caseMatches[0] ?? caseMatches.at(-1))![0]) : undefined;
     const { documentType, stated } = documentTypeNear(text, index, match[0].length);
+    const ecli = `ECLI:${match[0].toUpperCase().replace(/^ECLI:/, '')}`;
     add({
-      label: labelForDocumentType(documentType, 'CJEU judgment'), value: match[0].toUpperCase(), index, source: 'curia', ecli: match[0].toUpperCase(),
+      label: labelForDocumentType(documentType, 'CJEU judgment'), value: match[0].toUpperCase(), index, source: 'curia', ecli,
       caseNumber, caseName: caseNameBefore(text, index, segment.start), documentType, documentTypeStated: stated || undefined,
       celex: caseNumber ? celexForCase(caseNumber, { documentType }) : undefined, ...pinpointFor(index, index + match[0].length),
     });

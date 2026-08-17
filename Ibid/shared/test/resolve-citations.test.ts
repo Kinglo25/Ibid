@@ -199,6 +199,54 @@ describe('Layer 2 — ambiguity policy', () => {
   });
 });
 
+describe('Layer 1 — the modern CJEU citation style', () => {
+  // Since 2014 the Court and its Advocates General write the identifier bare and
+  // parenthesised — "Judgment in Achmea (C-284/16, EU:C:2018:158, paragraph 35)" — rather
+  // than with the `ECLI:` prefix. Requiring the prefix missed the ECLI in the dominant form
+  // of modern EU legal writing. Found across 14 real Advocate General opinions.
+  test('reads an ECLI written without its prefix, as the Court itself writes it', () => {
+    const citation = only(detectCitations('Judgment in Achmea (C-284/16, EU:C:2018:158, paragraph 35).'));
+    assert.equal(citation.ecli, 'ECLI:EU:C:2018:158', 'normalised to carry the prefix');
+    assert.equal(citation.value, 'EU:C:2018:158', 'while the value keeps what the document wrote');
+    assert.equal(citation.caseNumber, 'C-284/16');
+    assert.equal(citation.celex, '62016CJ0284');
+  });
+
+  test('the prefixed spelling still reads as one citation, not two', () => {
+    const citation = only(detectCitations('Case C-131/12, ECLI:EU:C:2014:317, para. 80.'));
+    assert.equal(citation.ecli, 'ECLI:EU:C:2014:317');
+  });
+
+  test('a joined-cases group in that style is one authority, not one per case number', () => {
+    // The consequence of missing the bare ECLI: with no identifier tying them together,
+    // "(C-293/12 and C-594/12, EU:C:2014:238)" read as two separate authorities — one case
+    // reported as two, and every short form referring to it ambiguous between a case and
+    // its own sibling.
+    const citation = only(detectCitations('Judgment in Digital Rights Ireland and Others (C‑293/12 and C‑594/12, EU:C:2014:238, paragraph 46).'));
+    assert.equal(citation.caseNumber, 'C-293/12');
+    assert.equal(citation.celex, '62012CJ0293');
+    assert.deepEqual(citation.pinpoint, { paragraphs: [46] });
+  });
+
+  test('and an Ibid. after it resolves instead of asking which sibling was meant', () => {
+    const citation = only(at([
+      'Judgment in Digital Rights Ireland and Others (C‑293/12 and C‑594/12, EU:C:2014:238, paragraph 46).',
+      'Ibid., paragraph 53.',
+    ], 1));
+    assert.equal(citation.status, 'resolved');
+    assert.equal(citation.celex, '62012CJ0293');
+    assert.deepEqual(citation.pinpoint, { paragraphs: [53] });
+  });
+
+  test('a cross-reference to the opinion\'s own points is not an authority', () => {
+    // "Above, point 19." — the same family as "See paragraph 41 above", found four times in
+    // one opinion. A position word can never begin a case name.
+    for (const prose of ['Above, point 19.', 'Above, points 76 to 82 of this Opinion.', 'Below, paragraph 12.']) {
+      assert.deepEqual(at(['Judgment in Achmea (C-284/16, EU:C:2018:158, paragraph 35).', prose], 1), [], prose);
+    }
+  });
+});
+
 describe('Layer 3 — back-references (Ibid., Id., supra note n)', () => {
   const LEAD = 'Case C-293/12 Digital Rights Ireland, ECLI:EU:C:2014:238, para. 40.';
 

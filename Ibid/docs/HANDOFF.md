@@ -54,7 +54,7 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 328 tests (240 detection and resolution, 67 resolver and contract, 21 task pane).
+- `npm run test` passes: 333 tests (245 detection and resolution, 67 resolver and contract, 21 task pane).
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
@@ -675,6 +675,43 @@ worse than the failure mode of missing:
   ambiguous in that convention.
 - **`C-14/15` inside ordinary prose.** Contrived enough to leave; the `C-`/`T-`
   prefix plus `NN/NN` shape is distinctive in practice.
+
+### Validated against a corpus of real Advocate General opinions
+
+Fourteen Advocate General opinions were fetched from CELLAR and their 1384 footnotes run
+through resolution — the largest body of real drafting this has been tested against, and
+the cheapest bug-finding available: opinions are footnote-dense, use every convention the
+Court uses, and are free. 1021 citations, 92% resolved, in three seconds.
+
+It found three defects that no hand-written case had:
+
+1. **The bare ECLI was not recognised.** Since 2014 the Court and its Advocates General
+   write the identifier without its prefix and in parentheses — "Judgment in Achmea
+   (C-284/16, EU:C:2018:158, paragraph 35)". Requiring `ECLI:` missed the identifier in the
+   dominant form of modern EU legal writing.
+2. **Joined cases in that style read as two authorities.** A consequence of the first: with
+   no ECLI recognised, "(C-293/12 and C-594/12, EU:C:2014:238)" had nothing tying its two
+   numbers together, so one case was reported as two and every `Ibid.` after such a footnote
+   was ambiguous between a case and its own sibling. The machinery for "one ECLI represents
+   several case numbers" already existed; it simply never fired. Fixing the ECLI fixed this.
+3. **"Above, point 19." was reported as an authority named "Above"** — four times in one
+   opinion. The same family as the "See" false positive; a position word can never begin a
+   case name.
+
+Back-references in the corpus went from 4 of 14 resolving to 11 of 14, including a
+three-deep `Ibid.` chain in AG Bot's opinion in Schrems. The three that still do not resolve
+are correct refusals: one points at an Article 29 Working Party opinion, which is not EU
+case law, and two follow bare "Paragraph 65." cross-references that establish no authority.
+
+Known false positives left in place, both soft — they flag something for review rather than
+resolving it wrongly, which is the direction to fail in: a named principle in a Council of
+Europe recommendation ("Principle III"), and a fragment of an ICSID arbitral decision's
+title ("Applicable Law and Liability"). Tightening the name filter enough to exclude them
+would risk losing real case names.
+
+Worth repeating with a fresh set of opinions after any change to detection. The harvest is
+a loop over CELEX ids of the form `6YYYYCC0NNN` against the CELLAR REST endpoint, spaced one
+per second; opinions before about 2012 were not mirrored under that pattern when tried.
 
 ### The real-citation memo, and how to verify a citation before fixturing it
 
