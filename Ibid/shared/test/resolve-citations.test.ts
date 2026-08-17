@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   citationSegments, citedAuthorities, detectCitations, detectCitationsAcrossFootnotes, normaliseCaseNumber,
-  parsePinpoint, shortNameVariants, FREQUENT_CASES, type CitationMatch,
+  parsePinpoint, reresolveBackReferences, shortNameVariants, FREQUENT_CASES, type CitationMatch,
 } from '../src/index.ts';
 
 const only = (matches: CitationMatch[]): CitationMatch => {
@@ -359,6 +359,81 @@ describe('Layer 3 — back-references (Ibid., Id., supra note n)', () => {
     ]) {
       assert.deepEqual(at([LEAD, prose], 1), [], prose);
     }
+  });
+
+  test('a confirmation settles the back-references that depend on it', () => {
+    // The reviewer confirms the ambiguous short form in footnote 3. Footnote 4's `Ibid.`
+    // resolved against detection, where footnote 3 established nothing — so without this
+    // pass the pane shows footnote 3 resolved and footnote 4 still saying footnote 3 has
+    // nothing to point at, two statements contradicting each other on screen.
+    const detected = detectCitationsAcrossFootnotes([
+      'Judgment of 6 October 2015, Schrems, Case C-362/14, ECLI:EU:C:2015:650, para. 94.',
+      'Judgment of 16 July 2020, Schrems, Case C-311/18, ECLI:EU:C:2020:559, para. 168.',
+      'Schrems, para. 94.',
+      'Ibid., para. 95.',
+    ]);
+    assert.equal(only(detected[2]).status, 'unresolved_ambiguous');
+    assert.equal(only(detected[3]).status, 'unresolved_not_found', 'nothing to point at, before the confirmation');
+
+    const confirmed = detected.map((citations, index) => (index === 2
+      ? citations.map((citation) => ({ ...citation, caseNumber: 'C-362/14', celex: '62014CJ0362', status: 'resolved' as const, resolutionMethod: 'user_confirmed' as const, candidates: undefined }))
+      : citations));
+
+    const settled = reresolveBackReferences(confirmed);
+    assert.equal(only(settled[3]).status, 'resolved');
+    assert.equal(only(settled[3]).caseNumber, 'C-362/14');
+    assert.equal(only(settled[3]).resolutionMethod, 'confirmed_back_reference');
+    assert.deepEqual(only(settled[3]).pinpoint, { paragraphs: [95] }, 'its own pinpoint is kept');
+  });
+
+  test('one confirmation carries down a whole chain', () => {
+    const detected = detectCitationsAcrossFootnotes([
+      'Judgment of 6 October 2015, Schrems, Case C-362/14, ECLI:EU:C:2015:650, para. 94.',
+      'Judgment of 16 July 2020, Schrems, Case C-311/18, ECLI:EU:C:2020:559, para. 168.',
+      'Schrems, para. 94.',
+      'Ibid.',
+      'Ibid., para. 96.',
+    ]);
+    const confirmed = detected.map((citations, index) => (index === 2
+      ? citations.map((citation) => ({ ...citation, caseNumber: 'C-362/14', celex: '62014CJ0362', status: 'resolved' as const, resolutionMethod: 'user_confirmed' as const, candidates: undefined, locator: { kind: 'point' as const, start: 94 }, pinpoint: { paragraphs: [94] } }))
+      : citations));
+
+    const settled = reresolveBackReferences(confirmed);
+    assert.equal(only(settled[3]).caseNumber, 'C-362/14', 'footnote 4 follows the confirmation');
+    assert.deepEqual(only(settled[3]).pinpoint, { paragraphs: [94] }, 'a bare Ibid. still inherits the pinpoint');
+    assert.equal(only(settled[4]).caseNumber, 'C-362/14', 'footnote 5 follows footnote 4');
+    assert.deepEqual(only(settled[4]).pinpoint, { paragraphs: [96] });
+  });
+
+  test('a confirmation elsewhere never licenses reading forwards', () => {
+    // `supra note 3` in footnote 2 is a drafting error whichever way the document is read,
+    // and a confirmation in footnote 3 must not turn it into a resolvable reference.
+    const detected = detectCitationsAcrossFootnotes([
+      'Case C-293/12 Digital Rights Ireland, ECLI:EU:C:2014:238, para. 40.',
+      'Supra note 3, para. 5.',
+      'Schrems, para. 94.',
+    ]);
+    const confirmed = detected.map((citations, index) => (index === 2
+      ? citations.map((citation) => ({ ...citation, caseNumber: 'C-362/14', status: 'resolved' as const, candidates: undefined }))
+      : citations));
+    assert.equal(only(reresolveBackReferences(confirmed)[1]).status, 'unresolved_not_found');
+  });
+
+  test('leaves a back-reference alone while its target is still ambiguous', () => {
+    const detected = detectCitationsAcrossFootnotes(['Case C-293/12, para. 40; Case C-131/12, para. 20.', 'Ibid., para. 44.']);
+    const settled = reresolveBackReferences(detected);
+    assert.equal(only(settled[1]).status, 'unresolved_ambiguous');
+    assert.equal(only(settled[1]).celex, undefined);
+  });
+
+  test('changes nothing when the reviewer has confirmed nothing', () => {
+    const detected = detectCitationsAcrossFootnotes([
+      'Case C-293/12 Digital Rights Ireland, ECLI:EU:C:2014:238, para. 40.',
+      'Ibid., para. 44.',
+      'Van Gend en Loos, para. 12.',
+      'Ibid., para. 14.',
+    ]);
+    assert.deepEqual(reresolveBackReferences(detected), detected);
   });
 
   test('the real document is unaffected: it makes no back-reference', () => {

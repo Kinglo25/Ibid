@@ -49,7 +49,7 @@ export type CitationStatus = 'resolved' | 'unresolved_ambiguous' | 'unresolved_n
  * on a drafter plausibly shortening a case name the way we guessed they would.
  */
 export type ResolutionMethod = 'explicit_alias' | 'generated_variant' | 'fallback_table' | 'user_confirmed'
-  | 'preceding_citation' | 'numbered_footnote';
+  | 'preceding_citation' | 'numbered_footnote' | 'confirmed_back_reference';
 
 /**
  * The single passage the source adapters narrow a fetched document to. This is
@@ -1495,6 +1495,67 @@ export function citedAuthorities(footnoteMatches: CitationMatch[][]): CitationCa
     else authorities.push(registered);
   }
   return authorities.map(toCandidate);
+}
+
+/**
+ * Settles the back-references whose target only became an authority when the reviewer
+ * confirmed it.
+ *
+ * Detection is deliberately pure: a confirmation is layered over the citations rather than
+ * fed back into how the document is read. That works for a name, because confirming
+ * "Schrems" is keyed on the text and every later "Schrems" picks it up through the same
+ * layer. A back-reference cannot benefit from it — it is keyed per occurrence, and the
+ * thing it depends on is not its own text but whether the *footnote it points at* resolved.
+ *
+ * So without this pass the reviewer confirms footnote 3, watches it turn into a resolved
+ * authority, and footnote 4's `Ibid.` goes on reporting that footnote 3 establishes nothing
+ * to point at — the two statements contradicting each other on screen. It fails safe, but
+ * it reads as broken, and the reviewer has no way to act on it except to answer the same
+ * question again.
+ *
+ * Run over the confirmed overlay, not over detection, so the purity of detection holds:
+ * re-derive the citations and only what a person explicitly settled sits on top. Footnotes
+ * are walked in order and the working copy updated as we go, so a chain resolves from one
+ * confirmation — settling footnote 3 carries through 4, then 5.
+ */
+export function reresolveBackReferences<T extends CitationMatch>(footnoteMatches: readonly (readonly T[])[]): T[][] {
+  const result = footnoteMatches.map((citations) => [...citations]);
+
+  for (const [position, citations] of result.entries()) {
+    for (const [slot, citation] of citations.entries()) {
+      const target = citation.backReference?.footnote;
+      if (!target || citation.status === 'resolved') continue;
+      // *Supra* means above, and an `Ibid.` reads what precedes it. A confirmation
+      // elsewhere does not license reading forwards, so the direction rule the resolver
+      // applies has to hold here too.
+      if (target > position + 1) continue;
+
+      const source = target === position + 1
+        ? establishedAuthorities(citations, citation.index)
+        : establishedAuthorities(result[target - 1] ?? []);
+      // Still more than one authority to choose between, or still none: unchanged. This
+      // pass settles references whose referent became unambiguous, and nothing else.
+      if (source.length !== 1) continue;
+
+      const [authority] = source;
+      // Whether this reference stated a pinpoint of its own is one question, not two: a
+      // locator without a paragraph list is a legitimate result of parsing, so testing the
+      // two fields separately could pair this reference's Article with the previous
+      // citation's paragraphs.
+      const statedOwnPinpoint = citation.locator !== undefined || citation.pinpoint !== undefined;
+      // Generic in the citation type so a caller holding `CitationContext` gets its
+      // `context` back rather than a bare `CitationMatch`. The spread carries every extra
+      // property across; the assertion is only because TypeScript cannot see that.
+      citations[slot] = {
+        ...citation, ...authority.citation,
+        status: 'resolved', resolutionMethod: 'confirmed_back_reference', candidates: undefined,
+        locator: statedOwnPinpoint ? citation.locator : authority.locator,
+        pinpoint: statedOwnPinpoint ? citation.pinpoint : authority.pinpoint,
+      } as T;
+    }
+  }
+
+  return result;
 }
 
 /**

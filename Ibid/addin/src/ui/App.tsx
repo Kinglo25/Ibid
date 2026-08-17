@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { citedAuthorities, getCitationContextsForFootnotes, PREVIEW_FOOTNOTES, type CitationCandidate, type CitationContext } from '../../../shared/src';
+import { citedAuthorities, getCitationContextsForFootnotes, reresolveBackReferences, PREVIEW_FOOTNOTES, type CitationCandidate, type CitationContext } from '../../../shared/src';
 
 type Footnote = { id: string; number: number; text: string };
 type ReviewDocument = { title: string; excerpt: string; url: string; source: string };
@@ -132,6 +132,10 @@ function resolutionNote(citation: CitationContext): string {
       ? `Read as the authority cited immediately before it, in footnote ${footnote}.`
       : 'Read as the authority cited immediately before it.';
     case 'numbered_footnote': return `Read from footnote ${footnote}, which this reference names.`;
+    // Distinct from the two above on purpose: this one rests on a choice the reviewer made
+    // about another footnote, not on anything the document states, and saying so is what
+    // lets them see how far their own decision has carried.
+    case 'confirmed_back_reference': return `Read from footnote ${footnote}, which you confirmed.`;
     case 'explicit_alias': return 'Resolved from the short form this document defines for it.';
     case 'generated_variant': return 'Inferred from a case name this document cites in full earlier.';
     // Currently unreachable: a frequent-case suggestion is never `resolved` until a
@@ -275,11 +279,14 @@ export default function App() {
   // reviewer's choices never change how the document itself is read — refreshing re-derives
   // the same citations, and only what a person explicitly settled is layered over them.
   const citationsByFootnote = useMemo(
-    () => detected.map((citations, index) => citations.map((citation) => {
+    // Two layers, in this order. First the reviewer's explicit choices; then the
+    // back-references those choices settle indirectly, since confirming the footnote an
+    // `Ibid.` points at answers that `Ibid.` too — see `reresolveBackReferences`.
+    () => reresolveBackReferences(detected.map((citations, index) => citations.map((citation) => {
       if (citation.status === 'resolved') return citation;
       const confirmed = confirmations[confirmationKey(citation, footnotes[index].id)];
       return confirmed ? { ...citation, ...confirmed, status: 'resolved' as const, resolutionMethod: 'user_confirmed' as const, candidates: undefined } : citation;
-    })),
+    }))),
     [detected, confirmations, footnotes],
   );
 
