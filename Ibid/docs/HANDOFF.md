@@ -627,6 +627,34 @@ language-independent — but its pinpoint word is not recognised, so no paragrap
 is claimed rather than a wrong one. `citation-formats.test.ts` pins the boundary
 in both directions so neither half drifts back by accident.
 
+### The French-only corpus, measured
+
+Translation is **deferred by decision**, not unbuilt: the `translate` seam exists
+and is tested, no provider is wired, and a French-only document is shown in
+French with a note saying so.
+
+The size of the problem was measured live against CELLAR rather than guessed:
+**207 CJEU documents** have a French text and no English one — 5,930,852
+characters, roughly $163 at DeepL's per-million rate. Breakdown: 37 General
+Court judgments, 18 Court of Justice judgments, 114 CJ orders, 32 GC orders, 6
+AG opinions. The substantive core is 61 documents; the rest are short procedural
+orders. Accrual runs ~10–18/year, but 2024 and 2025 show 49 and 57 — almost
+certainly translation lag rather than permanent absence, so the stable set is the
+~89 documents from 2014–2023.
+
+**Do not re-derive this with the obvious query.** Asking SPARQL for works with a
+French expression and `FILTER NOT EXISTS` an English one returns **3,427, which
+is wrong**: one CELEX maps to several work URIs, and `62018CJ0389` has a
+French-only work alongside a 23-language one. The correct method is a set
+difference on `cdm:resource_legal_id_celex` at CELEX level, then verification
+against live CELLAR — which still leaves two false-positive classes, English
+simply being present, and English filed under a joined-case sibling.
+
+If translation is taken up: pre-translate the stable pre-2024 set, ship it as
+data, and drop the runtime dependency entirely. The refresh job must **re-check
+English availability** on documents already translated, or Ibid will go on
+showing a machine translation after the authentic one lands.
+
 ### Adversarial format sweep — three more defects
 
 A deliberate sweep for *failures* rather than confirmations, across areas nothing
@@ -1059,10 +1087,12 @@ Then sideload `addin/manifest.xml` in Word and open the sample document. Select 
 
 1. Run the Word end-to-end validation above and fix Office.js compatibility/UI issues that appear.
 2. Add explicit Commission-family classification (competition, state aid, merger, infringement) from citation context, then route each family to the appropriate official register. The current generic Commission adapter is intentionally conservative.
-3. Extend the task-pane tests. The runner now exists (see "Task-pane tests" below) and covers the presentation logic and the confirmation flow; the retrieval states — loading, success, retrieval error — are still only exercised through a stubbed `fetch` that always returns no documents.
+3. Extend the task-pane tests. The runner covers the presentation logic, the confirmation flow, and — since the `import.meta.env` fix below — the success state with each language outcome. The **loading** and **retrieval-error** states are still unexercised, as is the cursor-following code, which needs Word and has never been executed anywhere.
 4. Replace in-memory cache/rate limiting with shared, observable infrastructure before horizontal scaling.
 5. Broaden `documentTypeNear` in `shared/src/index.ts` if real documents surface more opinion/order phrasings than the current signal set (English "Opinion of [the] Advocate General" / "Order of the [General] Court", French "conclusions de l'avocat général" / "ordonnance"). Missing a signal is safe — it only causes an unnecessary fetch attempt that 404s and falls back to the link — but it is worth tightening once real client documents are seen.
-6. Clean up the legislation title heuristic in `resolveCellarPreview` (`api/src/index.ts`) — it currently surfaces the document's internal filename for at least the GDPR instead of a human title. Cosmetic; the excerpt text is unaffected, and `describeDocument` now supplies a usable name whenever extraction returns nothing at all.
+6. Fix the joined-case CELEX gap. Where an opinion or judgment covers joined cases, CELLAR can file the English under the **lead** case number only: `62013CC0613` 404s for English while `62013CC0609` serves it. Ibid derives one CELEX from the number it read, so it falls back to French for a document whose authentic English is one CELEX away. Rare (1 of 210 sampled) but the resolver already carries joined-case machinery, so this is a known pattern rather than a freak.
+7. Verify the served language rather than assuming it. `fetchCellarDocument` returns the language it *requested*, not the one it received. CELLAR honoured `Accept-Language` in all 207 documents tested — it 404s cleanly for an absent language — so nothing is mislabelled today, but the guarantee is CELLAR's behaviour and not a check Ibid performs. The documents carry fixed headers (`ARRÊT DE LA COUR` / `JUDGMENT OF THE COURT`, `CONCLUSIONS DE L'AVOCAT GÉNÉRAL` / `OPINION OF ADVOCATE GENERAL`) that make this cheap to assert.
+8. Clean up the legislation title heuristic in `resolveCellarPreview` (`api/src/index.ts`) — it currently surfaces the document's internal filename for at least the GDPR instead of a human title. Cosmetic; the excerpt text is unaffected, and `describeDocument` now supplies a usable name whenever extraction returns nothing at all.
 
 ### Resolved: post-2015 legislation citations
 
