@@ -134,3 +134,27 @@ export function unresolvedMessage(citation: CitationContext): string {
     ? `"${citation.value}" could refer to more than one authority, and this document does not say which.`
     : `"${citation.value}" reads like a reference to an authority, but nothing in this document defines it.`;
 }
+
+/**
+ * Whether a footnote is one the reviewer still has to decide something about.
+ *
+ * This is what the list filters on. A brief with a hundred footnotes has a hundred entries
+ * of which perhaps six need a person, and showing all hundred buries those six — the
+ * reviewer's attention is the scarce resource, the same reason confirmation is not asked
+ * for on every citation.
+ */
+export function needsReview(citations: readonly CitationContext[]): boolean {
+  return citations.some((citation) => citation.status !== 'resolved');
+}
+
+/**
+ * The citation to open automatically when the cursor lands on a footnote.
+ *
+ * Only where the footnote holds exactly one, because that is the only case with no choice
+ * to make. A footnote citing two authorities gets neither opened: guessing which of them
+ * the reviewer meant would put a source panel behind a decision they did not make, and the
+ * two chips are right there to pick from.
+ */
+export function autoSelectable(citations: readonly CitationContext[]): CitationContext | undefined {
+  return citations.length === 1 ? citations[0] : undefined;
+}

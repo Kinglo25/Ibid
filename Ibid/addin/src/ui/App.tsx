@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { citedAuthorities, getCitationContextsForFootnotes, reresolveBackReferences, PREVIEW_FOOTNOTES, type CitationCandidate, type CitationContext } from '../../../shared/src';
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
-  officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage, type ReviewFootnote,
+  autoSelectable, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes,
+  unresolvedMessage, type ReviewFootnote,
 } from './citation-view';
 
 type ReviewDocument = {
@@ -55,6 +56,59 @@ async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFoot
       // dropping one here shifts every footnote after it. See `toReviewFootnotes`.
       footnotes: toReviewFootnotes(footnotes.items.map((footnote) => footnote.body.text)),
     };
+  });
+}
+
+/**
+ * Which footnotes the cursor is currently in or on.
+ *
+ * Word gives an add-in no way to draw next to the text — the document canvas is Word's, and
+ * a dialog opens centred on the screen rather than beside what it explains. So "show me the
+ * source for the citation I am looking at" cannot be a popup at the citation; it has to be
+ * the pane following the cursor. This is the part that makes that work.
+ *
+ * Two routes, because there are two things a reviewer might click:
+ *
+ *  - the footnote's own text at the foot of the page, where the selection sits *inside* the
+ *    footnote body, found by matching that body's text against the footnotes already read;
+ *  - the reference mark in the body text, where the selection *contains* the footnote,
+ *    which `Range.footnotes` reports directly.
+ *
+ * Matching on text rather than comparing ranges one by one is deliberate: `compareLocationWith`
+ * against every footnote would be a hundred queued operations on every cursor move, and the
+ * texts are already in hand. Two identical footnotes would be indistinguishable, which costs
+ * a wrong highlight and nothing more.
+ *
+ * Every step is guarded. This runs on every cursor movement in the document, against API
+ * surface that varies by Word build, and a failure here must never take the pane down with
+ * it — the list still works, so the worst case is that the pane simply stops following.
+ */
+async function readSelectedFootnotes(knownTexts: readonly string[]): Promise<number[]> {
+  const normalise = (value: string) => value.replace(/\s+/g, ' ').trim();
+  const known = knownTexts.map(normalise);
+
+  return Word.run(async (context) => {
+    const selection = context.document.getSelection();
+    const contained = selection.footnotes;
+    contained.load('items');
+    const parent = selection.parentBody;
+    parent.load('text');
+    await context.sync();
+
+    // The reference mark, or a stretch of body text covering several of them.
+    if (contained.items.length) {
+      contained.items.forEach((footnote) => footnote.body.load('text'));
+      await context.sync();
+      const hits = contained.items
+        .map((footnote) => known.indexOf(normalise(footnote.body.text)))
+        .filter((index) => index >= 0);
+      if (hits.length) return hits;
+    }
+
+    // The cursor inside the footnote itself: its parent body is the footnote's body.
+    const parentText = normalise(parent.text ?? '');
+    const index = parentText ? known.indexOf(parentText) : -1;
+    return index >= 0 ? [index] : [];
   });
 }
 
@@ -141,6 +195,12 @@ export default function App() {
   const [status, setStatus] = useState('Loading source material…');
   const [selected, setSelected] = useState<{ citation: CitationContext; footnote: ReviewFootnote } | null>(null);
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
+  // Which footnote the cursor is in, when Word is telling us. Null in the browser preview
+  // and whenever the cursor is somewhere that is not a footnote.
+  const [focused, setFocused] = useState<number | null>(null);
+  const [following, setFollowing] = useState(false);
+  // A hundred footnotes of which six need a decision: showing all hundred buries the six.
+  const [showAll, setShowAll] = useState(false);
   // Keyed by the short form itself, so confirming "Intel" once settles every "Intel" in the
   // document rather than asking again at each footnote. Deliberately not persisted: a
   // confirmation is a judgement about this document, and silently carrying it into the next
@@ -206,6 +266,38 @@ export default function App() {
 
   useEffect(() => { void refresh(); }, []);
 
+  // Follow the cursor. Registered once the document has been read, because resolving a
+  // selection means matching it against footnote text we must already hold.
+  useEffect(() => {
+    if (!footnotes.length || !isWordRuntimeAvailable()) return;
+    const texts = footnotes.map((footnote) => footnote.text);
+    let cancelled = false;
+
+    const onSelectionChanged = () => {
+      void readSelectedFootnotes(texts)
+        .then((hits) => { if (!cancelled) setFocused(hits.length ? hits[0] : null); })
+        // Silent by design: this fires on every cursor movement, so a failure must not
+        // produce an error the reviewer has to dismiss over and over. The list still works.
+        .catch(() => undefined);
+    };
+
+    try {
+      Office.context.document.addHandlerAsync(
+        Office.EventType.DocumentSelectionChanged,
+        onSelectionChanged,
+        (result) => { if (!cancelled) setFollowing(result.status === Office.AsyncResultStatus.Succeeded); },
+      );
+    } catch { setFollowing(false); }
+
+    onSelectionChanged();
+    return () => {
+      cancelled = true;
+      try {
+        Office.context.document.removeHandlerAsync(Office.EventType.DocumentSelectionChanged, { handler: onSelectionChanged });
+      } catch { /* the pane is closing; nothing useful remains to do */ }
+    };
+  }, [footnotes]);
+
   // Computed once for the whole document, in footnote order, so a short form defined in
   // one footnote (e.g. `ECLI:EU:C:2010:512 ("Akzo Nobel")`) is recognised in a later one
   // that only uses the short form ("Akzo Nobel, para. 45.") — see
@@ -232,61 +324,61 @@ export default function App() {
   );
 
   const authorities = useMemo(() => citedAuthorities(detected), [detected]);
+
+  // Landing on a footnote opens its source, but only where there is no choice to make —
+  // see `autoSelectable`. Keyed on the footnote so moving the cursor within one footnote
+  // does not reopen what the reviewer may have just navigated away from.
+  useEffect(() => {
+    if (focused === null) return;
+    const footnote = footnotes[focused];
+    const citation = autoSelectable(citationsByFootnote[focused] ?? []);
+    if (footnote && citation) void selectCitation(citation, footnote);
+    // Deliberately keyed on the footnote and its citations only. `selectCitation` and
+    // `footnotes` are read here but must not retrigger it: re-running on every render would
+    // reopen the source the reviewer may have just navigated away from.
+  }, [focused, citationsByFootnote]);
   const reviewable = useMemo(() => footnotes.filter((footnote) => footnote.text), [footnotes]);
+
+  const focusedFootnote = focused === null ? undefined : footnotes[focused];
+  const listed = footnotes
+    .map((footnote, index) => ({ footnote, index, citations: citationsByFootnote[index] ?? [] }))
+    .filter((entry) => entry.footnote.text)
+    .filter((entry) => showAll || needsReview(entry.citations) || entry.index === focused);
+  const outstanding = footnotes
+    .filter((footnote, index) => footnote.text && needsReview(citationsByFootnote[index] ?? [])).length;
 
   return (
     <main className="app-shell">
       <header className="app-header">
         <p className="eyebrow">Ibid.</p>
         <h1>EU legal source review</h1>
-        <p className="lede">Inspect official CJEU, EUR-Lex, and Commission source material without leaving Word.</p>
+        <p className="lede">{following
+          ? 'Put your cursor on a citation in your document and its source appears here.'
+          : 'Select a citation below to inspect its official source.'}</p>
       </header>
 
-      <section className="panel source-overview">
-        <div className="panel-actions">
-          <div><h2>Document source</h2><p className="status">{status}</p></div>
-          <button type="button" onClick={() => void refresh()}>Refresh</button>
-        </div>
-        <details>
-          <summary>View document body</summary>
-          <pre className="source-text">{body || 'No document body text available.'}</pre>
-        </details>
-      </section>
-
-      <section className="panel">
-        <div className="panel-title"><h2>Footnotes</h2><span className="count">{reviewable.length}</span></div>
-        {reviewable.length === 0 ? <p>No footnotes available for review.</p> : (
-          <ol className="footnote-list">
-            {footnotes.map((footnote, index) => {
-              // Empty footnotes are carried through detection to keep the numbering honest,
-              // but there is nothing to show for them.
-              if (!footnote.text) return null;
-              const citations = citationsByFootnote[index] ?? [];
-              return <li key={footnote.id} className="footnote-item">
-                <div className="footnote-number">{footnote.number}</div>
-                <div className="footnote-content">
-                  <p>{footnote.text}</p>
-                  {citations.length ? <div className="citation-chips">
-                    {citations.map((citation) => <button
-                      className={citation.status === 'resolved' ? 'citation-chip' : 'citation-chip unconfirmed'}
-                      type="button"
-                      key={citationKey(citation, footnote.id)}
-                      title={citation.status === 'resolved' ? resolutionNote(citation)
-                        : citation.status === 'unconfirmed_suggestion' ? 'Ibid has a suggestion for this, but the document does not define it. Select to confirm.'
-                          : 'Ibid could not confirm which authority this refers to. Select to choose one.'}
-                      onClick={() => void selectCitation(citation, footnote)}
-                    >{citation.value}{citation.status === 'resolved' ? '' : ' ?'}</button>)}
-                  </div> : <span className="muted">No citation pattern detected in this footnote.</span>}
-                </div>
-              </li>;
-            })}
-          </ol>
-        )}
-      </section>
-
       <section className="panel review-panel" aria-live="polite">
-        <h2>Original source review</h2>
-        {!selected && <p>Select a citation from a footnote to inspect its context and look for the underlying opinion.</p>}
+        <div className="panel-title">
+          <h2>{selected ? 'Source' : 'No citation selected'}</h2>
+          {focusedFootnote && <span className="count">Footnote {focusedFootnote.number}</span>}
+        </div>
+
+        {!selected && <p className="muted">{following
+          ? 'Click a citation in a footnote of your document, or pick one from the list below.'
+          : 'Pick a citation from the list below.'}</p>}
+
+        {/* The footnote under the cursor, with its citations as chips. Shown whenever it
+            holds more than one, because then landing on it opens nothing by itself and the
+            reviewer has to say which authority they meant. */}
+        {focusedFootnote && (citationsByFootnote[focused!] ?? []).length > 1 && <div className="citation-chips focused-chips">
+          {(citationsByFootnote[focused!] ?? []).map((citation) => <button
+            className={`citation-chip${citation.status === 'resolved' ? '' : ' unconfirmed'}${selected?.citation === citation ? ' current' : ''}`}
+            type="button"
+            key={citationKey(citation, focusedFootnote.id)}
+            onClick={() => void selectCitation(citation, focusedFootnote)}
+          >{citation.value}{citation.status === 'resolved' ? '' : ' ?'}</button>)}
+        </div>}
+
         {selected && <>
           <p className="selected-citation">{selected.citation.value}</p>
           {selected.citation.status === 'resolved' && <p className="resolution-note">{resolutionNote(selected.citation)}</p>}
@@ -310,6 +402,54 @@ export default function App() {
           {selected.citation.status === 'resolved' &&
             <a className="source-link" href={officialSourceUrl(selected.citation)} target="_blank" rel="noreferrer">Open official source</a>}
         </>}
+      </section>
+
+      <section className="panel">
+        <div className="panel-title">
+          <h2>{showAll ? 'All footnotes' : 'Needs review'}</h2>
+          <span className="count">{showAll ? reviewable.length : outstanding}</span>
+          <button type="button" className="list-toggle" onClick={() => setShowAll((current) => !current)}>
+            {showAll ? 'Show only what needs review' : `Show all ${reviewable.length}`}
+          </button>
+        </div>
+
+        {listed.length === 0
+          ? <p className="muted">{reviewable.length === 0
+            ? 'No footnotes available for review.'
+            : 'Nothing outstanding — every citation in this document resolved.'}</p>
+          : <ol className="footnote-list">
+            {listed.map(({ footnote, index, citations }) => <li
+              key={footnote.id}
+              className={`footnote-item${index === focused ? ' focused' : ''}`}
+            >
+              <div className="footnote-number">{footnote.number}</div>
+              <div className="footnote-content">
+                <p>{footnote.text}</p>
+                {citations.length ? <div className="citation-chips">
+                  {citations.map((citation) => <button
+                    className={`citation-chip${citation.status === 'resolved' ? '' : ' unconfirmed'}`}
+                    type="button"
+                    key={citationKey(citation, footnote.id)}
+                    title={citation.status === 'resolved' ? resolutionNote(citation)
+                      : citation.status === 'unconfirmed_suggestion' ? 'Ibid has a suggestion for this, but the document does not define it. Select to confirm.'
+                        : 'Ibid could not confirm which authority this refers to. Select to choose one.'}
+                    onClick={() => void selectCitation(citation, footnote)}
+                  >{citation.value}{citation.status === 'resolved' ? '' : ' ?'}</button>)}
+                </div> : <span className="muted">No citation pattern detected in this footnote.</span>}
+              </div>
+            </li>)}
+          </ol>}
+      </section>
+
+      <section className="panel source-overview">
+        <div className="panel-actions">
+          <div><h2>Document</h2><p className="status">{status}</p></div>
+          <button type="button" onClick={() => void refresh()}>Refresh</button>
+        </div>
+        <details>
+          <summary>View document body</summary>
+          <pre className="source-text">{body || 'No document body text available.'}</pre>
+        </details>
       </section>
     </main>
   );

@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { candidateLabel, confirmationKey, officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage } from '../src/ui/citation-view.ts';
+import { autoSelectable, candidateLabel, confirmationKey, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -147,5 +147,37 @@ describe('the official source a back-reference links to', () => {
       'Opinion of Advocate General Wahl of 20 October 2016 in Intel, ECLI:EU:C:2016:788, point 73.',
     ]).flat();
     assert.notEqual(candidateLabel({ ...judgment }), candidateLabel({ ...opinion }));
+  });
+});
+
+describe('what the list shows, and what opens by itself', () => {
+  test('a footnote whose citations all resolved needs no review', () => {
+    assert.equal(needsReview(context([LEAD], 0)), false);
+  });
+
+  test('an ambiguous citation puts its footnote on the list', () => {
+    const footnotes = ['Case C-362/14 Schrems, para. 94.', 'Case C-311/18 Schrems, para. 168.', 'Schrems, para. 94.'];
+    assert.equal(needsReview(context(footnotes, 2)), true);
+  });
+
+  test('a footnote with no citation at all is not something to review', () => {
+    // Ordinary commentary. Listing it would be noise, which is the problem being solved.
+    assert.equal(needsReview(context([LEAD, 'This proposition is uncontroversial.'], 1)), false);
+  });
+
+  test('landing on a footnote with one citation opens it', () => {
+    assert.equal(autoSelectable(context([LEAD], 0))?.value, 'ECLI:EU:C:2014:238');
+  });
+
+  test('landing on a footnote citing two authorities opens neither', () => {
+    // There is a choice to make and no basis for making it. Opening one would put a source
+    // panel behind a decision the reviewer never took.
+    const both = context(['Case C-293/12, para. 40; Case C-131/12, para. 20.'], 0);
+    assert.equal(both.length, 2);
+    assert.equal(autoSelectable(both), undefined);
+  });
+
+  test('landing on a footnote with no citation opens nothing', () => {
+    assert.equal(autoSelectable([]), undefined);
   });
 });

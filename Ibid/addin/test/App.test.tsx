@@ -21,9 +21,16 @@ const findChip = async (label: string) => {
   return chips;
 };
 
+/** The list defaults to what needs a decision; resolved citations live behind the toggle. */
+const showEveryFootnote = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(await screen.findByRole('button', { name: /Show all/ }));
+};
+
 describe('the pane, rendered', () => {
   test('reads the preview document when Word is not there', async () => {
+    const user = userEvent.setup();
     render(<App />);
+    await showEveryFootnote(user);
     // Footnote 1 is the GDPR cited in full; its chip is the act itself.
     assert.ok(await screen.findByRole('button', { name: /Regulation \(EU\) 2016\/679/ }));
     // ...and the memo runs all the way to its back-references, so the whole document was
@@ -32,11 +39,36 @@ describe('the pane, rendered', () => {
     assert.equal((await findChip('Supra note 14')).length, 1);
   });
 
+  test('lists only what needs a decision, until asked for everything', async () => {
+    // The reason the pane changed shape. A brief with a hundred footnotes has a handful
+    // that need a person, and listing all hundred buries them.
+    const user = userEvent.setup();
+    render(<App />);
+
+    // "Schrems" is ambiguous and "Post Danmark" undefined, so both must be listed...
+    assert.ok(await screen.findByRole('button', { name: /Schrems \?/ }));
+    assert.ok(await screen.findByRole('button', { name: /Post Danmark \?/ }));
+    // ...while a citation that resolved cleanly is not competing for attention.
+    assert.equal(screen.queryByRole('button', { name: /Regulation \(EU\) 2016\/679/ }), null);
+
+    await showEveryFootnote(user);
+    assert.ok(await screen.findByRole('button', { name: /Regulation \(EU\) 2016\/679/ }));
+  });
+
+  test('says how many footnotes are still outstanding', async () => {
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Needs review' });
+    // The memo leaves exactly two: the ambiguous "Schrems" and the undefined "Post Danmark".
+    const count = await screen.findByText('2', { selector: '.count' });
+    assert.ok(count);
+  });
+
   test('a resolved back-reference says which footnote it was read from', async () => {
     // Footnote 20 is a bare `Ibid.`; footnote 19 is `Supra note 14`. Selecting each has to
     // show provenance naming the footnote it read, not a generic "stated in this footnote".
     const user = userEvent.setup();
     render(<App />);
+    await showEveryFootnote(user);
 
     const [supra] = await findChip('Supra note 14');
     await user.click(supra);

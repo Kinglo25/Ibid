@@ -4,7 +4,8 @@
 Ibid is an EU-law Word add-in for lawyers. It identifies references in footnotes and presents official source material from CJEU/CURIA, EUR-Lex, and European Commission registers inside the task pane. It assists source inspection; it does not assess legal correctness.
 
 ## Current implementation
-- Individual Word footnotes are read and presented as review items.
+- Individual Word footnotes are read and presented as review items. The pane follows the cursor: putting the caret on a citation, or on its reference mark in the body, shows that citation's source at the top of the pane. Word gives an add-in no way to draw beside the text — the document canvas is Word's own, and a dialog opens centred rather than next to what it explains — so following the cursor is what a popup at the citation would have been.
+- The footnote list below it shows only what still needs a decision, with a toggle for all of them. On a brief with a hundred footnotes the handful that need a person are otherwise buried.
 - EU-first recognition covers ECLI identifiers, CJEU/General Court case numbers, EU directives, regulations, recommendations, published EU decisions, DG Competition's own case numbers (`AT.`/`SA.`/`M.`), and Treaty articles (`Article 101 TFEU`, `Article 6(3) TEU`, `Article 47 of the Charter`, including the French `TFUE`/`TUE`/`Charte des droits fondamentaux` and `CFR`/`CDFUE` short forms). Legislation is recognised in both the pre-2015 citation style (`Directive 2002/58/EC`, `Regulation (EC) No 1049/2001`) and the current style (`Regulation (EU) 2016/679`, or informally without the bracket), including the number-order reversal between conventions. Article/point locators are recognised from common abbreviations and symbols too (`Art.`, `para.`/`paras.`, `§`, `¶`), not just the spelled-out words, and a paragraph within an article (`Art. 8(5)`) is distinguished from the article as a whole.
 - Short-form citations are resolved against the document, not looked up in isolation. A footnote reading only `Akzo Nobel, para. 40` carries no information on its own — it only means anything relative to a full citation stated earlier — so Ibid reads the whole document in order, registers each full citation under the short forms it could later be referred to by (any short form the drafter declared in quotes, plus the shortened case names a drafter plausibly uses), and resolves later references back to it. A footnote is split on `;` first, so one authority in a multi-authority footnote can never take the next one's pinpoint.
 - A short form that matches more than one authority is never guessed at. It is reported as unresolved and no source is fetched for it — a wrong citation shown with full confidence is worse than a flagged gap. Only a `resolved` citation ever carries an identifier; everything else keeps its candidates separate, so nothing downstream can fetch on the strength of a guess.
@@ -21,7 +22,7 @@ Ibid is an EU-law Word add-in for lawyers. It identifies references in footnotes
 ## Development
 Run `npm run dev` from the repository root. This builds and starts the local resolver and Vite task-pane server. If port 4000 is occupied, use `IBID_API_PORT=4001 npm run dev` so both the API and Vite proxy use the same alternate port.
 
-Run `npm run verify` to lint, type-check the tests, run the 362 tests, and build.
+Run `npm run verify` to lint, type-check the tests, run the 370 tests, and build.
 
 For the detailed implementation handoff and test checklist, see [HANDOFF.md](HANDOFF.md).
 
