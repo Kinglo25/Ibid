@@ -18,6 +18,10 @@ GlobalRegistrator.register();
  * The source lookup is the API's job and has its own suite; here it only has to not reach
  * the network. Returning no documents puts the pane in its 'empty' state, which is a real
  * state it must handle and keeps these tests about the pane rather than about retrieval.
+ *
+ * A test that needs a different state replaces this for its own duration — see the
+ * language tests in App.test.tsx, which are the reason `resolveSource` no longer reaches
+ * through `import.meta.env` unguarded.
  */
 globalThis.fetch = (() => Promise.resolve({
   ok: true,

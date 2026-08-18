@@ -113,7 +113,12 @@ async function readSelectedFootnotes(knownTexts: readonly string[]): Promise<num
 }
 
 async function resolveSource(citation: CitationContext): Promise<ReviewDocument[]> {
-  const apiBase = import.meta.env.VITE_IBID_API_BASE_URL?.replace(/\/$/, '') ?? '/api';
+  // `import.meta.env` is Vite's, and exists only in a Vite-built bundle. Reaching through
+  // it unguarded threw a TypeError under every other runtime — which meant the task-pane
+  // tests never reached `fetch` at all, and every retrieval state below was silently
+  // untested. Optional-chaining here costs nothing in the browser and makes the pane
+  // runnable wherever it is imported.
+  const apiBase = import.meta.env?.VITE_IBID_API_BASE_URL?.replace(/\/$/, '') ?? '/api';
   const lookup = {
     source: citation.source, value: citation.value, celex: citation.celex, ecli: citation.ecli,
     caseNumber: citation.caseNumber, caseName: citation.caseName,

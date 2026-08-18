@@ -16,6 +16,28 @@ import App from '../src/ui/App.tsx';
 
 afterEach(cleanup);
 
+/**
+ * The pane's default stub returns no documents, so every retrieval state below the 'empty'
+ * one went unexercised — including the note that tells a lawyer the passage in front of
+ * them is not English. That note is the whole of the current French policy: where no
+ * English version was ever published, Ibid shows the authentic French and says why. It is
+ * the one thing that must not silently regress, because the failure mode is a reader
+ * assuming they are looking at something they are not.
+ */
+const originalFetch = globalThis.fetch;
+const servingDocuments = (documents: unknown[]) => {
+  globalThis.fetch = (() => Promise.resolve({
+    ok: true, status: 200, json: () => Promise.resolve({ documents }),
+  } as Response)) as typeof fetch;
+};
+afterEach(() => { globalThis.fetch = originalFetch; });
+
+const frenchJudgment = {
+  title: 'Case C-280/19', source: 'CURIA', url: 'https://eur-lex.europa.eu/x',
+  excerpt: '30 Par lettre du 24 juin 2016, l\u2019ERCEA a confirm\u00e9 sa position.',
+  language: 'fr' as const,
+};
+
 const findChip = async (label: string) => {
   const chips = await screen.findAllByRole('button', { name: (name) => name.trim() === label });
   return chips;
@@ -101,5 +123,49 @@ describe('the pane, rendered', () => {
 
     await screen.findByText('Confirmed by you for this document.');
     await waitFor(() => assert.equal(screen.queryByRole('button', { name: 'Use this' }), null));
+  });
+
+  describe('the language of the passage', () => {
+    test('a French-only passage is shown in French and says so', async () => {
+      // What the reviewer must never do is read this as English. No translator is
+      // configured, so the authentic text is what there is - labelled, not disguised.
+      servingDocuments([frenchJudgment]);
+      const user = userEvent.setup();
+      render(<App />);
+      await showEveryFootnote(user);
+      await user.click((await findChip('Ibid.'))[0]);
+
+      await screen.findByText('Published only in French. Shown in the official language.');
+      assert.ok(screen.getByText(/Par lettre du 24 juin 2016/));
+    });
+
+    test('the published English text is shown with no note at all', async () => {
+      // The case that needs no explaining. A note here would be noise on every citation.
+      servingDocuments([{ ...frenchJudgment, language: 'en', excerpt: '40 Nor is that retention of data...' }]);
+      const user = userEvent.setup();
+      render(<App />);
+      await showEveryFootnote(user);
+      await user.click((await findChip('Ibid.'))[0]);
+
+      await screen.findByText(/Nor is that retention of data/);
+      assert.equal(screen.queryByText(/Published only in French/), null);
+    });
+
+    test('a machine translation is marked as not authentic and links to the French', async () => {
+      // Unreachable today - no translator is wired - but this is the path that opens the
+      // moment one is, and a translation presented as the authority is the worst outcome
+      // the feature can produce.
+      servingDocuments([{ ...frenchJudgment, language: 'en', excerpt: '30 By letter of 24 June 2016...',
+        translation: { from: 'fr', officialUrl: 'https://eur-lex.europa.eu/official-fr' } }]);
+      const user = userEvent.setup();
+      render(<App />);
+      await showEveryFootnote(user);
+      await user.click((await findChip('Ibid.'))[0]);
+
+      await screen.findByText(/this is not the authentic text/);
+      const link = screen.getByRole('link', { name: 'Open the official version' });
+      assert.equal(link.getAttribute('href'), 'https://eur-lex.europa.eu/official-fr');
+      assert.equal(screen.queryByText(/Published only in French/), null);
+    });
   });
 });
