@@ -5,11 +5,11 @@
            xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
            xsi:type="TaskPaneApp">
   <Id>7d7f6d4a-1d8a-4a5e-8c0d-1b0d8f9f2c31</Id>
-  <Version>0.1.0.0</Version>
+  <Version>1.0.0.0</Version>
   <ProviderName>Ibid</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Ibid." />
-  <Description DefaultValue="Legal citation preview add-in." />
+  <Description DefaultValue="Reviews EU-law citations in footnotes and shows the official source passage from EUR-Lex, CELLAR and CURIA." />
   <IconUrl DefaultValue="https://localhost:3000/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://localhost:3000/icon-64.png" />
   <SupportUrl DefaultValue="https://localhost:3000" />
@@ -17,10 +17,81 @@
     <AppDomain>https://localhost:3000</AppDomain>
   </AppDomains>
   <Hosts>
-    <Host Name="Word" />
+    <Host Name="Document" />
   </Hosts>
+  <!--
+    Footnote enumeration (Body.footnotes, Range.footnotes, Word.NoteItem) arrived in
+    WordApi 1.5. Declaring it means Word refuses to activate Ibid where footnotes cannot
+    be read, rather than loading a pane that silently finds nothing — the failure a
+    reviewer would most easily mistake for "this document has no citations".
+
+    1.5 needs Microsoft 365 Word 2302+ (Feb 2023), Office 2024, Word on the web, or Mac
+    16.70+. It is NOT available on volume-licensed Office 2019 or 2021.
+  -->
+  <Requirements>
+    <Sets DefaultMinVersion="1.5">
+      <Set Name="WordApi" MinVersion="1.5" />
+    </Sets>
+  </Requirements>
   <DefaultSettings>
     <SourceLocation DefaultValue="https://localhost:3000/taskpane.html" />
   </DefaultSettings>
-  <Permissions>ReadWriteDocument</Permissions>
+  <!-- Ibid only ever reads. It makes no mutating Word call, so it asks for no write access. -->
+  <Permissions>ReadDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <FunctionFile resid="Commands.Url" />
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Ibid.Group">
+                <Label resid="Ibid.GroupLabel" />
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16x16" />
+                  <bt:Image size="32" resid="Icon.32x32" />
+                  <bt:Image size="80" resid="Icon.80x80" />
+                </Icon>
+                <Control xsi:type="Button" id="Ibid.TaskpaneButton">
+                  <Label resid="Ibid.ButtonLabel" />
+                  <Supertip>
+                    <Title resid="Ibid.ButtonLabel" />
+                    <Description resid="Ibid.ButtonTooltip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16x16" />
+                    <bt:Image size="32" resid="Icon.32x32" />
+                    <bt:Image size="80" resid="Icon.80x80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>IbidTaskpane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:3000/icon-16.png" />
+        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:3000/icon-32.png" />
+        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:3000/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Commands.Url" DefaultValue="https://localhost:3000/commands.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/taskpane.html" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Ibid.GroupLabel" DefaultValue="Ibid." />
+        <bt:String id="Ibid.ButtonLabel" DefaultValue="Review citations" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Ibid.ButtonTooltip" DefaultValue="Open Ibid to inspect the official source behind each citation in this document's footnotes." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
 </OfficeApp>

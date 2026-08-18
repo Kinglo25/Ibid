@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "TSX_TSCONFIG_PATH=./tsconfig.test.json node --import tsx --import ./test/setup-dom.ts --test \"test/**/*.test.ts\" \"test/**/*.test.tsx\"",
-    "typecheck:test": "tsc -p tsconfig.test.json"
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "manifest": "node scripts/build-manifest.mjs"
   },
   "dependencies": {
     "react": "^19.0.0",

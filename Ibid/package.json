@@ -24,5 +24,8 @@
     "globals": "^14.0.0",
     "rollup": "^4.14.0",
     "typescript-eslint": "^8.67.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

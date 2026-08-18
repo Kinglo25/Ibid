@@ -20,9 +20,9 @@ export default [
     ...baseRules,
   },
   {
-    // Vite config runs in Node, not in the task pane.
-    files: ['vite.config.ts'],
-    languageOptions: { globals: { ...globals.node } },
+    // Vite config and the build scripts run in Node, not in the task pane.
+    files: ['vite.config.ts', 'scripts/**/*.mjs'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: { ...globals.node } },
     rules: { 'no-console': 'off' },
   },
   {
