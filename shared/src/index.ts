@@ -1488,6 +1488,33 @@ function resolveBackReferences(
  * segment that already identifies an authority, a capitalised name is part of that citation
  * (its case name, its court, its parties), not a separate unresolved reference.
  */
+/**
+ * A reference to a document, wearing the shape of a citation.
+ *
+ * "Reply to the Preliminary Findings, paragraph 47." is a capitalised name in front of a
+ * pinpoint, which is exactly what a short-form citation looks like, and it is not one. It
+ * points at a document in the case file. A Commission decision refers to its own file
+ * constantly, so on a real one this shape does not merely appear, it dominates: on the DSA
+ * decision against X it accounted for 173 of 266 detections, 171 of them this same phrase,
+ * each offered to the reviewer as an authority to go and identify.
+ *
+ * Two signals, both structural rather than a list of titles. A definite article in front of
+ * the name — an authority is cited as "Google Spain, paragraph 80", never as "the Google
+ * Spain", because the name is the parties, not a thing. And a document noun at the end of
+ * it: findings, decisions, rules and reports are what a case file holds, not what a court
+ * hands down. Either one is enough on its own.
+ *
+ * Confined to the unresolved scan on purpose. A name this document defines resolves long
+ * before reaching here, so the most this can do is suppress a report Ibid was about to make
+ * with nothing behind it — never turn a resolved citation into a missed one.
+ */
+const DEFINITE_ARTICLE_BEFORE = /(?:\b(?:the|les|la|le|des|du)\s+|\bl['’])$/i;
+const DOCUMENT_NOUN = /\b(?:findings?|decisions?|d[ée]cisions?|rules?|guidelines?|reports?|notices?|communications?|analys[ei]s|memorand(?:um|a)|submissions?|repl(?:y|ies)|responses?|objections?|annexes?|minutes|questionnaires?|agreements?|undertakings?)$/i;
+
+function readsAsDocumentReference(text: string, index: number, value: string): boolean {
+  return DEFINITE_ARTICLE_BEFORE.test(text.slice(0, index)) || DOCUMENT_NOUN.test(value);
+}
+
 function unresolvedShortForms(
   text: string,
   segments: Array<{ start: number; end: number }>,
@@ -1504,6 +1531,7 @@ function unresolvedShortForms(
       const index = segment.start + (match.index ?? 0);
       const value = tidyCaseName(match[1]);
       if (!looksLikeCaseName(value)) continue;
+      if (readsAsDocumentReference(text, index, value)) continue;
 
       const span: ShortFormSpan = { index, value, key: value.toLowerCase() };
       const parsed = parsePinpoint(text, index + match[1].length, segment.end);

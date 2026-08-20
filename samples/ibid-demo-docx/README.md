@@ -48,24 +48,31 @@ What it currently produces:
 | | |
 | --- | --- |
 | Footnotes | 645, all referenced from the body |
-| Footnotes carrying a citation | 241 |
-| Citations detected | 266 — 223 CURIA, 34 EUR-Lex, 9 Commission |
+| Footnotes carrying a citation | 68 |
+| Citations detected | 93 — 50 CURIA, 34 EUR-Lex, 9 Commission |
 | Resolved to CELEX | 93 |
-| Unresolved | 173, all one false positive (below) |
+| Unresolved | 0 |
 
-### The known false positive
+### What this document changed
 
-All 173 unresolved citations come from a single pattern, and 171 of them from a single
-phrase. A capitalised document name followed by a pinpoint — `Reply to the Preliminary
-Findings, paragraph 47.` — is read as a short-form case name and reported as an unconfirmed
-short-form citation. In isolation `detectCitations` correctly finds nothing there; it is
-the cross-footnote short-form pass that claims it, since the shape is the same one that
-makes `Google Spain, paragraph 80` resolvable.
+It arrived producing 266 citations, of which 173 were not citations at all. A Commission
+decision refers to its own case file in almost every footnote, and `Reply to the
+Preliminary Findings, paragraph 47.` has precisely the shape of a short-form citation: a
+capitalised name in front of a pinpoint, the same shape that makes `Google Spain,
+paragraph 80` resolvable. So the cross-footnote pass claimed all of them — 171 of that one
+phrase — and offered each to the reviewer as an authority to go and identify.
 
-Ibid refuses to resolve these rather than inventing an authority, which is the important
-half. But a Commission decision refers to its own case file constantly, so the effect on a
-document like this one is around 150 non-citations offered to the reviewer. The three
-constructed samples cannot surface this: none of them cites a document by name.
+Ibid refused to resolve them rather than inventing authorities, which was the half that
+mattered. But refusing 173 times is not a usable pane, and none of the three constructed
+samples could have surfaced it: not one of them cites a document by name. That is the
+argument for keeping real material in here at full length.
+
+The fix reads the shape rather than keeping a list of titles — a definite article in front
+of the name, or a document noun at the end of it. Either is enough, and both are confined
+to the unresolved scan, so the most they can do is suppress a report that had nothing
+behind it. `regression — a case file is not a table of authorities` in
+`shared/test/resolve-citations.test.ts` pins both directions: the case file stays out, and
+a genuinely undefined authority like `Post Danmark, para. 44.` is still reported.
 
 ## back-reference-test.docx
 

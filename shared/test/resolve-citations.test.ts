@@ -1045,3 +1045,60 @@ describe('regression — samples/ibid-demo-docx/back-reference-test.docx', () =>
     assert.deepEqual(undecided.map((citation) => citation.value), ['Ibid.', 'Supra note 25', 'Post Danmark', 'Ibid.']);
   });
 });
+
+/**
+ * References to documents, which wear the shape of a citation without being one.
+ *
+ * A capitalised name in front of a pinpoint is how a short-form citation looks, and it is
+ * also how a Commission decision refers to its own case file. On the DSA decision against X
+ * the second outnumbered the first: 173 of 266 detections, 171 of them the same phrase, each
+ * one offered to the reviewer as an authority to go and identify.
+ *
+ * The pair that matters is the last two tests. Suppressing a real unresolved short form
+ * would be the worse bug of the two, because Ibid saying nothing is how it says a citation
+ * is fine.
+ */
+describe('regression — a case file is not a table of authorities', () => {
+  const unresolved = (text: string) => detectCitationsAcrossFootnotes([text])[0];
+
+  test('a document behind a definite article is not an authority', () => {
+    assert.deepEqual(unresolved('Reply to the Preliminary Findings, paragraph 47.'), []);
+    assert.deepEqual(unresolved('See the Data Room Rules, paragraph 14.'), []);
+  });
+
+  test('a document named for what it is is not an authority', () => {
+    // No article to go on here — these open the footnote outright.
+    assert.deepEqual(unresolved('Designation Decision, recital 8.'), []);
+    assert.deepEqual(unresolved('Data Room Rules, paragraph 14.'), []);
+    assert.deepEqual(unresolved('Technical Analysis, section 1.1, paragraph 4.'), []);
+  });
+
+  test('the whole shape, as the decision actually writes it', () => {
+    const footnotes = [
+      'Reply to the Preliminary Findings, paragraphs 102-103, see also paragraphs 94, 96-101.',
+      'Reply to the Preliminary Findings, paragraph 198.',
+      'Judgment of 19 February 2002, Wouters and Others, C-309/99, EU:C:2002:98, paragraph 46.',
+    ];
+    const found = detectCitationsAcrossFootnotes(footnotes);
+    assert.deepEqual(found[0], []);
+    assert.deepEqual(found[1], []);
+    // ...while the citation sitting among them is untouched.
+    assert.equal(only(found[2]).celex, '61999CJ0309');
+  });
+
+  test('an authority the document never defines is still reported', () => {
+    // The point of the filter is to remove noise, not to fall silent. "Post Danmark" has
+    // no article and names no document, so it stays exactly as unresolved as before.
+    const found = only(unresolved('Post Danmark, para. 44.'));
+    assert.equal(found.status, 'unresolved_not_found');
+    assert.equal(found.value, 'Post Danmark');
+  });
+
+  test('a name that merely follows the word "the" in prose is still reported', () => {
+    // The article has to sit directly in front of the name. A sentence that happens to
+    // contain "the" earlier must not buy a short form immunity.
+    const found = only(unresolved('See the discussion in Post Danmark, para. 44.'));
+    assert.equal(found.value, 'Post Danmark');
+    assert.equal(found.status, 'unresolved_not_found');
+  });
+});

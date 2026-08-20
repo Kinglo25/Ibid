@@ -772,6 +772,18 @@ Europe recommendation ("Principle III"), and a fragment of an ICSID arbitral dec
 title ("Applicable Law and Liability"). Tightening the name filter enough to exclude them
 would risk losing real case names.
 
+One class that did have to go, found later against a real Commission decision: a reference
+to a document in the case file. `Reply to the Preliminary Findings, paragraph 47.` is a
+capitalised name in front of a pinpoint, which is the shape a short-form citation has, and
+the corpus of academic opinions above contains almost none of it — a decision refers to its
+own file in nearly every footnote, and on the DSA decision against X this produced 173 of
+266 detections, 171 of them that one phrase. `readsAsDocumentReference` excludes them on
+shape rather than by title: a definite article in front of the name, or a document noun at
+the end of it. It runs only in the unresolved scan, so it cannot turn a resolved citation
+into a missed one, and the argument above still holds for "Principle III" — that one has
+neither signal and stays. Both directions are pinned in `regression — a case file is not a
+table of authorities`.
+
 Worth repeating with a fresh set of opinions after any change to detection. The harvest is
 a loop over CELEX ids of the form `6YYYYCC0NNN` against the CELLAR REST endpoint, spaced one
 per second; opinions before about 2012 were not mirrored under that pattern when tried.
