@@ -95,3 +95,18 @@ button.candidate-confirm:hover { background: #10357f; }
 .list-toggle:hover { opacity: 1; }
 
 .panel-title { display: flex; align-items: center; gap: 0.5rem; }
+
+/* The collapsed footnote index. It is a fallback while the cursor is being followed, so it
+   reads as one quiet line rather than a panel heading competing with the source above it. */
+.footnote-index > summary { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.footnote-index[open] > summary { margin-bottom: 12px; }
+.footnote-index > summary .index-count {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fdeee0;
+  color: #8a4b12;
+  font-size: 11px;
+  font-weight: 700;
+}
+.footnote-index .panel-title { margin-bottom: 12px; }

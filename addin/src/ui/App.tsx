@@ -337,7 +337,13 @@ export default function App() {
     if (focused === null) return;
     const footnote = footnotes[focused];
     const citation = autoSelectable(citationsByFootnote[focused] ?? []);
-    if (footnote && citation) void selectCitation(citation, footnote);
+    if (footnote && citation) { void selectCitation(citation, footnote); return; }
+    // Nothing opened by itself, so whatever is on display belongs to a footnote the cursor
+    // has left. With the index collapsed the source panel is the only thing on screen, and
+    // leaving it there would have it describing a footnote the reviewer moved away from.
+    // A cursor outside every footnote is left alone deliberately: reading through the body
+    // text would otherwise blank the source being worked from at the first click.
+    setSelected((current) => (current && footnote && current.footnote.id !== footnote.id ? null : current));
     // Deliberately keyed on the footnote and its citations only. `selectCitation` and
     // `footnotes` are read here but must not retrigger it: re-running on every render would
     // reopen the source the reviewer may have just navigated away from.
@@ -351,6 +357,43 @@ export default function App() {
     .filter((entry) => showAll || needsReview(entry.citations) || entry.index === focused);
   const outstanding = footnotes
     .filter((footnote, index) => footnote.text && needsReview(citationsByFootnote[index] ?? [])).length;
+
+  const footnoteIndex = <>
+    <div className="panel-title">
+      <h2>{showAll ? 'All footnotes' : 'Needs review'}</h2>
+      <span className="count">{showAll ? reviewable.length : outstanding}</span>
+      <button type="button" className="list-toggle" onClick={() => setShowAll((current) => !current)}>
+        {showAll ? 'Show only what needs review' : `Show all ${reviewable.length}`}
+      </button>
+    </div>
+
+    {listed.length === 0
+      ? <p className="muted">{reviewable.length === 0
+        ? 'No footnotes available for review.'
+        : 'Nothing outstanding — every citation in this document resolved.'}</p>
+      : <ol className="footnote-list">
+        {listed.map(({ footnote, index, citations }) => <li
+          key={footnote.id}
+          className={`footnote-item${index === focused ? ' focused' : ''}`}
+        >
+          <div className="footnote-number">{footnote.number}</div>
+          <div className="footnote-content">
+            <p>{footnote.text}</p>
+            {citations.length ? <div className="citation-chips">
+              {citations.map((citation) => <button
+                className={`citation-chip${citation.status === 'resolved' ? '' : ' unconfirmed'}`}
+                type="button"
+                key={citationKey(citation, footnote.id)}
+                title={citation.status === 'resolved' ? resolutionNote(citation)
+                  : citation.status === 'unconfirmed_suggestion' ? 'Ibid has a suggestion for this, but the document does not define it. Select to confirm.'
+                    : 'Ibid could not confirm which authority this refers to. Select to choose one.'}
+                onClick={() => void selectCitation(citation, footnote)}
+              >{citation.value}{citation.status === 'resolved' ? '' : ' ?'}</button>)}
+            </div> : <span className="muted">No citation pattern detected in this footnote.</span>}
+          </div>
+        </li>)}
+      </ol>}
+  </>;
 
   return (
     <main className="app-shell">
@@ -369,7 +412,7 @@ export default function App() {
         </div>
 
         {!selected && <p className="muted">{following
-          ? 'Click a citation in a footnote of your document, or pick one from the list below.'
+          ? 'Put the cursor on a citation, or in the footnote holding it, and its source appears here.'
           : 'Pick a citation from the list below.'}</p>}
 
         {/* The footnote under the cursor, with its citations as chips. Shown whenever it
@@ -409,41 +452,28 @@ export default function App() {
         </>}
       </section>
 
-      <section className="panel">
-        <div className="panel-title">
-          <h2>{showAll ? 'All footnotes' : 'Needs review'}</h2>
-          <span className="count">{showAll ? reviewable.length : outstanding}</span>
-          <button type="button" className="list-toggle" onClick={() => setShowAll((current) => !current)}>
-            {showAll ? 'Show only what needs review' : `Show all ${reviewable.length}`}
-          </button>
-        </div>
+      {/* The index of footnotes.
 
-        {listed.length === 0
-          ? <p className="muted">{reviewable.length === 0
-            ? 'No footnotes available for review.'
-            : 'Nothing outstanding — every citation in this document resolved.'}</p>
-          : <ol className="footnote-list">
-            {listed.map(({ footnote, index, citations }) => <li
-              key={footnote.id}
-              className={`footnote-item${index === focused ? ' focused' : ''}`}
-            >
-              <div className="footnote-number">{footnote.number}</div>
-              <div className="footnote-content">
-                <p>{footnote.text}</p>
-                {citations.length ? <div className="citation-chips">
-                  {citations.map((citation) => <button
-                    className={`citation-chip${citation.status === 'resolved' ? '' : ' unconfirmed'}`}
-                    type="button"
-                    key={citationKey(citation, footnote.id)}
-                    title={citation.status === 'resolved' ? resolutionNote(citation)
-                      : citation.status === 'unconfirmed_suggestion' ? 'Ibid has a suggestion for this, but the document does not define it. Select to confirm.'
-                        : 'Ibid could not confirm which authority this refers to. Select to choose one.'}
-                    onClick={() => void selectCitation(citation, footnote)}
-                  >{citation.value}{citation.status === 'resolved' ? '' : ' ?'}</button>)}
-                </div> : <span className="muted">No citation pattern detected in this footnote.</span>}
-              </div>
-            </li>)}
-          </ol>}
+          Where the cursor is being followed this is a fallback, not the way the pane is
+          meant to be used: the reviewer works from the document, and the pane answers about
+          whatever they are looking at. Listing every footnote that still needs a decision
+          is a handful of entries on a brief and a hundred and twelve on a real Commission
+          decision — a wall to scroll past to reach the one panel that was wanted. So it
+          collapses, and what is on screen is the citation under the cursor.
+
+          Where following is unavailable — the browser preview, or a Word build whose
+          selection events did not register — it is the only route to a citation, so it
+          stays open. */}
+      <section className="panel">
+        {following
+          ? <details className="footnote-index">
+            <summary>
+              Look through the footnotes instead
+              {outstanding > 0 && <span className="index-count">{outstanding} need{outstanding === 1 ? 's' : ''} review</span>}
+            </summary>
+            {footnoteIndex}
+          </details>
+          : footnoteIndex}
       </section>
 
       <section className="panel source-overview">

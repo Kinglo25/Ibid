@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import App from '../src/ui/App.tsx';
+import { installWordStub } from './word-stub.ts';
 
 /**
  * The task pane, rendered. Everything below goes through the browser-preview document that
@@ -167,5 +168,56 @@ describe('the pane, rendered', () => {
       assert.equal(link.getAttribute('href'), 'https://eur-lex.europa.eu/official-fr');
       assert.equal(screen.queryByText(/Published only in French/), null);
     });
+  });
+});
+
+/**
+ * The pane with a cursor, which is how it is actually used.
+ *
+ * A reviewer works from the document and asks the pane about the citation in front of them.
+ * These drive a caret between footnotes through the Word stub and assert what is on screen,
+ * which is the behaviour the browser-preview tests above structurally cannot reach.
+ */
+describe('following the cursor', () => {
+  const googleSpain = 'Judgment of 13 May 2014, Google Spain SL and Google Inc. v AEPD, C-131/12, ECLI:EU:C:2014:317, paras 80-82.';
+  const crossReference = 'See paragraph 12 above.';
+
+  let word: ReturnType<typeof installWordStub> | undefined;
+  afterEach(() => { word?.remove(); word = undefined; });
+
+  test('the footnote index is collapsed, so the pane is the citation under the cursor', async () => {
+    // The complaint this answers: on a real Commission decision the index is a hundred-odd
+    // entries, and it stood between the reviewer and the one panel they wanted.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+
+    const summary = await screen.findByText('Look through the footnotes instead');
+    const index = summary.closest('details');
+    assert.ok(index, 'the index should be inside a disclosure');
+    assert.equal(index.open, false, 'the index should start collapsed');
+  });
+
+  test('landing on a citation opens it without being asked', async () => {
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorOn(0);
+    await screen.findByRole('heading', { name: 'Source' });
+    await screen.findByText('ECLI:EU:C:2014:317', { selector: '.selected-citation' });
+  });
+
+  test('moving the cursor to a footnote without a citation clears the source', async () => {
+    // Otherwise the only thing on screen describes a footnote the reviewer has left, which
+    // is worse with the index collapsed than it was with a list to re-orient against.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorOn(0);
+    await screen.findByRole('heading', { name: 'Source' });
+
+    word.putCursorOn(1);
+    await screen.findByRole('heading', { name: 'No citation selected' });
   });
 });
