@@ -414,6 +414,15 @@ export default function App() {
   const reviewable = useMemo(() => footnotes.filter((footnote) => footnote.text), [footnotes]);
 
   const focusedFootnote = focused === null ? undefined : footnotes[focused];
+  // A source panel describing a footnote the cursor is no longer in.
+  //
+  // Leaving it up is deliberate — see the effect above; blanking it the moment a reviewer
+  // clicks into the body text would take away the thing they are reading from. But while
+  // the pane is following the cursor, an unlabelled panel answers a question about where
+  // the cursor is, and the reviewer has no way to see that it is answering an older one.
+  // This is the same illusion the unidentified-footnote case is about, in the branch where
+  // Ibid is working correctly: it says which footnote the panel belongs to, and stops.
+  const panelFollowsCursor = !selected || focusedFootnote?.id === selected.footnote.id;
   const listed = footnotes
     .map((footnote, index) => ({ footnote, index, citations: citationsByFootnote[index] ?? [] }))
     .filter((entry) => entry.footnote.text)
@@ -473,6 +482,11 @@ export default function App() {
           <h2>{selected ? 'Source' : 'No citation selected'}</h2>
           {focusedFootnote && <span className="count">Footnote {focusedFootnote.number}</span>}
         </div>
+
+        {selected && following && !panelFollowsCursor && <p className="muted">
+          The cursor has left footnote {selected.footnote.number}. This is the last source opened,
+          not the citation the cursor is on now.
+        </p>}
 
         {!selected && unidentified && <p className="error">
           The cursor is in a footnote Ibid could not match to one it has read. Use Refresh if the

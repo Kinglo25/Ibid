@@ -258,6 +258,24 @@ describe('following the cursor', () => {
     word.putCursorOn(1);
     await screen.findByRole('heading', { name: 'No citation selected' });
   });
+
+  test('a source the cursor has moved away from says so rather than reading as the answer', async () => {
+    // The cursor in ordinary body text deliberately leaves the panel up — a reviewer
+    // reading the document should not have the source they are working from blanked at the
+    // first click. But with the index collapsed the panel is the only thing on screen, and
+    // it answers a question about where the cursor is. It has to say which footnote it is
+    // still describing.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorOn(0);
+    await screen.findByText('Footnote 1 context');
+
+    word.putCursorOn(null);
+    await screen.findByText(/The cursor has left footnote 1/);
+    assert.ok(screen.getByText('Footnote 1 context'), 'the source itself stays, so nothing is taken away');
+  });
 });
 
 /**
