@@ -30,6 +30,12 @@ export type WordStub = {
    * refresh. Nothing can identify it, and the pane has to say so rather than keep answering.
    */
   putCursorInUnknownFootnote: (selectedText?: string) => void;
+  /**
+   * The build this pane actually met: the caret is inside a footnote, and Word reports the
+   * parent body as the document rather than the footnote — so nothing that asks the body
+   * what it is can identify it, and only the caret's own paragraph still can.
+   */
+  putCursorInFootnoteParagraph: (footnote: number) => void;
   /** Whether the pane registered a selection handler, i.e. whether it is following. */
   isFollowing: () => boolean;
   /**
@@ -59,7 +65,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
   let documentTextLoads = 0;
 
   // Where the caret is, and therefore what Word would report for it.
-  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' = 'reference';
+  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' = 'reference';
   let selectedText = '';
 
   const context = {
@@ -71,6 +77,22 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
             text: '', load: noop,
             footnotes: { items: [], load: noop },
             parentBody: { text: items[cursor].body.text, type: 'Footnote', load: noop },
+            paragraphs: { items: [], load: noop },
+          };
+        }
+        if (mode === 'footnoteParagraph' && cursor !== null) {
+          // Inside the footnote, but nothing that asks what the body is can tell: the
+          // reference-mark route reports nothing because the caret is not on the mark, and
+          // the parent body claims to be the document. Only the paragraph still knows.
+          return {
+            text: '', load: noop,
+            footnotes: { items: [], load: noop },
+            parentBody: {
+              text: bodyText,
+              type: 'MainDoc',
+              load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
+            },
+            paragraphs: { items: [{ text: items[cursor].body.text, load: noop }], load: noop },
           };
         }
         if (mode === 'unknownFootnote') {
@@ -78,6 +100,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
             text: selectedText, load: noop,
             footnotes: { items: [], load: noop },
             parentBody: { text: 'text this pane never read', type: 'Footnote', load: noop },
+            paragraphs: { items: [], load: noop },
           };
         }
         return {
@@ -92,6 +115,9 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
             // refused, so a test can say what it costs instead of merely failing.
             load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
           },
+          // The caret is on the reference mark, so its paragraph is the body's and
+          // identifies nothing.
+          paragraphs: { items: [], load: noop },
         };
       },
     },
@@ -134,6 +160,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
     putCursorOn: (footnote) => { mode = 'reference'; cursor = footnote; handler?.(); },
     putCursorInFootnoteText: (footnote) => { mode = 'footnoteText'; cursor = footnote; handler?.(); },
     putCursorInUnknownFootnote: (text = '') => { mode = 'unknownFootnote'; selectedText = text; handler?.(); },
+    putCursorInFootnoteParagraph: (footnote) => { mode = 'footnoteParagraph'; cursor = footnote; handler?.(); },
     isFollowing: () => handler !== undefined,
     handlerChurn: () => ({ registrations, removals }),
     documentTextLoads: () => documentTextLoads,

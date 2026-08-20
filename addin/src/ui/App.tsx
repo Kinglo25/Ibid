@@ -97,12 +97,17 @@ async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFoot
  */
 export type CursorLocation =
   | { kind: 'footnotes'; indexes: number[] }
-  | { kind: 'unidentified' }
-  | { kind: 'outside' };
+  /** `reported` is what Word said about the caret's surroundings, for the pane to repeat. */
+  | { kind: 'unidentified'; reported?: string }
+  | { kind: 'outside'; reported?: string };
 
 const FOOTNOTE_BODIES = ['Footnote', 'Endnote', 'NoteItem'];
 // Below this a selection is too short to pin down a footnote by its text alone.
 const SUBSTRING_FLOOR = 12;
+// A caret sits in one paragraph; a selection across a footnote sits in a few. Past this the
+// selection is a stretch of the document, and loading every paragraph of it is the cost this
+// whole function was just rewritten to stop paying.
+const PARAGRAPH_CEILING = 4;
 
 async function readCursorLocation(knownTexts: readonly string[]): Promise<CursorLocation> {
   const normalise = (value: string) => value.replace(/\s+/g, ' ').trim();
@@ -151,10 +156,35 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
       if (containing >= 0) return { kind: 'footnotes' as const, indexes: [containing] };
     }
 
+    // The paragraphs the caret actually sits in.
+    //
+    // `parentBody` is what ought to identify a footnote, and in at least one real Word build
+    // it does not: a caret inside a long footnote of a converted decision was reported as
+    // being in no footnote at all, with a hundred characters of that footnote selected. A
+    // paragraph is a smaller, more local claim — whatever container the conversion left
+    // around it, the paragraph's own text is still part of the footnote's text. This runs
+    // only once every route above has failed, so its two round trips are paid on the way to
+    // an answer the pane would otherwise not have.
+    const paragraphs = selection.paragraphs;
+    paragraphs.load('items');
+    await context.sync();
+    if (paragraphs.items.length && paragraphs.items.length <= PARAGRAPH_CEILING) {
+      paragraphs.items.forEach((paragraph) => paragraph.load('text'));
+      await context.sync();
+      for (const paragraph of paragraphs.items) {
+        const text = normalise(paragraph.text ?? '');
+        if (text.length < SUBSTRING_FLOOR) continue;
+        const containing = known.findIndex((known_) => known_.includes(text));
+        if (containing >= 0) return { kind: 'footnotes' as const, indexes: [containing] };
+      }
+    }
+
     // Nothing matched. Whether that is worth telling the reviewer depends entirely on
-    // whether they were in a footnote at all.
+    // whether they were in a footnote at all — and when even that is wrong, `reported` is
+    // what Word claimed, so the pane can say it rather than leave it to be inferred.
+    const reported = `body ${parentType || 'unnamed'}, ${selectedText.length} characters selected, ${paragraphs.items.length} paragraphs`;
     const inFootnote = FOOTNOTE_BODIES.includes(parentType);
-    return inFootnote ? { kind: 'unidentified' as const } : { kind: 'outside' as const };
+    return inFootnote ? { kind: 'unidentified' as const, reported } : { kind: 'outside' as const, reported };
   });
 }
 
@@ -271,6 +301,10 @@ export default function App() {
   // The cursor is in a footnote Ibid could not identify. Distinct from `focused === null`,
   // which is the ordinary case of a cursor somewhere that is not a footnote at all.
   const [unidentified, setUnidentified] = useState(false);
+  // What Word said about the caret the last time nothing could be matched to it. Shown with
+  // the document, not with the source: it is for working out why the pane is wrong, which is
+  // a question the reviewer only asks once the answer above them already looks wrong.
+  const [cursorReport, setCursorReport] = useState<string | null>(null);
   const [following, setFollowing] = useState(false);
   // Whether Word answered at all. Distinct from `following`, which is whether the selection
   // handler registered: the pane can be in Word and not be following it.
@@ -383,6 +417,7 @@ export default function App() {
           if (cancelled) return;
           setFocused(location.kind === 'footnotes' ? location.indexes[0] : null);
           setUnidentified(location.kind === 'unidentified');
+          setCursorReport(location.kind === 'footnotes' ? null : location.reported ?? null);
         })
         // Silent by design: this fires on every cursor movement, so a failure must not
         // produce an error the reviewer has to dismiss over and over. The list still works.
@@ -606,7 +641,11 @@ export default function App() {
 
       <section className="panel source-overview">
         <div className="panel-actions">
-          <div><h2>Document</h2><p className="status">{status}</p></div>
+          <div>
+            <h2>Document</h2>
+            <p className="status">{status}</p>
+            {cursorReport && <p className="status">Word reported the cursor as: {cursorReport}</p>}
+          </div>
           <button type="button" onClick={() => void refresh()}>Refresh</button>
         </div>
         <details>

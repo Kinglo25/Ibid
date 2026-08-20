@@ -259,6 +259,21 @@ describe('following the cursor', () => {
     await screen.findByRole('heading', { name: 'No citation selected' });
   });
 
+  test('a footnote whose body Word will not name is found by the paragraph the caret is in', async () => {
+    // The build this was written for: a caret inside a long footnote of a converted
+    // decision, with a hundred characters of it selected, reported as being in no footnote
+    // at all. `parentBody` said the document, the reference-mark route said nothing, and the
+    // pane concluded the reviewer had left the footnotes entirely — leaving the previous
+    // footnote's source up as the answer. The paragraph is the smaller, more local claim.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorInFootnoteParagraph(0);
+    await screen.findByText('Footnote 1 context');
+    assert.equal(word.documentTextLoads(), 0, 'and still without reading the whole document');
+  });
+
   test('landing on a reference mark does not read the whole document', async () => {
     // The caret on a reference mark sits in the body, so `selection.parentBody` is the
     // document itself. Loading its text alongside its type cost every word of a 199-page
