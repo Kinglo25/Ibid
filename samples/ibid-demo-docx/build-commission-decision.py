@@ -2,10 +2,14 @@
 """
 Rebuilds Commission_decision_X_DSA.docx from the published PDF of the decision.
 
-The .docx that circulated with this case is a PDF conversion that dropped every footnote
-into the body text: `word/footnotes.xml` holds only the separator placeholders, and the 645
-footnote texts sit inline in page-sized paragraph blobs, interleaved with body prose. Ibid
-reads footnotes, so against that file the task pane is simply empty.
+The Commission publishes this decision as a PDF, which is how a client sends it, so getting
+it into Word falls to the reviewer — and that is where the footnotes die. A general-purpose
+conversion dropped every one of them into the body text: `word/footnotes.xml` held only the
+separator placeholders, and the 645 footnote texts sat inline in page-sized paragraph blobs,
+interleaved with body prose. Ibid reads footnotes, so against that file the task pane is
+simply empty. Word's own PDF import is better and still not good: 549 footnotes instead of
+645, the last note on a page merged into the first of the next, and the numbering wrong from
+there on.
 
 The PDF is the better source, because it still carries the distinction the conversion threw
 away. Four font sizes separate the content mechanically, with no guessing at sentence

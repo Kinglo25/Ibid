@@ -22,11 +22,22 @@ final of 5 December 2025. 181 pages, 645 footnotes. It exists here because the c
 samples are all short and tidy, and this is neither: it is what the add-in actually meets.
 
 **Built by `build-commission-decision.py` from `Commission_decision_X_DSA.pdf` — edit the
-script, not the .docx.** The .docx that circulated with this case was a PDF conversion that
-had dropped every footnote into the body text, leaving `word/footnotes.xml` holding nothing
-but its separator placeholders. Against that file the task pane is simply empty, which
-looks exactly like a detection failure and is not one. The PDF kept the distinction the
-conversion lost, in four font sizes, and the script rebuilds real footnotes from it.
+script, not the .docx.**
+
+The Commission publishes this decision as a PDF, and that is how a client sends it. Getting
+it into Word is therefore the reviewer's own problem, and it is where the footnotes die.
+A general-purpose PDF-to-Word conversion dropped all 645 of them into the body text,
+leaving `word/footnotes.xml` holding nothing but its two separator placeholders; against
+that file the task pane is simply empty, which looks exactly like a detection failure and
+is not one. Word's own PDF import does better but not well: it produced 549 footnotes
+rather than 645, merged the last note on many pages into the first note of the next, and
+renumbered from there, so the numbers on screen stop matching the decision's own.
+
+This matters beyond one sample. **A PDF is the normal starting point for this kind of
+document**, so the quality of whatever made the .docx decides whether Ibid sees anything at
+all — and a reviewer has no way to tell a bad conversion from a document with no citations
+in it. The PDF keeps the distinction those conversions lose, in four font sizes, and the
+script rebuilds real footnotes from it.
 
 Two independent extractions agree on the footnote texts — one from the PDF by font size,
 one from the broken .docx by run order — at better than 0.97 similarity on every footnote
