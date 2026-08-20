@@ -238,6 +238,9 @@ function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: numbe
   return html.slice(start, Math.min(end, start + maxLength));
 }
 
+/** The two renditions CELLAR serves, in the order to try when nothing is known about an era. */
+const CELLAR_FORMATS = ['application/xhtml+xml', 'text/html'] as const;
+
 const ARTICLE_HEADING = /<p[^>]*>\s*Article\s+(\d+)\s*<\/p>/gi;
 const RECITAL_HEADING = /<p[^>]*>\s*\(\s*(\d+)\s*\)/gi;
 
@@ -479,6 +482,18 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
   const sleep = options.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const now = options.now ?? Date.now;
   const cache = new Map<string, SourcePreview>();
+  /**
+   * Which rendition documents of a given year turned out to have.
+   *
+   * CELLAR holds recent documents as xhtml only and older ones as classic html only, and
+   * publishes no boundary between the two eras, so every lookup of an older document paid
+   * for a 404 and then waited out the politeness interval before the request that worked —
+   * two round trips and a full second of contrived delay, on a decision whose footnotes are
+   * mostly older case law. Rather than invent a cutoff year, the resolver remembers what
+   * answered for that year and asks for it first next time. Being wrong costs exactly what
+   * every lookup costs today, and corrects itself on the next document of the same era.
+   */
+  const formatByYear = new Map<string, string>();
   let nextRequestAt = 0;
 
   async function fetchEurLex(url: string, accept: string, language: SourceLanguage): Promise<Response> {
@@ -527,16 +542,23 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
    * `text/html` only), and across languages it is a language it was never published in. Only
    * once every format has been refused for a language is that language genuinely absent.
    */
-  async function fetchCellarDocument(url: string): Promise<{ html: string; language: SourceLanguage }> {
+  async function fetchCellarDocument(url: string, year: string): Promise<{ html: string; language: SourceLanguage }> {
     let lastResponse: Response | undefined;
+    const remembered = formatByYear.get(year);
+    const formats = remembered
+      ? [remembered, ...CELLAR_FORMATS.filter((format) => format !== remembered)]
+      : [...CELLAR_FORMATS];
     for (const language of preferredLanguages) {
-      for (const accept of ['application/xhtml+xml', 'text/html']) {
+      for (const accept of formats) {
         const response = await fetchEurLex(url, accept, language);
         lastResponse = response;
         if (response.status === 404) continue;
         if (!response.ok) throw new Error(`EUR-Lex/CELLAR lookup failed (${response.status}).`);
         const html = await response.text();
-        if (looksLikeCellarDocument(html)) return { html, language };
+        if (looksLikeCellarDocument(html)) {
+          formatByYear.set(year, accept);
+          return { html, language };
+        }
         // A 200 without a recognisable document body is CELLAR's bot-verification
         // page, not a format-availability issue — the other Accept header would
         // not help, and would cost another request against the same block.
@@ -557,7 +579,8 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     if (cached) return cached;
 
     const url = cellarUrl(celex, cellarBaseUrl);
-    const { html, language } = await fetchCellarDocument(url);
+    // The CELEX carries its year directly after the sector digit: 61999J0309 is 1999.
+    const { html, language } = await fetchCellarDocument(url, celex.slice(1, 5));
 
     // Judgments and legislative acts use different paragraph-numbering
     // markup (see sliceByHeadingAnchor), so they need different extraction —

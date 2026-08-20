@@ -359,6 +359,25 @@ describe('CURIA case-law text retrieval', () => {
     assert.ok(!preview.excerpt.includes('&#039;'));
   });
 
+  // Older documents exist only as classic html, so asking for xhtml first buys a 404 and
+  // then the politeness interval before the request that works. On a decision citing mostly
+  // older case law that is a wasted round trip and a contrived second, per footnote.
+  test('remembers an era\'s rendition, so the next document of it costs one request', async () => {
+    const missingFormat = () => new Response('does not hold a content datastream of the requested type', { status: 404 });
+    const { fetcher, calls } = stubFetcher([
+      missingFormat, html('<p>46 The first judgment of its era.</p>'),
+      html('<p>46 The second, asked for correctly the first time.</p>'),
+    ]);
+    const { resolver } = makeResolver({ fetcher });
+
+    await resolver.resolve(curiaJudgmentLookup({ celex: '61999J0309' }));
+    assert.equal(calls.length, 2, 'the first lookup of an era has no way to know');
+
+    await resolver.resolve(curiaJudgmentLookup({ celex: '61999J0100' }));
+    assert.equal(calls.length, 3, 'the second does not pay for the same 404 again');
+    assert.equal((calls[2].init.headers as Record<string, string>).Accept, 'text/html');
+  });
+
   test('shares the EUR-Lex request-spacing budget with legislative lookups', async () => {
     const { fetcher } = stubFetcher([html('<p>case text</p>'), html('<p>directive text</p>')]);
     const { resolver, clock } = makeResolver({ fetcher, minRequestIntervalMs: 1_000 });
