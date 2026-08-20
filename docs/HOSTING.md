@@ -1,13 +1,13 @@
-# Hosting Ibid, and getting it onto Thomas's Word
+# Hosting Ibid, and getting it onto the client's Word
 
 An Office add-in is not native code. It is a web page that Word loads in an embedded
 browser (WebView2 on Windows, WKWebView on Mac). "It works on my machine" therefore means
 "the servers are on my machine" — and until this is hosted, they are. Cloning the repo
-would leave Thomas needing Node, a terminal running `npm run dev` whenever he opens Word,
-and a certificate he cannot install without local administrator rights.
+would leave the client needing Node, a terminal running `npm run dev` whenever they open
+Word, and a certificate they cannot install without local administrator rights.
 
-Hosting removes all of it. Once the pane and API are on a real HTTPS origin, he installs
-**nothing**: he loads one manifest file and Word fetches everything else.
+Hosting removes all of it. Once the pane and API are on a real HTTPS origin, they install
+**nothing**: they load one manifest file and Word fetches everything else.
 
 ## What has to be true
 
@@ -15,7 +15,7 @@ Hosting removes all of it. Once the pane and API are on a real HTTPS origin, he 
 | --- | --- |
 | **HTTPS with a publicly trusted certificate** | Office refuses to load a task pane from an untrusted origin. A self-signed certificate works only on a machine where it has been installed into the trust store, which is what makes the current dev setup undeliverable. |
 | **One origin for pane and API** | The pane calls `/api` relatively. Serving both from one origin keeps it same-origin, so CORS never enters into it. |
-| **Word 2302+ / Office 2024 / Word on the web / Mac 16.70+** | Footnote enumeration is WordApi 1.5. The manifest declares it, so Word refuses to activate rather than loading a pane that finds nothing. **Volume-licensed Office 2019 and 2021 cannot run Ibid at all.** Worth confirming Thomas's build before anything else. |
+| **Word 2302+ / Office 2024 / Word on the web / Mac 16.70+** | Footnote enumeration is WordApi 1.5. The manifest declares it, so Word refuses to activate rather than loading a pane that finds nothing. **Volume-licensed Office 2019 and 2021 cannot run Ibid at all.** Worth confirming the client's build before anything else. |
 
 ## Deploy
 
@@ -62,9 +62,9 @@ Add `--id <guid>` if anyone needs the dev and hosted add-ins installed side by s
 keys an add-in by its `<Id>`, so two manifests sharing one are a single add-in to Word and
 the second silently replaces the first.
 
-Send Thomas that one file. Nothing else.
+Send the client that one file. Nothing else.
 
-## Sideloading, for Thomas
+## Sideloading, for the client
 
 **Word on the web — much the easiest, start here.** Open a document at office.com, then
 **Home > Add-ins > More Settings > Upload My Add-in > Browse** to `ibid-manifest.xml`,
