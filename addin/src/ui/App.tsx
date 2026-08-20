@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { citedAuthorities, getCitationContextsForFootnotes, reresolveBackReferences, PREVIEW_FOOTNOTES, type CitationCandidate, type CitationContext } from '../../../shared/src';
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
@@ -260,6 +260,9 @@ export default function App() {
   // which is the ordinary case of a cursor somewhere that is not a footnote at all.
   const [unidentified, setUnidentified] = useState(false);
   const [following, setFollowing] = useState(false);
+  // Whether Word answered at all. Distinct from `following`, which is whether the selection
+  // handler registered: the pane can be in Word and not be following it.
+  const [wordReady, setWordReady] = useState(false);
   // A hundred footnotes of which six need a decision: showing all hundred buries the six.
   const [showAll, setShowAll] = useState(false);
   // Keyed by the short form itself, so confirming "Intel" once settles every "Intel" in the
@@ -278,6 +281,7 @@ export default function App() {
       return;
     }
 
+    setWordReady(true);
     setStatus('Reading the document and its footnotes…');
     try {
       const next = await readWordDocument();
@@ -327,14 +331,41 @@ export default function App() {
 
   useEffect(() => { void refresh(); }, []);
 
-  // Follow the cursor. Registered once the document has been read, because resolving a
-  // selection means matching it against footnote text we must already hold.
+  // The footnote texts a selection is matched against, and the read that answers one. Both
+  // live in refs so that re-reading the document leaves the Office handler alone.
+  const footnoteTexts = useRef<readonly string[]>([]);
+  const readLocation = useRef<() => void>(() => undefined);
+
   useEffect(() => {
-    if (!footnotes.length || !isWordRuntimeAvailable()) return;
-    const texts = footnotes.map((footnote) => footnote.text);
+    footnoteTexts.current = footnotes.map((footnote) => footnote.text);
+    // The document arriving is itself a reason to answer: the handler registers before there
+    // is anything to match a selection against, and the cursor is somewhere even then.
+    readLocation.current();
+  }, [footnotes]);
+
+  /**
+   * Follow the cursor, on one handler, for as long as the pane is mounted.
+   *
+   * Registering a handler and removing one are both asynchronous and neither is awaited, so
+   * re-running this effect queues a removal and a registration whose order Office decides.
+   * A removal landing last takes the live handler with it, and the pane then answers only
+   * the direct call made at registration: it agrees with the reviewer's first click and
+   * describes that footnote forever after. Frozen, with nothing on screen to say so.
+   *
+   * Nothing about following a cursor needs re-registration. What forced it was keying this
+   * on `footnotes`, which is a fresh array every time the document is read — twice at
+   * startup, since StrictMode double-invokes the mount effect, and once more for every hot
+   * update while the pane is open. The texts are read from a ref instead, so one handler
+   * serves whatever the document currently holds.
+   */
+  useEffect(() => {
+    if (!wordReady || !isWordRuntimeAvailable()) return;
     let cancelled = false;
 
     const onSelectionChanged = () => {
+      const texts = footnoteTexts.current;
+      // Registered ahead of the document being read; the effect above calls back when it lands.
+      if (!texts.length) return;
       void readCursorLocation(texts)
         .then((location) => {
           if (cancelled) return;
@@ -345,6 +376,7 @@ export default function App() {
         // produce an error the reviewer has to dismiss over and over. The list still works.
         .catch(() => undefined);
     };
+    readLocation.current = onSelectionChanged;
 
     try {
       Office.context.document.addHandlerAsync(
@@ -357,11 +389,12 @@ export default function App() {
     onSelectionChanged();
     return () => {
       cancelled = true;
+      readLocation.current = () => undefined;
       try {
         Office.context.document.removeHandlerAsync(Office.EventType.DocumentSelectionChanged, { handler: onSelectionChanged });
       } catch { /* the pane is closing; nothing useful remains to do */ }
     };
-  }, [footnotes]);
+  }, [wordReady]);
 
   // Computed once for the whole document, in footnote order, so a short form defined in
   // one footnote (e.g. `ECLI:EU:C:2010:512 ("Akzo Nobel")`) is recognised in a later one

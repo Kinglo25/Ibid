@@ -259,6 +259,26 @@ describe('following the cursor', () => {
     await screen.findByRole('heading', { name: 'No citation selected' });
   });
 
+  test('re-reading the document leaves the handler the cursor arrives on alone', async () => {
+    // Registering a handler and removing one are both asynchronous, and the pane awaits
+    // neither, so tearing one down and putting it back races Office for the live handler.
+    // Keying registration on the footnotes forced exactly that — a fresh array twice at
+    // startup, since StrictMode double-invokes the mount effect, and once per hot update.
+    // The pane that loses the race answers the reviewer's first click and freezes on it,
+    // which is indistinguishable on screen from a pane that is simply following.
+    const user = userEvent.setup();
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+    await screen.findByText(/footnotes ready for review/);
+    assert.deepEqual(word.handlerChurn(), { registrations: 1, removals: 0 });
+
+    word.putCursorOn(0);
+    await screen.findByText('Footnote 1 context');
+  });
+
   test('a source the cursor has moved away from says so rather than reading as the answer', async () => {
     // The cursor in ordinary body text deliberately leaves the panel up — a reviewer
     // reading the document should not have the source they are working from blanked at the

@@ -32,6 +32,13 @@ export type WordStub = {
   putCursorInUnknownFootnote: (selectedText?: string) => void;
   /** Whether the pane registered a selection handler, i.e. whether it is following. */
   isFollowing: () => boolean;
+  /**
+   * How many times the pane has registered and unregistered a selection handler. One
+   * registration and no removals is the whole of a healthy session: Office decides the order
+   * of an unawaited removal and the registration that follows it, so a pane that churns
+   * handlers is a pane racing for the one the cursor arrives on.
+   */
+  handlerChurn: () => { registrations: number; removals: number };
   remove: () => void;
 };
 
@@ -41,6 +48,8 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
   const items: FootnoteItem[] = footnoteTexts.map((text) => ({ body: { text, load: noop } }));
   let cursor: number | null = null;
   let handler: (() => void) | undefined;
+  let registrations = 0;
+  let removals = 0;
 
   // Where the caret is, and therefore what Word would report for it.
   let mode: 'reference' | 'footnoteText' | 'unknownFootnote' = 'reference';
@@ -83,11 +92,23 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
     onReady: () => Promise.resolve({ host: 'Word' }),
     context: {
       document: {
+        // Both are asynchronous in Office, and the pane awaits neither. Modelling them as
+        // immediate hides the ordering the real thing leaves open, which is where a pane
+        // that re-registers loses the handler it just installed.
         addHandlerAsync: (_event: string, next: () => void, callback?: (r: unknown) => void) => {
-          handler = next;
-          callback?.({ status: 'succeeded' });
+          registrations += 1;
+          queueMicrotask(() => {
+            handler = next;
+            callback?.({ status: 'succeeded' });
+          });
         },
-        removeHandlerAsync: () => { handler = undefined; },
+        removeHandlerAsync: (_event: string, options?: { handler?: () => void }) => {
+          removals += 1;
+          // Office removes the handler it was named, or all of them when named none.
+          queueMicrotask(() => {
+            if (!options?.handler || options.handler === handler) handler = undefined;
+          });
+        },
       },
     },
   };
@@ -101,6 +122,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
     putCursorInFootnoteText: (footnote) => { mode = 'footnoteText'; cursor = footnote; handler?.(); },
     putCursorInUnknownFootnote: (text = '') => { mode = 'unknownFootnote'; selectedText = text; handler?.(); },
     isFollowing: () => handler !== undefined,
+    handlerChurn: () => ({ registrations, removals }),
     remove: () => { delete globals.Office; delete globals.Word; },
   };
 }
