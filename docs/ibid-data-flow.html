@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ibid. — What Crosses the Wire</title>
+<style>
+  :root {
+    --ink: #16181d;
+    --ink-soft: #454b57;
+    --ink-faint: #6b7280;
+    --rule: #d8dce3;
+    --rule-soft: #eaedf1;
+    --accent: #1e3a6d;
+    --accent-soft: #f2f5fa;
+    --warn-rule: #c9b892;
+    --warn-soft: #fbf8f0;
+    --mono: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --serif: Georgia, "Times New Roman", serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0 auto;
+    padding: 22mm 20mm 24mm;
+    max-width: 210mm;
+    background: #fff;
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 10.4pt;
+    line-height: 1.58;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  p { margin: 0 0 0.72em; }
+  strong { font-weight: 700; }
+  em { font-style: italic; }
+
+  code, .mono { font-family: var(--mono); font-size: 0.87em; }
+  code {
+    background: var(--rule-soft);
+    padding: 0.08em 0.34em;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+
+  /* ---------- masthead ---------- */
+  .eyebrow {
+    font-family: var(--sans);
+    font-size: 7.6pt;
+    letter-spacing: 0.19em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 10mm;
+  }
+  h1 {
+    font-family: var(--sans);
+    font-size: 27pt;
+    line-height: 1.08;
+    letter-spacing: -0.021em;
+    margin: 0 0 4mm;
+    font-weight: 700;
+  }
+  .standfirst {
+    font-size: 11.6pt;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    max-width: 132mm;
+    margin: 0 0 9mm;
+  }
+  .meta {
+    border-top: 1.5px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    padding: 3.5mm 0;
+    margin-bottom: 9mm;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3mm 10mm;
+    font-family: var(--sans);
+    font-size: 8.2pt;
+  }
+  .meta div { color: var(--ink); }
+  .meta span {
+    color: var(--ink-faint);
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    font-size: 7.4pt;
+    display: block;
+    margin-bottom: 0.6mm;
+  }
+
+  /* ---------- headline findings ---------- */
+  .findings { margin-bottom: 11mm; }
+  .finding {
+    display: flex;
+    gap: 6mm;
+    padding: 4mm 0;
+    border-top: 1px solid var(--rule-soft);
+    break-inside: avoid;
+  }
+  .finding:first-child { border-top: none; }
+  .finding .n {
+    font-family: var(--sans);
+    font-size: 15pt;
+    font-weight: 700;
+    color: var(--accent);
+    opacity: 0.34;
+    min-width: 11mm;
+    line-height: 1.2;
+  }
+  .finding p { margin: 0; }
+
+  /* ---------- sections ---------- */
+  section { break-inside: avoid; margin-bottom: 10mm; }
+  .sec-head {
+    display: flex;
+    gap: 6mm;
+    align-items: baseline;
+    border-top: 1.5px solid var(--ink);
+    padding-top: 3mm;
+    margin-bottom: 4.5mm;
+  }
+  .sec-num {
+    font-family: var(--sans);
+    font-size: 8.6pt;
+    font-weight: 700;
+    color: var(--accent);
+    min-width: 11mm;
+  }
+  h2 {
+    font-family: var(--sans);
+    font-size: 14.2pt;
+    font-weight: 700;
+    letter-spacing: -0.014em;
+    margin: 0;
+    line-height: 1.2;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: 8.4pt;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 6mm 0 2mm;
+    font-weight: 700;
+  }
+
+  .src {
+    font-family: var(--mono);
+    font-size: 7.9pt;
+    color: var(--ink-faint);
+    border-top: 1px solid var(--rule-soft);
+    padding-top: 2mm;
+    margin-top: 3mm;
+  }
+
+  /* ---------- zone diagram ---------- */
+  .zones { margin: 2mm 0 4mm; }
+  .zone {
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    padding: 4mm 5mm;
+    break-inside: avoid;
+    background: #fff;
+  }
+  .zone-label {
+    font-family: var(--sans);
+    font-size: 7.6pt;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 1.5mm;
+  }
+  .zone-title { font-family: var(--sans); font-size: 10.4pt; font-weight: 700; margin-bottom: 1.5mm; }
+  .zone p { margin: 0; font-size: 9.4pt; color: var(--ink-soft); }
+  .zone .never {
+    margin-top: 2.5mm;
+    padding-top: 2.5mm;
+    border-top: 1px dashed var(--rule);
+    font-size: 8.8pt;
+    color: var(--ink);
+  }
+  .boundary {
+    display: flex;
+    align-items: center;
+    gap: 4mm;
+    padding: 2.5mm 0;
+    font-family: var(--sans);
+    font-size: 7.6pt;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 700;
+  }
+  .boundary::before, .boundary::after {
+    content: "";
+    flex: 1;
+    border-top: 1px dashed var(--ink-faint);
+  }
+  .crosses {
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 8.2pt;
+    color: var(--accent);
+    padding: 1.5mm 0;
+  }
+
+  /* ---------- tables ---------- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 2mm 0 3mm;
+    font-size: 9.2pt;
+  }
+  th {
+    font-family: var(--sans);
+    font-size: 7.4pt;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    text-align: left;
+    padding: 0 3mm 1.6mm 0;
+    border-bottom: 1px solid var(--ink);
+    font-weight: 700;
+    vertical-align: bottom;
+  }
+  td {
+    padding: 1.8mm 3mm 1.8mm 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+  td:last-child, th:last-child { padding-right: 0; }
+  .fields td:first-child, .fields td:nth-child(2) { font-family: var(--mono); font-size: 8.4pt; }
+  .fields td:nth-child(2) { color: var(--accent); }
+  .fields td:last-child { color: var(--ink-soft); }
+
+  /* ---------- callouts ---------- */
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 4mm 5mm;
+    margin: 4mm 0;
+    break-inside: avoid;
+  }
+  .callout .label {
+    font-family: var(--sans);
+    font-size: 7.4pt;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 1.8mm;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+
+  .excluded {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1.5mm 5mm;
+    margin: 2mm 0 4mm;
+    font-family: var(--sans);
+    font-size: 9pt;
+  }
+  .excluded div::before {
+    content: "×";
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 2mm;
+  }
+
+  /* ---------- the six points ---------- */
+  .point {
+    break-inside: avoid;
+    margin-bottom: 5mm;
+    padding-left: 5mm;
+    border-left: 2px solid var(--warn-rule);
+  }
+  .point .ptitle {
+    font-family: var(--sans);
+    font-size: 7.8pt;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #8a7434;
+    margin-bottom: 1.5mm;
+  }
+  .point p { margin-bottom: 0.5em; }
+  .point p:last-child { margin-bottom: 0; }
+
+  .hosting { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; margin: 3mm 0; }
+  .host-opt { border-top: 2px solid var(--accent); padding-top: 2.5mm; break-inside: avoid; }
+  .host-opt.alt { border-top-color: var(--rule); }
+  .host-opt .tag {
+    font-family: var(--sans);
+    font-size: 7.2pt;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 1mm;
+  }
+  .host-opt.alt .tag { color: var(--ink-faint); }
+  .host-opt .what { font-family: var(--sans); font-size: 9.4pt; font-weight: 700; margin-bottom: 1.5mm; }
+  .host-opt p { font-size: 8.6pt; line-height: 1.45; color: var(--ink-soft); margin: 0; }
+
+  /* ---------- code ---------- */
+  pre {
+    font-family: var(--mono);
+    font-size: 8.1pt;
+    line-height: 1.62;
+    background: #f7f8fa;
+    border: 1px solid var(--rule-soft);
+    border-radius: 3px;
+    padding: 4mm 5mm;
+    margin: 2mm 0 3mm;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    break-inside: avoid;
+  }
+  pre .c { color: var(--ink-faint); }
+
+  footer {
+    margin-top: 12mm;
+    border-top: 1.5px solid var(--ink);
+    padding-top: 3mm;
+    display: flex;
+    justify-content: space-between;
+    gap: 8mm;
+    font-family: var(--sans);
+    font-size: 7.6pt;
+    color: var(--ink-faint);
+  }
+
+  @page { size: A4; margin: 16mm; }
+  @media print {
+    body { padding: 0; max-width: none; font-size: 9.8pt; }
+    .page-break { break-before: page; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="eyebrow">Ibid. · Technical note</div>
+
+<h1>What Crosses the Wire</h1>
+
+<p class="standfirst">What the add-in reads inside a Word document, how it retrieves an
+official source, and what never leaves the workstation.</p>
+
+<div class="meta">
+  <div><span>Audience</span>Information security review</div>
+  <div><span>Subject</span>Ibid, a Word task-pane add-in</div>
+  <div><span>Verifiability</span>Every claim cites the source that proves it</div>
+</div>
+
+<div class="findings">
+  <div class="finding">
+    <div class="n">01</div>
+    <p><strong>The analysis is entirely local.</strong> Citation recognition runs inside the
+    Word task pane itself, on the workstation. No server takes part in it, and nothing is
+    transmitted to accomplish it.</p>
+  </div>
+  <div class="finding">
+    <div class="n">02</div>
+    <p><strong>Exactly one request leaves the workstation</strong>, and only when the reviewer
+    selects a citation. It carries the public identifier of the cited decision: nine fields,
+    all drawn from public EU nomenclature.</p>
+  </div>
+  <div class="finding">
+    <div class="n">03</div>
+    <p><strong>The add-in cannot modify the document.</strong> It requests the Word permission
+    <code>ReadDocument</code>, which is read-only. No write call exists anywhere in the
+    source, and Word would not grant it the right.</p>
+  </div>
+</div>
+
+<section>
+  <div class="sec-head"><div class="sec-num">§1</div><h2>What the add-in analyses</h2></div>
+
+  <p>Ibid is a reading aid. It identifies references to EU law in footnotes — ECLI identifiers,
+  Court of Justice and General Court case numbers, directives, regulations, Treaty articles,
+  DG Competition case numbers — and displays the corresponding official passage alongside them.</p>
+
+  <p>It reads the full text of the open document, and we state that plainly rather than let you
+  infer that it only touches footnotes. Two things make it necessary.</p>
+
+  <p>First, short-form citations mean nothing in isolation. A footnote reading “Akzo Nobel,
+  para. 40” carries no information on its own; it only means something relative to a full
+  citation stated earlier. Ibid therefore reads the document in order so it can resolve each
+  later reference back to the authority it points at. Second, the pane follows the cursor:
+  putting the caret on a reference mark brings up that citation’s source, which requires
+  knowing where the caret is in the body.</p>
+
+  <p>That reading happens in memory, inside Word’s embedded browser (WebView2 on Windows,
+  WKWebView on macOS). The recognition module is compiled into the pane’s own JavaScript
+  bundle and executes on the workstation. Detecting citations, resolving short forms,
+  following chains of back-references — <code>Ibid.</code>, <code>supra</code> — and deriving
+  the CELEX identifier: the whole of that chain is local and issues no request.</p>
+
+  <div class="src">addin/src/ui/App.tsx · shared/src/index.ts</div>
+</section>
+
+<section>
+  <div class="sec-head"><div class="sec-num">§2</div><h2>Three zones, and what passes between them</h2></div>
+
+  <div class="zones">
+    <div class="zone">
+      <div class="zone-label">1 · Workstation</div>
+      <div class="zone-title">Word + the Ibid pane (embedded browser)</div>
+      <p>Document and footnote text → detection → resolution → CELEX identifier.
+      The entire analysis happens here.</p>
+      <div class="never"><strong>Never leaves this zone:</strong> the document · the full
+      footnote text · the citation’s context · the file name · the user’s identity · the matter</div>
+    </div>
+
+    <div class="boundary">Workstation boundary</div>
+    <div class="crosses">↓ lookup: 9 fields, public identifiers only &nbsp;·&nbsp; ↑ the cited passage</div>
+
+    <div class="zone">
+      <div class="zone-label">2 · Ibid server</div>
+      <div class="zone-title">One Node process · no runtime dependencies · in-memory cache</div>
+      <p>Receives an identifier, returns a passage. Has never seen the document.
+      To be hosted inside the firm’s network.</p>
+    </div>
+
+    <div class="boundary">Internet egress</div>
+    <div class="crosses">↓ GET /resource/celex/… — the identifier alone &nbsp;·&nbsp; ↑ the official document</div>
+
+    <div class="zone">
+      <div class="zone-label">3 · The EU’s public databases</div>
+      <div class="zone-title">publications.europa.eu (CELLAR)</div>
+      <p>Public legal database, no authentication. Equivalent to opening EUR-Lex in a browser.</p>
+    </div>
+  </div>
+
+  <p>The document is read and analysed in zone 1 and does not leave it. Only the cited
+  decision’s identifier crosses the first boundary, and only that same identifier crosses the
+  second. Host the server inside the firm’s network and the first boundary becomes an internal
+  one — nothing leaves the firm but a query to a public database.</p>
+</section>
+
+<section class="page-break">
+  <div class="sec-head"><div class="sec-num">§3</div><h2>How it retrieves the source</h2></div>
+
+  <p>Once a citation has been recognised and normalised locally, the pane holds an official
+  identifier — the CELEX number, the public nomenclature of the EU Publications Office.
+  Fetching the text is then a matter of requesting a public document by its number.</p>
+
+  <p>That happens through a single request, issued from a single line of code, and only when
+  the reviewer selects a citation:</p>
+
+<pre><span class="c"># addin/src/ui/App.tsx — the pane's only network call</span>
+GET {ibid-origin}/api/sources?lookup={…}</pre>
+
+  <p>The lookup object contains these fields and nothing else.</p>
+
+  <table class="fields">
+    <thead><tr><th>Field</th><th>Example</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td>source</td><td>curia</td><td>Which database to query</td></tr>
+      <tr><td>value</td><td>C-293/12</td><td>The citation as written in the footnote</td></tr>
+      <tr><td>celex</td><td>62012CJ0293</td><td>Official EU identifier</td></tr>
+      <tr><td>ecli</td><td>ECLI:EU:C:2014:238</td><td>European Case Law Identifier</td></tr>
+      <tr><td>caseNumber</td><td>C-293/12</td><td>Case number</td></tr>
+      <tr><td>caseName</td><td>Digital Rights Ireland</td><td>Published case name</td></tr>
+      <tr><td>documentType</td><td>judgment</td><td>Judgment, opinion or order</td></tr>
+      <tr><td>locator</td><td>{ kind: 'point', start: 40 }</td><td>The point cited</td></tr>
+      <tr><td>paragraphs</td><td>[40]</td><td>Every paragraph cited</td></tr>
+    </tbody>
+  </table>
+
+  <p>The server then requests the document from the Publications Office by that identifier,
+  extracts the passage matching the cited point, and returns it. At no stage does it know which
+  document the citation came from.</p>
+
+  <div class="callout">
+    <div class="label">Stated precisely, because a reviewer will check</div>
+    <p>Two of these fields are substrings of the footnote: <code>value</code>, the citation
+    exactly as written, and <code>caseName</code>, the case name where one is recognised. Those
+    are the reference itself — the thing being looked up — and no query can happen without them.
+    What never crosses the boundary is everything <em>around</em> the citation: the sentence
+    carrying it, the argument it supports, the rest of the footnote, the rest of the document.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><div class="sec-num">§4</div><h2>What never crosses, and why that is structural</h2></div>
+
+  <div class="excluded">
+    <div>The document</div>
+    <div>The footnote as written</div>
+    <div>The citation’s context</div>
+    <div>The file name</div>
+    <div>The user’s identity</div>
+    <div>Anything about the matter</div>
+  </div>
+
+  <p>The exclusion is not incidental. It is guaranteed by the way the request is built — and it
+  is the point we would invite your team to verify first.</p>
+
+  <p>The object handed to the lookup function is a <code>CitationContext</code>, defined as
+  <code>CitationMatch &amp; { context: string }</code>. In other words: the surrounding prose is
+  present on the object, in memory, at the moment the request is formed. A single object spread
+  would have sent it along with everything else.</p>
+
+  <p>Instead the request is assembled by naming its nine fields one at a time, with no spread
+  operator. The consequence is durable: a developer who adds a field to the citation type
+  tomorrow cannot cause it to start crossing the wire by accident — they would have to type it
+  into the lookup explicitly. That is the difference between “context is not sent today” and
+  “context is not sent.”</p>
+
+  <div class="src">addin/src/ui/App.tsx — const lookup = { … } · shared/src/index.ts — CitationContext</div>
+</section>
+
+<section>
+  <div class="sec-head"><div class="sec-num">§5</div><h2>Permissions, storage, retention</h2></div>
+
+  <p><strong>Word permission.</strong> The manifest declares <code>ReadDocument</code>,
+  read-only. No write call — <code>insertText</code>, <code>insertParagraph</code>,
+  <code>insertHtml</code>, <code>insertOoxml</code> — appears anywhere in the pane’s source. The
+  add-in is structurally incapable of altering a document.</p>
+
+  <p><strong>Accounts.</strong> None. No authentication, no sign-in, no user identifier of any
+  kind.</p>
+
+  <p><strong>Client-side storage.</strong> The pane uses neither <code>localStorage</code> nor
+  <code>sessionStorage</code>, and sets no cookies.</p>
+
+  <p><strong>Server-side storage.</strong> An in-memory cache of retrieved passages, lost when
+  the process restarts. Nothing is written to disk: the server contains no file-write call at
+  all. See point 3 in §7 — that cache is currently unbounded.</p>
+
+  <p><strong>Logging.</strong> The server logs its own startup and startup failures. It does not
+  log requests.</p>
+
+  <p><strong>Telemetry.</strong> None. No analytics, no error reporting, no advertising, and no
+  fonts or scripts served from any third-party CDN.</p>
+</section>
+
+<section>
+  <div class="sec-head"><div class="sec-num">§6</div><h2>Software supply chain</h2></div>
+
+  <table>
+    <thead><tr><th style="width:26%">Component</th><th>Runtime dependencies</th></tr></thead>
+    <tbody>
+      <tr><td>The server</td><td><strong>None.</strong> <code>api/package.json</code> declares no
+      runtime dependencies at all. It runs on the Node standard library — <code>node:http</code>
+      and the built-in <code>fetch</code>. TypeScript and ESLint are build-time only.</td></tr>
+      <tr><td>The Word pane</td><td><strong>Two:</strong> <code>react</code> and
+      <code>react-dom</code>. Everything else is a development dependency and is not shipped.</td></tr>
+    </tbody>
+  </table>
+
+  <p>The shipped bundle is therefore this repository’s own source plus React. There is no
+  component library, no analytics SDK, and no telemetry agent to audit. <code>npm audit</code>
+  reports no advisories against the dependency tree, build-time tooling included.</p>
+</section>
+
+<section class="page-break">
+  <div class="sec-head"><div class="sec-num">§7</div><h2>Six points we put to you ourselves</h2></div>
+
+  <p>A note like this is only worth reading if it also flags what deserves discussion. There are
+  six, and we would rather raise them than have you find them. None concerns the handling of
+  document content — that analysis never leaves the pane. All six are properties of how the
+  service is deployed and operated, and the first two are why the hosting decision matters.</p>
+
+  <div class="point">
+    <div class="ptitle">Point 1 — The service authenticates nothing</div>
+    <p>The API performs no authentication of any kind: no key, no session, no allowlist. It binds
+    to <code>127.0.0.1</code>, but the reverse-proxy configuration <em>we ourselves recommend</em>
+    then publishes <code>/api/*</code> from a public hostname. Anyone who learns that hostname can
+    issue lookups.</p>
+    <p>They cannot reach the document, which never leaves the pane, and they cannot redirect the
+    outbound fetch — see “What untrusted input can reach” below. They can consume the service and
+    cause requests to <code>publications.europa.eu</code> carrying the operator’s User-Agent.
+    Before production use, place the API behind the firm’s network boundary, a shared secret, or
+    an authenticating proxy. The CORS header is not a control here:
+    <code>Access-Control-Allow-Origin</code> constrains browsers, not <code>curl</code>.</p>
+  </div>
+
+  <div class="point">
+    <div class="ptitle">Point 2 — Request throttling is global, not per-caller</div>
+    <p>The resolver spaces its outbound requests through a single shared queue, by default one
+    per second. That is a politeness limit toward EUR-Lex, not a defence: it is shared by every
+    caller, so one client issuing continuous lookups delays everyone else’s behind it. Together
+    with point 1, an unauthenticated public deployment can be rendered unusable by a single
+    script. Per-IP rate limiting belongs at the proxy.</p>
+  </div>
+
+  <div class="point">
+    <div class="ptitle">Point 3 — The retrieved-passage cache is unbounded</div>
+    <p>Previews are held in memory with no size limit and no expiry, and part of the cache key is
+    supplied by the caller. Growth is slow — an entry is stored only after a successful upstream
+    fetch, which the throttle caps at roughly one per second — and the cache holds public EU legal
+    text, never client material. But it is unbounded in a process intended to run for months.
+    Restarting the process is today’s mitigation; a bounded LRU is the fix.</p>
+  </div>
+
+  <div class="point">
+    <div class="ptitle">Point 4 — The pane declares no Content-Security-Policy</div>
+    <p>The task pane ships without one. Nothing in it writes markup to the DOM: there is no
+    <code>dangerouslySetInnerHTML</code>, <code>innerHTML</code>, <code>eval</code> or
+    <code>srcdoc</code> anywhere in the pane or the shared module, and retrieved passages are
+    rendered as React text nodes and therefore escaped. So there is no known injection path for a
+    policy to close — this is defence in depth that is currently absent, not an open hole.</p>
+  </div>
+
+  <div class="point">
+    <div class="ptitle">Point 5 — Reverse-proxy access logs</div>
+    <p>The lookup travels in the query string of a <code>GET</code>. Any reverse proxy or load
+    balancer placed in front of the service — Caddy, nginx — will therefore record it in its
+    access log by default. The application logs nothing; the infrastructure might. Two remedies,
+    either of which works: disable access logging on the <code>/api</code> route, or change the
+    endpoint to accept <code>POST</code>. We are glad to make that change if you would prefer it.</p>
+  </div>
+
+  <div class="point">
+    <div class="ptitle">Point 6 — A lookup is still intelligence</div>
+    <p>Ibid does not transmit client material. It does transmit <em>which authorities are being
+    researched, and when</em>, to whichever host runs the service. That is not privileged content,
+    but it is not nothing either — and it is precisely the fact on which the hosting decision
+    should turn.</p>
+  </div>
+
+  <h3>What untrusted input can reach</h3>
+
+  <p>Point 1 means untrusted input can reach the resolver, so the natural next question is what
+  that input can make the server fetch. The answer is: only a CELEX document on the configured
+  host. The outbound URL is the fixed base URL plus the percent-encoded identifier, so a caller
+  cannot introduce a separator, leave the path segment, change the host, or append a query. The
+  base URL comes from environment configuration, never from the request.</p>
+
+  <h3>Smaller items, for completeness</h3>
+
+  <p>API responses do not set <code>X-Content-Type-Options: nosniff</code>; every response is
+  <code>application/json</code> and the pane does not interpret them as anything else. On an
+  upstream failure the server returns the underlying error message to the caller, which can name
+  the upstream host and HTTP status — it carries no request data.</p>
+
+  <h3>What follows from those points: where to host</h3>
+
+  <div class="hosting">
+    <div class="host-opt">
+      <div class="tag">Recommended</div>
+      <div class="what">Inside the firm’s infrastructure</div>
+      <p>Nothing leaves the firm’s control except the onward query to a public legal database.
+      The server is a single Node process with no dependencies and no persistent state.</p>
+    </div>
+    <div class="host-opt alt">
+      <div class="tag">Evaluation</div>
+      <div class="what">Hosted externally</div>
+      <p>Appropriate for an evaluation period, provided the service stays stateless, access
+      logging is switched off, and access is restricted per point 1.</p>
+    </div>
+    <div class="host-opt alt">
+      <div class="tag">Theoretical</div>
+      <div class="what">On the reviewer’s machine</div>
+      <p>Nothing leaves at all, but it requires Node and a locally trusted certificate —
+      generally impractical on a managed device.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><div class="sec-num">§8</div><h2>Verify rather than take our word</h2></div>
+
+  <p>Every claim in this note is checkable against the repository. These commands produce exactly
+  the result stated beside them.</p>
+
+<pre><span class="c"># One outbound request in the pane, and no browser storage.
+# Expected: a single hit, in App.tsx.</span>
+grep -rn "fetch(\|XMLHttpRequest\|sendBeacon\|WebSocket\|localStorage\|sessionStorage" addin/src/ shared/src/
+
+<span class="c"># The add-in cannot write to the document. Expected: no hits.</span>
+grep -rn "insertText\|insertParagraph\|insertHtml\|insertOoxml" addin/src/
+
+<span class="c"># Read-only permission. Expected: &lt;Permissions&gt;ReadDocument&lt;/Permissions&gt;</span>
+grep -n "Permissions" addin/manifest.xml
+
+<span class="c"># Exactly what is put on the wire: nine named fields, no spread.</span>
+sed -n '/const lookup = {/,/};/p' addin/src/ui/App.tsx
+
+<span class="c"># Nothing is written to disk, anywhere in the server. Expected: no hits.</span>
+grep -rn "node:fs\|writeFile\|createWriteStream\|appendFile" api/src/ api/server.mjs
+
+<span class="c"># The server logs startup only, never requests.</span>
+grep -n "console\." api/server.mjs
+
+<span class="c"># Runtime supply chain: none for the API, react + react-dom for the pane.</span>
+grep -A4 '"dependencies"' api/package.json addin/package.json
+
+<span class="c"># Dependency advisories, runtime and build-time.
+# Expected: found 0 vulnerabilities.</span>
+npm audit
+
+<span class="c"># The points in §7, checkable the same way.</span>
+grep -n "Content-Security-Policy" addin/index.html      <span class="c"># no hits (point 4)</span>
+grep -n "request.headers" api/server.mjs                <span class="c"># origin and host only (point 1)</span>
+sed -n '/function cellarUrl/,/^}/p' api/src/index.ts    <span class="c"># encodeURIComponent, fixed base</span></pre>
+
+  <p>The repository carries this note as <code>docs/DATA-FLOW.md</code>, alongside
+  <code>docs/HOSTING.md</code> for deployment and for centralized distribution through the
+  Microsoft 365 admin center. We are happy to walk a reviewer through the code directly.</p>
+</section>
+
+<footer>
+  <div>Ibid. · What Crosses the Wire · technical note for information security review</div>
+  <div>Verifiable against the repository at every claim</div>
+</footer>
+
+</body>
+</html>
