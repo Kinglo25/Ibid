@@ -7,6 +7,54 @@ Manual Word checks. Sideload `addin/manifest.xml`, open a document, and use Refr
 | `EU_Data_Retention_Memo.docx` | All full citations, in French. Exercises detection, not resolution |
 | `eu-case-law-citation-test.docx` | The 20 collected citation patterns. Its footnotes are pinned as a fixture in `shared/test/resolve-citations.test.ts` |
 | `back-reference-test.docx` | `Ibid.`, `Id.`, `supra note n`, and the refusals around them |
+| `Commission_decision_X_DSA.docx` | Real published material at full length: 645 footnotes, 266 citations |
+
+The first three are constructed: every identity in them is fictional, every authority
+public, so they can be used anywhere a client document could not. The fourth is different
+in kind — a real Commission decision, named parties and all, reproduced from the published
+text. It is public, but it is not anonymous, so it is the one to leave out of a screen
+share with an unrelated client.
+
+## Commission_decision_X_DSA.docx
+
+The Commission's DSA decision in cases DSA.100101–3, X (formerly Twitter), C(2025) 8630
+final of 5 December 2025. 181 pages, 645 footnotes. It exists here because the constructed
+samples are all short and tidy, and this is neither: it is what the add-in actually meets.
+
+**Built by `build-commission-decision.py` from `Commission_decision_X_DSA.pdf` — edit the
+script, not the .docx.** The .docx that circulated with this case was a PDF conversion that
+had dropped every footnote into the body text, leaving `word/footnotes.xml` holding nothing
+but its separator placeholders. Against that file the task pane is simply empty, which
+looks exactly like a detection failure and is not one. The PDF kept the distinction the
+conversion lost, in four font sizes, and the script rebuilds real footnotes from it.
+
+Two independent extractions agree on the footnote texts — one from the PDF by font size,
+one from the broken .docx by run order — at better than 0.97 similarity on every footnote
+that can be compared. That agreement is the check that this file is faithful to the source.
+
+What it currently produces:
+
+| | |
+| --- | --- |
+| Footnotes | 645, all referenced from the body |
+| Footnotes carrying a citation | 241 |
+| Citations detected | 266 — 223 CURIA, 34 EUR-Lex, 9 Commission |
+| Resolved to CELEX | 93 |
+| Unresolved | 173, all one false positive (below) |
+
+### The known false positive
+
+All 173 unresolved citations come from a single pattern, and 171 of them from a single
+phrase. A capitalised document name followed by a pinpoint — `Reply to the Preliminary
+Findings, paragraph 47.` — is read as a short-form case name and reported as an unconfirmed
+short-form citation. In isolation `detectCitations` correctly finds nothing there; it is
+the cross-footnote short-form pass that claims it, since the shape is the same one that
+makes `Google Spain, paragraph 80` resolvable.
+
+Ibid refuses to resolve these rather than inventing an authority, which is the important
+half. But a Commission decision refers to its own case file constantly, so the effect on a
+document like this one is around 150 non-citations offered to the reviewer. The three
+constructed samples cannot surface this: none of them cites a document by name.
 
 ## back-reference-test.docx
 
