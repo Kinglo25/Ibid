@@ -58,7 +58,7 @@ export type SourcePreview = {
 /** CELLAR negotiates on ISO 639-2/B codes, not the two-letter tags used everywhere else. */
 const CELLAR_LANGUAGE: Record<SourceLanguage, string> = { en: 'eng', fr: 'fra' };
 
-const DEFAULT_USER_AGENT = 'Ibid/0.1 (EU-law citation review add-in; +https://github.com/Kinglo25/OfficesAddins)';
+const DEFAULT_USER_AGENT = 'Ibid/0.1 (EU-law citation review add-in; +https://github.com/Kinglo25/Ibid)';
 
 /**
  * What to call the document a preview is showing.

@@ -109,15 +109,59 @@ No user accounts, no sign-in, no user identifier of any kind. The server keeps a
 which is lost when the process restarts. Nothing is written to disk. The server logs only
 its own startup and startup failures (`api/server.mjs`) — it does not log requests.
 
-## Two things a reviewer should weigh
+## What a reviewer should weigh
 
-**1. Lookups appear in reverse-proxy access logs by default.** The lookup travels in the
+Everything above is what Ibid does well, so this section is deliberately the other half:
+the points we would raise ourselves if we were reviewing this. None of them is a defect in
+how document content is handled — that analysis never leaves the pane. All of them are
+properties of how the API is deployed and operated, and the first two are the reason the
+hosting decision matters.
+
+**1. The API has no authentication, and the deployment in `HOSTING.md` exposes it
+publicly.** `api/server.mjs` performs no authentication of any kind: no key, no session,
+no allowlist. It binds to `127.0.0.1`, but the reverse-proxy configuration we recommend
+then publishes `/api/*` from a public hostname. Anyone who learns that hostname can issue
+lookups. They cannot reach the document — it never leaves the pane — and they cannot
+redirect the outbound fetch (see the note on URL construction below), but they can consume
+the service and cause requests to `publications.europa.eu` that carry the operator's
+`User-Agent`. Before production use, place the API behind the firm's network boundary, a
+shared secret, or an authenticating proxy. The CORS header is not a control here:
+`Access-Control-Allow-Origin` constrains browsers, not `curl`.
+
+`api/server.mjs` does read `IBID_EURLEX_API_KEY` and `IBID_EURLEX_BEARER_TOKEN`, which can
+look like authentication at a glance. They are the opposite direction: credentials this
+server presents *to* EUR-Lex, never anything it demands of a caller. The only inbound
+headers the handler reads at all are `origin` and `host`.
+
+**2. Request throttling is global, not per-caller.** The resolver spaces its outbound
+requests by `minRequestIntervalMs` (default 1000ms) through a single queue held in the
+resolver closure (`api/src/index.ts`). That is a politeness limit toward EUR-Lex, not a
+defence: it is shared by every caller, so one client issuing continuous lookups delays
+everyone else's behind it. Together with point 1, an unauthenticated public deployment can
+be rendered unusable by a single script. Per-IP rate limiting belongs at the proxy.
+
+**3. The retrieved-passage cache is unbounded.** Previews are held in a `Map` with no size
+limit and no expiry (`api/src/index.ts`); only an explicit `clearCache()` empties it, and
+part of the cache key is caller-supplied. Growth is slow — an entry is stored only after a
+successful upstream fetch, which the throttle caps at roughly one per second — and the
+cache holds public EU legal text, not client material. But it is unbounded in a process
+intended to run for months. Restarting the process is today's mitigation; a bounded LRU is
+the fix.
+
+**4. The task pane declares no Content-Security-Policy.** `addin/index.html` ships without
+one. Nothing in the pane writes markup to the DOM: there is no `dangerouslySetInnerHTML`,
+`innerHTML`, `eval` or `srcdoc` anywhere in `addin/src/` or `shared/src/`, and retrieved
+passages are rendered as React text nodes and therefore escaped. So there is no known
+injection path for a policy to close — this is defence in depth that is currently absent,
+not an open hole.
+
+**5. Lookups appear in reverse-proxy access logs by default.** The lookup travels in the
 query string of a `GET`, so Caddy, nginx or any load balancer in front of the API will
 record it in its access log unless configured otherwise. The application does not log it;
 the infrastructure might. Disable access logging on the `/api` route, or change the
 endpoint to accept `POST`, if lookup retention is unacceptable.
 
-**2. Citation lookups are matter intelligence, even without document text.** Ibid does not
+**6. Citation lookups are matter intelligence, even without document text.** Ibid does not
 transmit client material. It does transmit *which authorities are being researched, and
 when*, to whichever host runs the API. That is not privileged content, but it is not
 nothing either, and it is the fact on which the hosting decision should turn:
@@ -127,6 +171,22 @@ nothing either, and it is the fact on which the hosting decision should turn:
 - **Hosted externally, stateless, access logging off** — appropriate for evaluation.
 - **Run locally on the reviewer's machine** — nothing leaves at all, but requires Node and
   local certificate trust, which is generally impractical on a managed device.
+
+**Smaller items, for completeness.** API responses do not set `X-Content-Type-Options:
+nosniff`; every response is `application/json` and the pane does not interpret them as
+anything else. On an upstream failure, `api/server.mjs` returns the underlying error
+message to the caller, which can name the upstream host and HTTP status — it does not
+include any request data.
+
+## Why the lookup cannot be turned into a server-side request forgery
+
+Point 1 means untrusted input can reach the resolver, so the natural next question is what
+that input can make the server fetch. The answer is: only a CELEX document on the
+configured host. The outbound URL is built by `cellarUrl` (`api/src/index.ts`) as the
+fixed base URL plus `encodeURIComponent(celex)`. Percent-encoding the identifier means a
+caller cannot introduce `/`, `:`, `?` or `#`, and therefore cannot traverse out of the
+path segment, change the host, or append a query. The base URL comes from environment
+configuration, never from the request.
 
 ## Verifying these claims
 
@@ -151,4 +211,12 @@ grep -n "console\." api/server.mjs
 
 # Runtime supply chain: none for the API, react + react-dom for the pane.
 grep -A4 '"dependencies"' api/package.json addin/package.json
+
+# Dependency advisories, runtime and build-time. Expect: found 0 vulnerabilities.
+npm audit
+
+# The claims above that are weaknesses, checkable the same way.
+grep -n "Content-Security-Policy" addin/index.html          # expect no hits (point 4)
+grep -n "request.headers" api/server.mjs                     # only origin and host (point 1)
+sed -n '/function cellarUrl/,/^}/p' api/src/index.ts        # encodeURIComponent, fixed base
 ```
