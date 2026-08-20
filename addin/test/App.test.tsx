@@ -169,6 +169,44 @@ describe('the pane, rendered', () => {
       assert.equal(screen.queryByText(/Published only in French/), null);
     });
   });
+
+  /**
+   * Whether the passage is the one that was cited.
+   *
+   * The resolver can retrieve the right judgment and still fail to find the paragraph
+   * inside it — the markup conventions are not exhausted — and what it shows then is the
+   * document's opening. On screen, under a citation naming a paragraph, that is
+   * indistinguishable from the answer unless the pane says which one it is.
+   */
+  describe('what the passage is', () => {
+    const wouters = {
+      title: 'Wouters and Others, C-309/99', source: 'CURIA', url: 'https://eur-lex.europa.eu/x',
+      locator: 'Point 46', language: 'en' as const,
+    };
+
+    test('the document opening is labelled as not being the cited paragraph', async () => {
+      servingDocuments([{ ...wouters, passage: 'opening',
+        excerpt: 'Avis juridique important | 61999J0309 Judgment of the Court of 19 February 2002...' }]);
+      const user = userEvent.setup();
+      render(<App />);
+      await showEveryFootnote(user);
+      await user.click((await findChip('Ibid.'))[0]);
+
+      await screen.findByText(/Point 46 could not be located in the retrieved text/);
+    });
+
+    test('the cited paragraph carries no such note', async () => {
+      servingDocuments([{ ...wouters, passage: 'cited',
+        excerpt: '46 According to settled case-law, in the field of competition law...' }]);
+      const user = userEvent.setup();
+      render(<App />);
+      await showEveryFootnote(user);
+      await user.click((await findChip('Ibid.'))[0]);
+
+      await screen.findByText(/According to settled case-law/);
+      assert.equal(screen.queryByText(/could not be located/), null);
+    });
+  });
 });
 
 /**

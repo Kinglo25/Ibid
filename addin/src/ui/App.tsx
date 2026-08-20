@@ -8,6 +8,10 @@ import {
 
 type ReviewDocument = {
   title: string; excerpt: string; url: string; source: string;
+  /** What the citation pinpointed, as the resolver labelled it: "Point 46", "Article 17(1)". */
+  locator?: string;
+  /** Whether the excerpt is that passage, or the document's opening standing in for it. */
+  passage?: 'cited' | 'opening';
   language?: 'en' | 'fr';
   translation?: { from: 'en' | 'fr'; officialUrl: string };
 };
@@ -186,6 +190,25 @@ function SourceLanguageNote({ document }: { document: ReviewDocument }) {
     return <p className="source-note">Published only in French. Shown in the official language.</p>;
   }
   return null;
+}
+
+/**
+ * Says so when the passage below is not the paragraph that was cited.
+ *
+ * The retrieved document is the right one; the pinpoint inside it could not be found, and
+ * what is shown instead is the document's opening — for a judgment, the parties and the
+ * catchwords. That is worth showing, and it is not what the footnote pointed at. Left
+ * unlabelled it reads as the answer: a lawyer checking "paragraph 46" sees a passage under
+ * a citation naming paragraph 46 and has no reason to doubt it, which is a worse position
+ * than being shown nothing. The official-source link below it is then the way to the
+ * paragraph itself.
+ */
+function ExcerptScopeNote({ document }: { document: ReviewDocument }) {
+  if (document.passage !== 'opening') return null;
+  return <p className="source-note">
+    {document.locator ?? 'The cited passage'} could not be located in the retrieved text — this is
+    the opening of the document, not the passage cited.
+  </p>;
 }
 
 /**
@@ -483,6 +506,7 @@ export default function App() {
               <p className="source-provider">{document.source}</p>
               <a href={document.url} target="_blank" rel="noreferrer">{document.title}</a>
               <SourceLanguageNote document={document} />
+              <ExcerptScopeNote document={document} />
               <p>{document.excerpt}</p>
             </article>)}</div>}
           {review.kind === 'empty' && <p>No official source passage was found for this reference. You can open the official record directly.</p>}

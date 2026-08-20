@@ -298,12 +298,65 @@ describe('CURIA case-law text retrieval', () => {
     assert.ok(!preview.excerpt.includes('Paragraph 129'));
   });
 
+  // Legacy EUR-Lex "TexteOnly" rendering: the point number opens the paragraph with no
+  // anchor, class or wrapper of any kind. Confirmed against a live fetch of Wouters and
+  // Others (61999CJ0309, 2002) — the exact document a Commission decision's "See, by
+  // analogy ... EU:C:2002:98, paragraph 46" sent the pane to, where every convention above
+  // found nothing and the reviewer was shown the judgment's catchwords instead. The
+  // header before the points is what that fallback returned, so it is part of the fixture.
+  const bareNumberedPointsBody = '<p>Avis juridique important | 61999J0309 Judgment of the Court.</p>'
+    + ['45', '46', '47'].map((n) => `<p>${n} Paragraph ${n} of the ruling, unrelated matter${n === '46' ? ' — this is the cited paragraph' : ''}.</p>`).join('');
+
+  test('focuses the excerpt on the cited point using the legacy bare-number markup', async () => {
+    const { fetcher } = stubFetcher([html(bareNumberedPointsBody)]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 46 } }));
+
+    assert.ok(preview.excerpt.includes('this is the cited paragraph'));
+    assert.ok(!preview.excerpt.includes('Paragraph 45'));
+    assert.ok(!preview.excerpt.includes('Paragraph 47'));
+    assert.ok(!preview.excerpt.includes('Avis juridique important'), 'the catchwords header is not the cited paragraph');
+    assert.equal(preview.passage, 'cited');
+  });
+
   test('falls back to the document start when no known point-anchor convention matches', async () => {
     // e.g. a document CELLAR mirrors under a further, uncatalogued convention.
     const { fetcher } = stubFetcher([html('<p>No point anchors in this document.</p>')]);
     const { resolver } = makeResolver({ fetcher });
     const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 57 } }));
     assert.ok(preview.excerpt.includes('No point anchors in this document.'));
+  });
+
+  // The fallback above is the one thing on screen that can look exactly like an answer:
+  // a judgment's opening, under a panel headed with the paragraph that was cited. Saying
+  // which of the two it is has to survive as far as the pane.
+  test('says when the excerpt is the document opening rather than the cited point', async () => {
+    const { fetcher } = stubFetcher([html('<p>No point anchors in this document.</p>')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 57 } }));
+
+    assert.equal(preview.passage, 'opening');
+    assert.equal(preview.locator, 'Point 57', 'the label naming what was asked for must still be there to say it against');
+  });
+
+  test('claims nothing about a passage where the citation pinpointed none', async () => {
+    const { fetcher } = stubFetcher([html('<p>The judgment, opening at the top.</p>')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup());
+
+    assert.equal(preview.passage, undefined, 'nothing was pinpointed, so there is nothing to admit having missed');
+  });
+
+  // `&#039;` is how CELLAR's older renditions write an apostrophe — every "d&#039;assurances"
+  // in the 2002 judgment above. Decoding only the zero-less `&#39;` put the entity itself
+  // into the quoted passage.
+  test('decodes numeric character entities in a quoted passage', async () => {
+    const { fetcher } = stubFetcher([html('<p>46 Fédération française des sociétés d&#039;assurances &amp; Others.</p>')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 46 } }));
+
+    assert.ok(preview.excerpt.includes("d'assurances & Others"));
+    assert.ok(!preview.excerpt.includes('&#039;'));
   });
 
   test('shares the EUR-Lex request-spacing budget with legislative lookups', async () => {

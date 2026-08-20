@@ -36,6 +36,17 @@ export type SourcePreview = {
   url: string;
   source: 'CURIA' | 'EUR-Lex' | 'European Commission';
   locator?: string;
+  /**
+   * Whether `excerpt` is the passage `locator` names, or the document's opening shown in
+   * its place because that passage could not be found in the retrieved text. Absent where
+   * the citation pinpointed nothing, so there was never a passage to find.
+   *
+   * Every point-anchor convention this resolver knows was added after meeting a document
+   * that used none of the ones already catalogued, so `'opening'` is a state it can go on
+   * arriving in rather than a bug on its way to being finished. What must not happen is a
+   * lawyer reading a judgment's catchwords under a heading naming paragraph 46.
+   */
+  passage?: 'cited' | 'opening';
   /** The language `excerpt` is actually in. Absent where no document was retrieved. */
   language?: SourceLanguage;
   /**
@@ -130,10 +141,35 @@ export type ResolverOptions = {
   now?: () => number;
 };
 
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: ' ', amp: '&', quot: '"', apos: "'", lt: '<', gt: '>',
+};
+
+/**
+ * Entities are decoded in one pass, and numerically as well as by name.
+ *
+ * `&#039;` is the spelling CELLAR's older renditions use for an apostrophe — every
+ * `d&#039;assurances` in a 2002 judgment — and the previous pass matched only the
+ * zero-less `&#39;`, so the entity reached the pane as its own source text inside the
+ * quoted passage. One pass rather than several also means a document that writes `&amp;`
+ * before something entity-shaped is decoded once instead of twice.
+ *
+ * An unrecognised name is left exactly as it stands: showing `&sect;` is a small blemish,
+ * and silently dropping a character out of a passage a lawyer is about to rely on is not.
+ */
 function decodeHtml(value: string): string {
   return value.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (entity, decimal, hex, name) => {
+      if (decimal || hex) {
+        const code = Number(decimal ?? `0x${hex}`);
+        // A code point outside Unicode is a malformed document, not a character: leaving the
+        // entity as written beats throwing out of an excerpt that is otherwise fine.
+        return Number.isInteger(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
+      }
+      return NAMED_ENTITIES[String(name).toLowerCase()] ?? entity;
+    })
+    .replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -234,6 +270,19 @@ const JUDGMENT_POINT_HEADINGS = [
   // cross-reference to a point is an `HREF="#pointN"`, never a `NAME`.
   /<P[^>]*class="[^"]*Point[^"]*"[^>]*>\s*<A[^>]*\bNAME="point(\d+)"[^>]*>/gi,
   /<dt>\s*(\d+)\s*<dd>\s*<\/dd>\s*<\/dt>/gi,
+  // Legacy EUR-Lex "TexteOnly" rendering, where a numbered point has no anchor, no class
+  // and no wrapper of any kind: the number simply opens the paragraph, `<p>46 According to
+  // settled case-law...`. Confirmed live against Wouters and Others (61999CJ0309, 2002,
+  // which CELLAR holds only as `text/html`) — the judgment the pane was showing the
+  // catchwords of instead of the cited paragraph. Last of the four because it is the
+  // loosest: it is a shape, not a marker.
+  //
+  // Requiring running text after the number — not whitespace, and not the next tag — is
+  // what keeps it out of the way of the conventions above, whose anchors hold the number
+  // alone and close immediately (`<p class="count" id="point57">57</p>`),
+  // and a period after it belongs to legislative numbering (`<p>1. text`), which is a
+  // different structure read by ARTICLE_PARAGRAPH_HEADING. Recitals are parenthesised.
+  /<p[^>]*>\s*(\d+)\s+(?=[^\s<])/gi,
 ];
 
 /**
@@ -281,11 +330,32 @@ function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly nu
   return passages.join('\n\n…\n\n').slice(0, MAX_EXCERPT);
 }
 
-function extractLegislativeLocator(html: string, locator?: EuLookup['locator'], paragraphs?: number[]): string {
-  if (!locator) return decodeHtml(html).slice(0, 900);
+/**
+ * An excerpt, and whether it is the passage that was cited.
+ *
+ * The document opening is the honest last resort when a pinpoint cannot be found — a
+ * judgment's opening names the parties and what the case was about, which is worth more
+ * than an empty panel — but it is not what the reviewer asked for, and nothing downstream
+ * could previously tell the two apart. Unlabelled, it puts the catchwords of a judgment on
+ * screen under a citation naming paragraph 46, which is the failure this whole tool exists
+ * to prevent: something that looks exactly like an answer.
+ *
+ * `passage` is absent where the citation pinpointed nothing at all. Then the opening is
+ * simply what there is to show, and there is nothing to admit.
+ */
+type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' };
+
+/** The opening of the document, marked as the fallback it is. */
+function documentOpening(html: string, cited: boolean): Excerpt {
+  const excerpt = decodeHtml(html).slice(0, 900);
+  return cited ? { excerpt, passage: 'opening' } : { excerpt };
+}
+
+function extractLegislativeLocator(html: string, locator?: EuLookup['locator'], paragraphs?: number[]): Excerpt {
+  if (!locator) return documentOpening(html, false);
   if (locator.kind !== 'article') {
-    return extractCitedRuns(html, RECITAL_HEADING, paragraphs?.length ? paragraphs : [locator.start])
-      ?? decodeHtml(html).slice(0, 900);
+    const recitals = extractCitedRuns(html, RECITAL_HEADING, paragraphs?.length ? paragraphs : [locator.start]);
+    return recitals ? { excerpt: recitals, passage: 'cited' } : documentOpening(html, true);
   }
 
   // A generous cap here only bounds a safety limit on raw HTML scanned, not the
@@ -293,25 +363,28 @@ function extractLegislativeLocator(html: string, locator?: EuLookup['locator'], 
   // before reaching a later paragraph, so this must stay well above the final
   // excerpt-length cap applied below.
   const articleHtml = sliceByHeadingAnchor(html, ARTICLE_HEADING, locator.start, { through: locator.end, maxLength: 20_000 });
-  if (!articleHtml) return decodeHtml(html).slice(0, 900);
+  if (!articleHtml) return documentOpening(html, true);
   if (locator.paragraph) {
     const paragraphHtml = sliceByHeadingAnchor(articleHtml, ARTICLE_PARAGRAPH_HEADING, locator.paragraph, { maxLength: 3_000 });
-    if (paragraphHtml) return decodeHtml(paragraphHtml).trim();
+    if (paragraphHtml) return { excerpt: decodeHtml(paragraphHtml).trim(), passage: 'cited' };
   }
-  return decodeHtml(articleHtml).slice(0, 6_000).trim();
+  // The article was found and a numbered sub-paragraph within it was not, so this is the
+  // cited provision shown whole rather than a different part of the document: a wider
+  // answer to the question asked, not an answer to another one.
+  return { excerpt: decodeHtml(articleHtml).slice(0, 6_000).trim(), passage: 'cited' };
 }
 
-function extractJudgmentPoint(html: string, lookup: EuLookup): string {
+function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
   const locator = lookup.locator;
-  if (!locator || locator.kind !== 'point') return decodeHtml(html).slice(0, 900);
+  if (!locator || locator.kind !== 'point') return documentOpening(html, false);
   // The paragraph list is authoritative where the caller supplied one; `locator` is the
   // single-anchor view of the same citation, kept for callers that send nothing else.
   const cited = lookup.paragraphs?.length ? lookup.paragraphs : expandRange(locator.start, locator.end);
   for (const pattern of JUDGMENT_POINT_HEADINGS) {
     const result = extractCitedRuns(html, pattern, cited);
-    if (result) return result;
+    if (result) return { excerpt: result, passage: 'cited' };
   }
-  return decodeHtml(html).slice(0, 900);
+  return documentOpening(html, true);
 }
 
 /**
@@ -490,12 +563,12 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     // markup (see sliceByHeadingAnchor), so they need different extraction —
     // both run on the raw HTML, before it is decoded.
     const base: SourcePreview = source === 'CURIA'
-      ? { title: describeDocument(lookup), excerpt: extractJudgmentPoint(html, lookup), url, source, locator: locatorLabel(lookup), language }
+      ? { title: describeDocument(lookup), ...extractJudgmentPoint(html, lookup), url, source, locator: locatorLabel(lookup), language }
       : {
           // Legislation states its own title in the document, which beats anything derived
           // from the citation; the derived name is the fallback when extraction comes up empty.
           title: decodeHtml(html).slice(0, 260).split('Official Journal')[0].trim() || describeDocument(lookup),
-          excerpt: extractLegislativeLocator(html, lookup.locator, lookup.paragraphs), url, source, locator: locatorLabel(lookup), language,
+          ...extractLegislativeLocator(html, lookup.locator, lookup.paragraphs), url, source, locator: locatorLabel(lookup), language,
         };
     const preview = await translateIfNeeded(base);
     cache.set(key, preview);
