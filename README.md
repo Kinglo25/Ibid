@@ -36,9 +36,39 @@ The add-in reads Word footnotes, recognises common EU citations, normalises reli
 
 Run `npm run dev` and sideload `addin/manifest.xml` in Word.
 
+Word on the web needs nothing further. **Desktop Word needs a certificate it trusts**,
+because the pane runs in an embedded browser that checks the operating system's trust
+store — WebView2 checks Windows', WKWebView checks the Mac's — and neither has heard of the
+self-signed certificate Vite generates. Desktop Word then refuses the pane where a browser
+would offer a warning to click past, so it reads as a broken add-in rather than a
+certificate problem. Issue a trusted one once:
+
+```bash
+npx office-addin-dev-certs install     # writes ~/.office-addin-dev-certs, trusts its CA
+```
+
+`addin/vite.config.ts` picks those files up automatically and falls back to the self-signed
+certificate when they are absent, so this is optional until you need the desktop client. Do
+not work around it by trusting the certificate Vite generates: that one also claims Code
+Signing and Certificate Sign, which is far more authority than a throwaway localhost
+certificate should be granted.
+
+Developing on WSL against Word on Windows works — Windows reaches the dev server over
+`localhost` — but the CA has to be installed on the *Windows* side, where WebView2 looks:
+
+```bash
+certutil.exe -user -addstore Root "$(wslpath -w ~/.office-addin-dev-certs/ca.crt)"
+# undo: certutil.exe -user -delstore Root "Developer CA for Microsoft Office Add-ins"
+```
+
+Sideloading into Word for Windows reads from a **shared folder catalog**, not a local path,
+and it lists what is in that folder at the time Word starts. `docs/HOSTING.md` has the
+steps. If the add-in does not appear, check that the manifest is actually in the shared
+folder and restart Word before looking anywhere else.
+
 Run `npm run verify` to lint, type-check the tests, run the full test suite, and build. It is the single command that establishes the tree is sound.
 
-The three sample documents in [samples/ibid-demo-docx/](samples/ibid-demo-docx/) cover detection, the collected citation patterns, and back-references respectively; their own README says what each is for. Every identity in them is fictional and every authority is public, so they can be used anywhere a client document could not.
+Four sample documents sit in [samples/ibid-demo-docx/](samples/ibid-demo-docx/); their own README says what each is for. Three are constructed, covering detection, the collected citation patterns, and back-references — every identity in them is fictional and every authority public, so they can be used anywhere a client document could not. The fourth is a published Commission decision at full length, 645 footnotes, which is what the add-in actually meets; it is public but names real parties, so it is not a substitute for the fictional three.
 
 The API defaults to port 4000. If it is already in use, start both the API and Vite proxy on another port with `IBID_API_PORT=4001 npm run dev`.
 
