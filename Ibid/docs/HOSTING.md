@@ -88,7 +88,10 @@ restart Word.
 
 Either way the add-in appears on the **Home** tab as **Ibid. > Review citations**.
 
-Sideloading may be disabled outright on a firm-managed machine, which is why a **personal
-machine is the right place to evaluate**. Firm-wide use goes through Latham IT as a
-centralized deployment in the Microsoft 365 admin center — a conversation, not a build
-step. `DATA-FLOW.md` is written for that conversation.
+Sideloading may be disabled by policy on a firm-managed machine. That is a control working
+as intended, not an obstacle to route around — and a client document should never be opened
+on an unmanaged device in order to try a tool out. Two routes stay open instead: evaluate
+against the fictional sample documents in `samples/ibid-demo-docx/`, which exercise every
+recognition path without touching client material; or ask IT to enable sideloading for a
+single account. Firm-wide use goes through a centralized deployment in the Microsoft 365
+admin center — a conversation, not a build step. `DATA-FLOW.md` is written for it.

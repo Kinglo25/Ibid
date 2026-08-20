@@ -3,3 +3,6 @@ node_modules
 **/.vite
 **/*.tsbuildinfo
 .DS_Store
+# Windows alternate-data-stream artefacts
+*:Zone.Identifier
+*:mshield
