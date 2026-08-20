@@ -18,6 +18,18 @@ type FootnoteItem = { body: { text: string; load: (property: string) => void } }
 export type WordStub = {
   /** Put the caret on a footnote's reference mark, or nowhere with `null`. */
   putCursorOn: (footnote: number | null) => void;
+  /**
+   * Put the caret inside a footnote's own text, the way clicking at the foot of the page
+   * does. `parentBody` becomes that footnote's body, and `Range.footnotes` reports nothing,
+   * which is the route the reference-mark case never exercises.
+   */
+  putCursorInFootnoteText: (footnote: number) => void;
+  /**
+   * The awkward case: the caret is genuinely inside a footnote, but its body reports text
+   * the pane never read — a conversion artefact, or a document edited since the last
+   * refresh. Nothing can identify it, and the pane has to say so rather than keep answering.
+   */
+  putCursorInUnknownFootnote: (selectedText?: string) => void;
   /** Whether the pane registered a selection handler, i.e. whether it is following. */
   isFollowing: () => boolean;
   remove: () => void;
@@ -30,15 +42,36 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
   let cursor: number | null = null;
   let handler: (() => void) | undefined;
 
+  // Where the caret is, and therefore what Word would report for it.
+  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' = 'reference';
+  let selectedText = '';
+
   const context = {
     document: {
       body: { text: bodyText, load: noop, footnotes: { items, load: noop } },
-      getSelection: () => ({
-        footnotes: { items: cursor === null ? [] : [items[cursor]], load: noop },
-        // The caret is on the reference mark in the body, so the parent body is the
-        // document's, not a footnote's — the second of the two routes the pane tries.
-        parentBody: { text: bodyText, load: noop },
-      }),
+      getSelection: () => {
+        if (mode === 'footnoteText' && cursor !== null) {
+          return {
+            text: '', load: noop,
+            footnotes: { items: [], load: noop },
+            parentBody: { text: items[cursor].body.text, type: 'Footnote', load: noop },
+          };
+        }
+        if (mode === 'unknownFootnote') {
+          return {
+            text: selectedText, load: noop,
+            footnotes: { items: [], load: noop },
+            parentBody: { text: 'text this pane never read', type: 'Footnote', load: noop },
+          };
+        }
+        return {
+          text: '', load: noop,
+          footnotes: { items: cursor === null ? [] : [items[cursor]], load: noop },
+          // The caret is on the reference mark in the body, so the parent body is the
+          // document's, not a footnote's.
+          parentBody: { text: bodyText, type: 'MainDoc', load: noop },
+        };
+      },
     },
     sync: () => Promise.resolve(),
   };
@@ -64,7 +97,9 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
   globals.Word = { run: (callback: (c: unknown) => unknown) => Promise.resolve(callback(context)) };
 
   return {
-    putCursorOn: (footnote) => { cursor = footnote; handler?.(); },
+    putCursorOn: (footnote) => { mode = 'reference'; cursor = footnote; handler?.(); },
+    putCursorInFootnoteText: (footnote) => { mode = 'footnoteText'; cursor = footnote; handler?.(); },
+    putCursorInUnknownFootnote: (text = '') => { mode = 'unknownFootnote'; selectedText = text; handler?.(); },
     isFollowing: () => handler !== undefined,
     remove: () => { delete globals.Office; delete globals.Word; },
   };

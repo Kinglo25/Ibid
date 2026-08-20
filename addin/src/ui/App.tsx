@@ -60,30 +60,47 @@ async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFoot
 }
 
 /**
- * Which footnotes the cursor is currently in or on.
+ * Where the cursor is: which footnote, no footnote, or a footnote we could not name.
  *
  * Word gives an add-in no way to draw next to the text — the document canvas is Word's, and
  * a dialog opens centred on the screen rather than beside what it explains. So "show me the
  * source for the citation I am looking at" cannot be a popup at the citation; it has to be
  * the pane following the cursor. This is the part that makes that work.
  *
- * Two routes, because there are two things a reviewer might click:
+ * Three routes, tried in order, because there are several places a reviewer might click and
+ * the obvious one is not the reliable one:
  *
- *  - the footnote's own text at the foot of the page, where the selection sits *inside* the
- *    footnote body, found by matching that body's text against the footnotes already read;
- *  - the reference mark in the body text, where the selection *contains* the footnote,
- *    which `Range.footnotes` reports directly.
+ *  - the reference mark in the body text, where the selection *contains* the footnote and
+ *    `Range.footnotes` reports it directly;
+ *  - the cursor inside the footnote's own text at the foot of the page, where the selection's
+ *    parent body *is* that footnote's body, matched against the footnote texts already read;
+ *  - failing both, whatever text is actually selected, matched as a substring of a footnote.
+ *    This is the one that rescues a real selection when the parent body is not what the API
+ *    was expected to return, which varies by Word build and by how the document was made.
  *
- * Matching on text rather than comparing ranges one by one is deliberate: `compareLocationWith`
- * against every footnote would be a hundred queued operations on every cursor move, and the
- * texts are already in hand. Two identical footnotes would be indistinguishable, which costs
- * a wrong highlight and nothing more.
+ * Matching on text rather than comparing ranges is deliberate: `compareLocationWith` against
+ * every footnote would be hundreds of queued operations on every cursor move, and the texts
+ * are already in hand.
  *
- * Every step is guarded. This runs on every cursor movement in the document, against API
- * surface that varies by Word build, and a failure here must never take the pane down with
- * it — the list still works, so the worst case is that the pane simply stops following.
+ * The distinction that matters is the last one returned. A cursor in ordinary body text and
+ * a cursor in a footnote nobody could identify are the same empty answer to a text match,
+ * and treating them alike is what let the pane keep a source panel on screen describing the
+ * footnote *before* the one being read — indistinguishable, to the reviewer, from a correct
+ * answer. `Body.type` separates them, so the second case can be admitted rather than hidden.
+ *
+ * Every step is guarded. This runs on every cursor movement, against API surface that varies
+ * by Word build, and a failure here must never take the pane down with it.
  */
-async function readSelectedFootnotes(knownTexts: readonly string[]): Promise<number[]> {
+export type CursorLocation =
+  | { kind: 'footnotes'; indexes: number[] }
+  | { kind: 'unidentified' }
+  | { kind: 'outside' };
+
+const FOOTNOTE_BODIES = ['Footnote', 'Endnote', 'NoteItem'];
+// Below this a selection is too short to pin down a footnote by its text alone.
+const SUBSTRING_FLOOR = 12;
+
+async function readCursorLocation(knownTexts: readonly string[]): Promise<CursorLocation> {
   const normalise = (value: string) => value.replace(/\s+/g, ' ').trim();
   const known = knownTexts.map(normalise);
 
@@ -91,8 +108,9 @@ async function readSelectedFootnotes(knownTexts: readonly string[]): Promise<num
     const selection = context.document.getSelection();
     const contained = selection.footnotes;
     contained.load('items');
+    selection.load('text');
     const parent = selection.parentBody;
-    parent.load('text');
+    parent.load('text,type');
     await context.sync();
 
     // The reference mark, or a stretch of body text covering several of them.
@@ -102,13 +120,25 @@ async function readSelectedFootnotes(knownTexts: readonly string[]): Promise<num
       const hits = contained.items
         .map((footnote) => known.indexOf(normalise(footnote.body.text)))
         .filter((index) => index >= 0);
-      if (hits.length) return hits;
+      if (hits.length) return { kind: 'footnotes' as const, indexes: hits };
     }
 
-    // The cursor inside the footnote itself: its parent body is the footnote's body.
     const parentText = normalise(parent.text ?? '');
-    const index = parentText ? known.indexOf(parentText) : -1;
-    return index >= 0 ? [index] : [];
+    const exact = parentText ? known.indexOf(parentText) : -1;
+    if (exact >= 0) return { kind: 'footnotes' as const, indexes: [exact] };
+
+    // What is actually selected, found inside a footnote. Survives a parent body that is a
+    // paragraph, or the main document body, rather than the footnote itself.
+    const selectedText = normalise(selection.text ?? '');
+    if (selectedText.length >= SUBSTRING_FLOOR) {
+      const containing = known.findIndex((text) => text.includes(selectedText));
+      if (containing >= 0) return { kind: 'footnotes' as const, indexes: [containing] };
+    }
+
+    // Nothing matched. Whether that is worth telling the reviewer depends entirely on
+    // whether they were in a footnote at all.
+    const inFootnote = FOOTNOTE_BODIES.includes(String(parent.type));
+    return inFootnote ? { kind: 'unidentified' as const } : { kind: 'outside' as const };
   });
 }
 
@@ -203,6 +233,9 @@ export default function App() {
   // Which footnote the cursor is in, when Word is telling us. Null in the browser preview
   // and whenever the cursor is somewhere that is not a footnote.
   const [focused, setFocused] = useState<number | null>(null);
+  // The cursor is in a footnote Ibid could not identify. Distinct from `focused === null`,
+  // which is the ordinary case of a cursor somewhere that is not a footnote at all.
+  const [unidentified, setUnidentified] = useState(false);
   const [following, setFollowing] = useState(false);
   // A hundred footnotes of which six need a decision: showing all hundred buries the six.
   const [showAll, setShowAll] = useState(false);
@@ -279,8 +312,12 @@ export default function App() {
     let cancelled = false;
 
     const onSelectionChanged = () => {
-      void readSelectedFootnotes(texts)
-        .then((hits) => { if (!cancelled) setFocused(hits.length ? hits[0] : null); })
+      void readCursorLocation(texts)
+        .then((location) => {
+          if (cancelled) return;
+          setFocused(location.kind === 'footnotes' ? location.indexes[0] : null);
+          setUnidentified(location.kind === 'unidentified');
+        })
         // Silent by design: this fires on every cursor movement, so a failure must not
         // produce an error the reviewer has to dismiss over and over. The list still works.
         .catch(() => undefined);
@@ -334,6 +371,9 @@ export default function App() {
   // see `autoSelectable`. Keyed on the footnote so moving the cursor within one footnote
   // does not reopen what the reviewer may have just navigated away from.
   useEffect(() => {
+    // In a footnote, but not one we can name. Holding the previous footnote's source on
+    // screen here is the failure the reviewer cannot see: it looks like an answer.
+    if (unidentified) { setSelected(null); return; }
     if (focused === null) return;
     const footnote = footnotes[focused];
     const citation = autoSelectable(citationsByFootnote[focused] ?? []);
@@ -347,7 +387,7 @@ export default function App() {
     // Deliberately keyed on the footnote and its citations only. `selectCitation` and
     // `footnotes` are read here but must not retrigger it: re-running on every render would
     // reopen the source the reviewer may have just navigated away from.
-  }, [focused, citationsByFootnote]);
+  }, [focused, unidentified, citationsByFootnote]);
   const reviewable = useMemo(() => footnotes.filter((footnote) => footnote.text), [footnotes]);
 
   const focusedFootnote = focused === null ? undefined : footnotes[focused];
@@ -411,7 +451,12 @@ export default function App() {
           {focusedFootnote && <span className="count">Footnote {focusedFootnote.number}</span>}
         </div>
 
-        {!selected && <p className="muted">{following
+        {!selected && unidentified && <p className="error">
+          The cursor is in a footnote Ibid could not match to one it has read. Use Refresh if the
+          document has changed since the pane was opened.
+        </p>}
+
+        {!selected && !unidentified && <p className="muted">{following
           ? 'Put the cursor on a citation, or in the footnote holding it, and its source appears here.'
           : 'Pick a citation from the list below.'}</p>}
 

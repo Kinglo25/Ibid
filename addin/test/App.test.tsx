@@ -1,6 +1,6 @@
 import { test, describe, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import App from '../src/ui/App.tsx';
 import { installWordStub } from './word-stub.ts';
@@ -219,5 +219,75 @@ describe('following the cursor', () => {
 
     word.putCursorOn(1);
     await screen.findByRole('heading', { name: 'No citation selected' });
+  });
+});
+
+/**
+ * The cursor in places the reference-mark route does not reach.
+ *
+ * A reviewer reading a long footnote clicks in the footnote itself, at the foot of the
+ * page, not on the mark in the body. That is a different path through the Word API and it
+ * is the one that was failing in practice.
+ */
+describe('finding the footnote the cursor is actually in', () => {
+  const akzo = 'Judgment of 10 September 2009, Akzo Nobel and Others v Commission, Case C-97/08 P, ECLI:EU:C:2009:536, paragraph 60.';
+  const sevenCitations = 'See, by analogy judgments of 10 September 2009, Akzo Nobel and others v Commission, C-97/08 P, EU:C:2009:536, paragraph 61; of 1 October 2013, Elf Aquitaine v Commission, C-521/09 P, EU:C:2011:620, paragraphs 57 and 63.';
+
+  let word: ReturnType<typeof installWordStub> | undefined;
+  afterEach(() => { word?.remove(); word = undefined; });
+
+  test('clicking inside the footnote text finds that footnote, not the one before it', async () => {
+    word = installWordStub([akzo, sevenCitations]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorOn(0);
+    await screen.findByText('Footnote 1 context');
+
+    // The footnote citing several authorities. It opens none of them by itself, but the
+    // pane must at least have moved off footnote 1 — that staleness was the reported bug.
+    word.putCursorInFootnoteText(1);
+    await screen.findByText('Footnote 2', { selector: '.count' });
+    assert.equal(screen.queryByText('Footnote 1 context'), null);
+  });
+
+  test('a footnote citing several authorities offers each of them', async () => {
+    word = installWordStub([akzo, sevenCitations]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorInFootnoteText(1);
+    await screen.findByText('Footnote 2', { selector: '.count' });
+
+    // Nothing opens by itself where there is a choice to make, so both are offered — on the
+    // footnote under the cursor, which is a different row from the index's own chips.
+    const chips = within(document.querySelector('.focused-chips') as HTMLElement);
+    assert.ok(chips.getByRole('button', { name: /EU:C:2009:536/ }));
+    assert.ok(chips.getByRole('button', { name: /EU:C:2011:620/ }));
+  });
+
+  test('a selection identifies its footnote even when the parent body does not', async () => {
+    word = installWordStub([akzo, sevenCitations]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    // Word reported a body the pane never read; the selected text still pins it down.
+    word.putCursorInUnknownFootnote('Elf Aquitaine v Commission, C-521/09 P');
+    await screen.findByText('Footnote 2', { selector: '.count' });
+  });
+
+  test('a footnote it cannot identify is admitted, not answered stale', async () => {
+    word = installWordStub([akzo, sevenCitations]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorOn(0);
+    await screen.findByText('Footnote 1 context');
+
+    // Nothing to match on at all. The previous footnote's source must not stay on screen
+    // pretending to describe this one.
+    word.putCursorInUnknownFootnote('');
+    await screen.findByText(/could not match to one it has read/);
+    assert.equal(screen.queryByText('Footnote 1 context'), null);
   });
 });
