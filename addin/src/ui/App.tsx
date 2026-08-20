@@ -568,6 +568,10 @@ export default function App() {
           not the citation the cursor is on now.
         </p>}
 
+        {/* What Word said about a caret nothing could be matched to. Beside the source
+            because that is where the reviewer is looking when the answer is wrong. */}
+        {cursorReport && <p className="muted">Word reported the cursor as: {cursorReport}</p>}
+
         {!selected && unidentified && <p className="error">
           The cursor is in a footnote Ibid could not match to one it has read. Use Refresh if the
           document has changed since the pane was opened.
