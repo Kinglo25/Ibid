@@ -39,6 +39,12 @@ export type WordStub = {
    * handlers is a pane racing for the one the cursor arrives on.
    */
   handlerChurn: () => { registrations: number; removals: number };
+  /**
+   * How many times the pane has asked Word for the main document's text since the document
+   * was read. On a real decision that is 98,000 words across the add-in bridge, and the
+   * cursor moves constantly, so the honest answer here is none.
+   */
+  documentTextLoads: () => number;
   remove: () => void;
 };
 
@@ -50,6 +56,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
   let handler: (() => void) | undefined;
   let registrations = 0;
   let removals = 0;
+  let documentTextLoads = 0;
 
   // Where the caret is, and therefore what Word would report for it.
   let mode: 'reference' | 'footnoteText' | 'unknownFootnote' = 'reference';
@@ -78,7 +85,13 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
           footnotes: { items: cursor === null ? [] : [items[cursor]], load: noop },
           // The caret is on the reference mark in the body, so the parent body is the
           // document's, not a footnote's.
-          parentBody: { text: bodyText, type: 'MainDoc', load: noop },
+          parentBody: {
+            text: bodyText,
+            type: 'MainDoc',
+            // Asking for this is asking for the entire document. Counted rather than
+            // refused, so a test can say what it costs instead of merely failing.
+            load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
+          },
         };
       },
     },
@@ -123,6 +136,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
     putCursorInUnknownFootnote: (text = '') => { mode = 'unknownFootnote'; selectedText = text; handler?.(); },
     isFollowing: () => handler !== undefined,
     handlerChurn: () => ({ registrations, removals }),
+    documentTextLoads: () => documentTextLoads,
     remove: () => { delete globals.Office; delete globals.Word; },
   };
 }

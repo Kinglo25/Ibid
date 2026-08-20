@@ -114,7 +114,8 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
     contained.load('items');
     selection.load('text');
     const parent = selection.parentBody;
-    parent.load('text,type');
+    // Type now, text only if it turns out to be worth having. See below.
+    parent.load('type');
     await context.sync();
 
     // The reference mark, or a stretch of body text covering several of them.
@@ -127,9 +128,20 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
       if (hits.length) return { kind: 'footnotes' as const, indexes: hits };
     }
 
-    const parentText = normalise(parent.text ?? '');
-    const exact = parentText ? known.indexOf(parentText) : -1;
-    if (exact >= 0) return { kind: 'footnotes' as const, indexes: [exact] };
+    // The parent body's own text — but never the main document's. With the cursor on a
+    // reference mark the parent *is* the document, so loading its text marshals every word
+    // of a 199-page decision across the bridge, on every cursor movement, before anything
+    // has been matched: seconds of waiting for a string that could never equal a footnote.
+    // Any other body is small enough to be worth reading, and an unrecognised type is read
+    // as before rather than skipped, since the cost of being wrong there is a match missed.
+    const parentType = String(parent.type ?? '');
+    if (parentType.toLowerCase() !== 'maindoc') {
+      parent.load('text');
+      await context.sync();
+      const parentText = normalise(parent.text ?? '');
+      const exact = parentText ? known.indexOf(parentText) : -1;
+      if (exact >= 0) return { kind: 'footnotes' as const, indexes: [exact] };
+    }
 
     // What is actually selected, found inside a footnote. Survives a parent body that is a
     // paragraph, or the main document body, rather than the footnote itself.
@@ -141,7 +153,7 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
 
     // Nothing matched. Whether that is worth telling the reviewer depends entirely on
     // whether they were in a footnote at all.
-    const inFootnote = FOOTNOTE_BODIES.includes(String(parent.type));
+    const inFootnote = FOOTNOTE_BODIES.includes(parentType);
     return inFootnote ? { kind: 'unidentified' as const } : { kind: 'outside' as const };
   });
 }

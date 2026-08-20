@@ -259,6 +259,21 @@ describe('following the cursor', () => {
     await screen.findByRole('heading', { name: 'No citation selected' });
   });
 
+  test('landing on a reference mark does not read the whole document', async () => {
+    // The caret on a reference mark sits in the body, so `selection.parentBody` is the
+    // document itself. Loading its text alongside its type cost every word of a 199-page
+    // decision on every cursor movement, before a single match had been attempted — and
+    // the one thing that string can never be is equal to a footnote.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorOn(0);
+    await screen.findByText('Footnote 1 context');
+
+    assert.equal(word.documentTextLoads(), 0, 'the document body is not what identifies a footnote');
+  });
+
   test('re-reading the document leaves the handler the cursor arrives on alone', async () => {
     // Registering a handler and removing one are both asynchronous, and the pane awaits
     // neither, so tearing one down and putting it back races Office for the live handler.
