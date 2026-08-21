@@ -337,23 +337,46 @@ const CELEX_SECTORS: Record<string, Partial<Record<CuriaDocumentType, string>>> 
 /** Exported for direct, deterministic testing of century resolution and the founding-year floor; detectCitations is the intended public entry point. */
 export function celexForCase(
   caseNumber: string,
-  { documentType = 'judgment', referenceYear }: { documentType?: CuriaDocumentType; referenceYear?: number } = {},
+  { documentType = 'judgment', referenceYear, court: statedCourt }: {
+    documentType?: CuriaDocumentType;
+    referenceYear?: number;
+    /**
+     * The court an ECLI names, where the citation carries one. It overrides the letter on
+     * the case number, which is typed by whoever drafted the footnote and is not always
+     * right: this decision cites `C511/24, ECLI:EU:T:2024:431` — a Court of Justice case
+     * number against a General Court ECLI. Deriving from the case number gave `62024CJ0511`,
+     * which is a real identifier for a different case, so a wrong CELEX here does not fail
+     * loudly; it retrieves someone else's judgment and presents it as the source.
+     */
+    court?: string;
+  } = {},
 ): string | undefined {
   const match = new RegExp(`^${CASE_NUMBER_SOURCE}$`, 'i').exec(caseNumber.trim());
   if (!match) return undefined;
   const [, court, number, twoDigitYear] = match;
   const year = resolveTwoDigitYear(twoDigitYear, referenceYear);
   if (year < CURIA_FOUNDING_YEAR) return undefined;
-  const sector = CELEX_SECTORS[court.toUpperCase()]?.[documentType];
+  const sector = CELEX_SECTORS[(statedCourt ?? court).toUpperCase()]?.[documentType];
   if (!sector) return undefined;
   return `6${year}${sector}${number.padStart(4, '0')}`;
+}
+
+/** The court an ECLI names: `ECLI:EU:T:2024:431` is the General Court, whatever the prose says. */
+function courtFromEcli(ecli: string): string | undefined {
+  const match = /^ECLI:EU:([A-Z]):/i.exec(ecli);
+  return match ? match[1].toUpperCase() : undefined;
 }
 
 const OPINION_SIGNAL = /\bopinion of (?:the )?(?:advocate general|AG)\b|\b(?:advocate general|AG)'?s?\s+opinion\b|\bconclusions?\s+de\s+l'avocat\s+g[ée]n[ée]ral\b/i;
 // "Order of the Court" is only one drafting convention; "Order of [date]" — the same
 // dating convention "Judgment of [date]" uses — is at least as common and was previously
 // unrecognised, so an order cited that way was silently mislabelled as a judgment.
-const ORDER_SIGNAL = /\border of (?:the (?:court|general court)|\d{1,2}\s+\S+\s+\d{4})\b|\bordonnance\s+(?:de\s+la\s+cour|du\s+\d{1,2})\b/i;
+//
+// Interim measures are ordered by the President, and that is how they are cited: "Order of
+// the President of the General Court of 12 July 2024". Without the office in this pattern
+// the citation read as a judgment, the derived CELEX named `TJ` where the document is `TO`,
+// and a document CELLAR does hold came back as nothing but a link to the case record.
+const ORDER_SIGNAL = /\border of (?:the (?:(?:vice-?)?president of the )?(?:court|general court)|\d{1,2}\s+\S+\s+\d{4})\b|\bordonnance\s+(?:du\s+(?:vice-)?pr[ée]sident|de\s+la\s+cour|du\s+\d{1,2})\b/i;
 // The affirmative counterpart: only used to record that the type was *stated*, never to
 // change the resolved type, which already defaults to 'judgment'.
 const JUDGMENT_SIGNAL = /\bjudgment of (?:the (?:court|general court)|\d{1,2}\s+\S+\s+\d{4})\b|\barr[êe]t\s+(?:de\s+la\s+cour|du\s+\d{1,2})\b/i;
@@ -622,7 +645,8 @@ export function detectCitations(text: string): CitationMatch[] {
     add({
       label: labelForDocumentType(documentType, 'CJEU judgment'), value: match[0].toUpperCase(), index, source: 'curia', ecli,
       caseNumber, caseName: caseNameBefore(text, index, segment.start), documentType, documentTypeStated: stated || undefined,
-      celex: caseNumber ? celexForCase(caseNumber, { documentType }) : undefined, ...pinpointFor(index, index + match[0].length),
+      celex: caseNumber ? celexForCase(caseNumber, { documentType, court: courtFromEcli(ecli) }) : undefined,
+      ...pinpointFor(index, index + match[0].length),
     });
   }
 

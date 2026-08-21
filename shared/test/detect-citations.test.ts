@@ -167,6 +167,34 @@ describe('CURIA document-type detection', () => {
     assert.equal(citation?.documentType, 'order');
   });
 
+  test('recognises an order of the President, which is how interim measures are cited', () => {
+    // Interim measures are ordered by the President and cited that way. Without the office
+    // in the pattern this read as a judgment, the derived CELEX named `TJ` where the
+    // document is `TO`, and an order CELLAR does hold came back as nothing but a link to
+    // the case record — which is indistinguishable, to a reviewer, from a source that is
+    // simply not available anywhere.
+    const [citation] = detectCitations(
+      'Order of the President of the General Court of 12 July 2024, Commission v WebGroup Czech Republic, T-139/24 R, EU:T:2024:475.',
+    );
+    assert.equal(citation.documentType, 'order');
+    assert.equal(citation.celex, '62024TO0139');
+  });
+
+  test('recognises an order of the Vice-President', () => {
+    const [citation] = detectCitations('Order of the Vice-President of the Court of 2 July 2024, Case C-511/24, ECLI:EU:C:2024:431.');
+    assert.equal(citation.documentType, 'order');
+  });
+
+  test('an ECLI names the court, whatever letter the case number carries', () => {
+    // From the decision under review: `C511/24, ECLI:EU:T:2024:431` — a Court of Justice
+    // case number against a General Court ECLI. Deriving from the case number produced
+    // `62024CJ0511`, a well-formed identifier for a different case entirely, so the mistake
+    // could not fail loudly: it would retrieve another court's judgment and present it as
+    // the source of this citation.
+    const [citation] = detectCitations('Order of the President of the General Court of 2 July 2024, Aylo Freesites LTD v Commission, C511/24, ECLI:EU:T:2024:431.');
+    assert.equal(citation.celex, '62024TO0511');
+  });
+
   test('does not treat an unrelated use of "order" nearby as a signal', () => {
     const citation = find('In order to assess the claim, see Case C-293/12.', 'C-293/12');
     assert.equal(citation?.documentType, 'judgment');
