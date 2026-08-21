@@ -210,6 +210,42 @@ describe('CURIA document-type detection', () => {
     assert.equal(citation.caseNumber, 'C-293/12');
   });
 
+  test('an ECLI does not reach past the one cited before it for a case number', () => {
+    // Found by the corpus harness: a footnote citing two authorities in sequence let the
+    // second ECLI reach back over the first one's ECLI to the first one's case number, so a
+    // 1982 judgment was derived under a 2013 case. CELLAR confirmed the identifier named a
+    // different document; nothing about it looked wrong on screen.
+    const citations = detectCitations(
+      'Judgment of 12 June 2014, Ascendi (C-377/13, EU:C:2014:1754, paragraph 27). '
+      + 'See also, to that effect, judgments of 23 March 1982, Nordsee (102/81, EU:C:1982:107).',
+    );
+    const nordsee = citations.find((citation) => citation.value.includes('1982:107'));
+    assert.equal(nordsee?.caseNumber, undefined, 'no case number is better than another citation\'s');
+    assert.equal(nordsee?.celex, undefined);
+  });
+
+  test('recognises "my Opinion in", the way an Advocate General cites their own', () => {
+    // None of "my Opinion in", "his Opinion in" or a bare "Opinion in" names the office,
+    // which is all the pattern used to look for — so an opinion cited that way derived the
+    // judgment's CELEX, a well-formed identifier for the very document the citation was
+    // distinguishing itself from.
+    const [citation] = detectCitations('See, for the benefits of that shortcut, my Opinion in CB v Commission, C-67/13 P, EU:C:2014:1958, point 35.');
+    assert.equal(citation.documentType, 'opinion');
+    assert.equal(citation.celex, '62013CC0067');
+  });
+
+  test('a judgment and the opinion in the same case are typed by the words nearest each', () => {
+    // One footnote routinely cites both. Trying opinion before judgment let the second
+    // citation's wording relabel the first, which is the same silent-wrong-source failure
+    // read from the other end.
+    const citations = detectCitations(
+      'See also, to that effect, judgment of 21 May 2015, CDC Hydrogen Peroxide (C-352/13, EU:C:2015:335, paragraphs 57 to 72), '
+      + 'where the Court did not follow the point of view which Advocate General Jaaskinen expressed in his Opinion in CDC Hydrogen Peroxide (C-352/13, EU:C:2014:2443).',
+    );
+    assert.equal(citations.find((c) => c.value.includes('2015:335'))?.documentType, 'judgment');
+    assert.equal(citations.find((c) => c.value.includes('2014:2443'))?.documentType, 'opinion');
+  });
+
   test('recognises an order of the Vice-President', () => {
     const [citation] = detectCitations('Order of the Vice-President of the Court of 2 July 2024, Case C-511/24, ECLI:EU:C:2024:431.');
     assert.equal(citation.documentType, 'order');

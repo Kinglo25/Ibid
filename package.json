@@ -14,7 +14,8 @@
     "test": "npm run test -w shared && npm run test -w api && npm run test -w addin",
     "typecheck:test": "tsc -p tsconfig.test.json && npm run typecheck:test -w addin",
     "lint": "npm run lint -w addin && npm run lint -w api && npm run lint -w shared",
-    "verify": "npm run lint && npm run typecheck:test && npm run test && npm run build"
+    "verify": "npm run lint && npm run typecheck:test && npm run test && npm run build",
+    "corpus": "npm run build -w shared && node scripts/corpus.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

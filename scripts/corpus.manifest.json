@@ -1,0 +1,22 @@
+{
+  "documents": [
+    { "id": "x-dsa-decision", "kind": "docx", "path": "samples/ibid-demo-docx/Commission_decision_X_DSA.docx",
+      "note": "A Commission decision converted from PDF. The reason this harness reads .docx at all: its footnotes arrive in three different shapes." },
+    { "id": "data-retention-memo", "kind": "docx", "path": "samples/ibid-demo-docx/EU_Data_Retention_Memo.docx" },
+
+    { "id": "ag-achmea", "kind": "cellar", "celex": "62016CC0284", "note": "Footnote-dense, modern bare-ECLI style." },
+    { "id": "ag-google-spain", "kind": "cellar", "celex": "62012CC0131" },
+    { "id": "ag-schrems-ii", "kind": "cellar", "celex": "62018CC0311" },
+    { "id": "ag-wouters", "kind": "cellar", "celex": "61999CC0309", "note": "Pre-2012: cites by European Court Reports volume, not ECLI." },
+    { "id": "ag-intel", "kind": "cellar", "celex": "62014CC0413" },
+    { "id": "ag-digital-rights", "kind": "cellar", "celex": "62012CC0293" },
+
+    { "id": "judgment-achmea", "kind": "cellar", "celex": "62016CJ0284" },
+    { "id": "judgment-google-spain", "kind": "cellar", "celex": "62012CJ0131" },
+    { "id": "judgment-akzo-nobel", "kind": "cellar", "celex": "62008CJ0097" },
+    { "id": "judgment-wouters", "kind": "cellar", "celex": "61999CJ0309" },
+    { "id": "judgment-schrems-ii", "kind": "cellar", "celex": "62018CJ0311" },
+    { "id": "judgment-intel-gc", "kind": "cellar", "celex": "62009TJ0286", "note": "General Court, so the T sectors are exercised too." },
+    { "id": "judgment-hofner", "kind": "cellar", "celex": "61990CJ0041", "note": "1991: the text/html-only era." }
+  ]
+}

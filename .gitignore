@@ -6,3 +6,6 @@ node_modules
 # Windows alternate-data-stream artefacts
 *:Zone.Identifier
 *:mshield
+# Corpus harness downloads: public documents, but large and re-fetchable.
+.corpus-cache/
+corpus-report.json

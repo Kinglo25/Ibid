@@ -367,7 +367,13 @@ function courtFromEcli(ecli: string): string | undefined {
   return match ? match[1].toUpperCase() : undefined;
 }
 
-const OPINION_SIGNAL = /\bopinion of (?:the )?(?:advocate general|AG)\b|\b(?:advocate general|AG)'?s?\s+opinion\b|\bconclusions?\s+de\s+l'avocat\s+g[ée]n[ée]ral\b/i;
+// An Advocate General writes "my Opinion in Cartes Bancaires"; everyone else writes "his
+// Opinion in", "her Opinion in", or just "Opinion in". None of those name the office, which
+// is all this pattern used to look for, so an opinion cited that way derived the judgment's
+// CELEX — a well-formed identifier for the very document the citation was distinguishing
+// itself from. Four of these were found by running detection over the Court's own drafting
+// and asking CELLAR what each derived identifier really was.
+const OPINION_SIGNAL = /\bopinion of (?:the )?(?:advocate general|AG)\b|\b(?:advocate general|AG)'?s?\s+opinion\b|\b(?:my|his|her|their|its)\s+opinion\b|\bopinion in\s+(?!case\b)|\bconclusions?\s+de\s+l'avocat\s+g[ée]n[ée]ral\b|\bses\s+conclusions\b/i;
 // "Order of the Court" is only one drafting convention; "Order of [date]" — the same
 // dating convention "Judgment of [date]" uses — is at least as common and was previously
 // unrecognised, so an order cited that way was silently mislabelled as a judgment.
@@ -394,10 +400,28 @@ const JUDGMENT_SIGNAL = /\bjudgment of (?:the (?:court|general court)|\d{1,2}\s+
  * said so, so a caller can distinguish a stated type from that default.
  */
 function documentTypeNear(text: string, index: number, matchLength: number): { documentType: CuriaDocumentType; stated: boolean } {
-  const window = text.slice(Math.max(0, index - 200), Math.min(text.length, index + matchLength + 100));
-  if (OPINION_SIGNAL.test(window)) return { documentType: 'opinion', stated: true };
-  if (ORDER_SIGNAL.test(window)) return { documentType: 'order', stated: true };
-  return { documentType: 'judgment', stated: JUDGMENT_SIGNAL.test(window) };
+  const from = Math.max(0, index - 200);
+  const window = text.slice(from, Math.min(text.length, index + matchLength + 100));
+  // Nearest signal wins, not a fixed order of preference. One footnote routinely cites a
+  // judgment and the Advocate General's opinion in the same case — "judgment of 21 May 2015,
+  // CDC Hydrogen Peroxide (C-352/13, EU:C:2015:335) … which Advocate General Jääskinen
+  // expressed in his Opinion in CDC Hydrogen Peroxide (C-352/13, EU:C:2014:2443)" — and
+  // trying opinion first would let the second citation's wording relabel the first. Each
+  // citation is named by the words closest to it, which is how it was written to be read.
+  const found: { type: CuriaDocumentType; at: number }[] = [];
+  for (const [type, pattern] of [['opinion', OPINION_SIGNAL], ['order', ORDER_SIGNAL], ['judgment', JUDGMENT_SIGNAL]] as const) {
+    const global = new RegExp(pattern.source, 'gi');
+    let last: number | undefined;
+    for (const hit of window.matchAll(global)) {
+      const at = from + (hit.index ?? 0);
+      // Prefer a signal the citation follows; a later one describes what comes after it.
+      if (at <= index) last = at; else if (last === undefined) last = at;
+    }
+    if (last !== undefined) found.push({ type, at: last });
+  }
+  if (!found.length) return { documentType: 'judgment', stated: false };
+  const nearest = found.reduce((best, item) => (Math.abs(index - item.at) < Math.abs(index - best.at) ? item : best));
+  return { documentType: nearest.type, stated: true };
 }
 
 function labelForDocumentType(documentType: CuriaDocumentType, defaultLabel: string): string {
@@ -636,10 +660,18 @@ export function detectCitations(text: string): CitationMatch[] {
   // group: with no ECLI recognised, "(C-293/12 and C-594/12, EU:C:2014:238)" read as two
   // separate authorities rather than one case cited under both its numbers, and any `Ibid.`
   // after such a footnote was reported ambiguous between a case and its own sibling.
+  // Where the previous ECLI ended, so no ECLI can claim a case number that belongs to one
+  // cited before it. A footnote listing several authorities — "Ascendi (C-377/13,
+  // EU:C:2014:1754). See also … Nordsee (102/81, EU:C:1982:107)" — otherwise let the second
+  // ECLI reach back past the first one's ECLI to the first one's case, and a 1982 judgment
+  // was derived under a 2013 case number. Found by running detection over a corpus of the
+  // Court's own drafting and asking CELLAR what each derived identifier really was.
+  let previousEcliEnd = 0;
   for (const match of text.matchAll(/\b(?:ECLI:)?EU:([CT]):(\d{4}):(\d+)\b/gi)) {
     const index = match.index ?? 0;
     const segment = segmentAt(segments, index);
-    const before = text.slice(Math.max(segment.start, index - 500), index);
+    const before = text.slice(Math.max(segment.start, index - 500, previousEcliEnd), index);
+    previousEcliEnd = index + match[0].length;
     const groupStart = Math.max(before.toLowerCase().lastIndexOf('affaires'), before.toLowerCase().lastIndexOf('joined cases'));
     const scanned = before.slice(groupStart >= 0 ? groupStart : 0);
     const caseMatches = [...scanned.matchAll(caseNumberPattern)];
