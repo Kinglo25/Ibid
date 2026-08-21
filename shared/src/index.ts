@@ -376,7 +376,11 @@ const OPINION_SIGNAL = /\bopinion of (?:the )?(?:advocate general|AG)\b|\b(?:adv
 // the President of the General Court of 12 July 2024". Without the office in this pattern
 // the citation read as a judgment, the derived CELEX named `TJ` where the document is `TO`,
 // and a document CELLAR does hold came back as nothing but a link to the case record.
-const ORDER_SIGNAL = /\border of (?:the (?:(?:vice-?)?president of the )?(?:court|general court)|\d{1,2}\s+\S+\s+\d{4})\b|\bordonnance\s+(?:du\s+(?:vice-)?pr[ée]sident|de\s+la\s+cour|du\s+\d{1,2})\b/i;
+// "Order in Case C-639/23 P(R)" is the third convention in this one decision, alongside
+// "Order of the President of…" and "Order of [date]". A citation is named for its document
+// in whatever way the drafter reached for, and each way missed is a whole class of orders
+// derived under the judgment sector.
+const ORDER_SIGNAL = /\border of (?:the (?:(?:vice-?)?president of the )?(?:court|general court)|\d{1,2}\s+\S+\s+\d{4})\b|\border in (?:joined )?cases?\b|\bordonnance\s+(?:du\s+(?:vice-)?pr[ée]sident|de\s+la\s+cour|dans\s+l'affaire|du\s+\d{1,2})\b/i;
 // The affirmative counterpart: only used to record that the type was *stated*, never to
 // change the resolved type, which already defaults to 'judgment'.
 const JUDGMENT_SIGNAL = /\bjudgment of (?:the (?:court|general court)|\d{1,2}\s+\S+\s+\d{4})\b|\barr[êe]t\s+(?:de\s+la\s+cour|du\s+\d{1,2})\b/i;
@@ -637,9 +641,35 @@ export function detectCitations(text: string): CitationMatch[] {
     const segment = segmentAt(segments, index);
     const before = text.slice(Math.max(segment.start, index - 500), index);
     const groupStart = Math.max(before.toLowerCase().lastIndexOf('affaires'), before.toLowerCase().lastIndexOf('joined cases'));
-    const caseMatches = [...before.slice(groupStart >= 0 ? groupStart : 0).matchAll(caseNumberPattern)];
+    const scanned = before.slice(groupStart >= 0 ? groupStart : 0);
+    const caseMatches = [...scanned.matchAll(caseNumberPattern)];
     for (const caseMatch of caseMatches) representedCaseNumbers.add(normaliseCaseNumber(caseMatch[0]));
-    const caseNumber = (caseMatches[0] ?? caseMatches.at(-1)) ? normaliseCaseNumber((caseMatches[0] ?? caseMatches.at(-1))![0]) : undefined;
+    /*
+     * Which of the case numbers before an ECLI is the one it belongs to.
+     *
+     * The nearest, unless it is the tail of a joined-cases group, in which case the group's
+     * first number names the judgment. Taking the first match outright paired an ECLI with a
+     * case it had nothing to do with: a footnote citing two authorities in sequence — "in
+     * Case C-639/23 P(R) … EU:C:2024:277 … See also Order … in Case T-138/24 R …
+     * EU:T:2024:431" — puts the first citation's case number inside the second's look-behind,
+     * and the second citation then derived its CELEX from the first citation's case. That is
+     * not a malformed identifier, only a wrong one, so nothing about it fails loudly.
+     *
+     * The group is read off the text between the numbers rather than off the words "joined
+     * cases", because the modern style writes none: "(C-293/12 and C-594/12, EU:C:2014:238)".
+     * Numbers separated by nothing but a connector are one authority; anything else in
+     * between makes them separate citations.
+     */
+    const separator = /^[\s,;]*(?:and|et|&|to|und|e)?[\s,;]*$/i;
+    let lead = caseMatches.length - 1;
+    while (lead > 0) {
+      const previous = caseMatches[lead - 1];
+      const gap = scanned.slice((previous.index ?? 0) + previous[0].length, caseMatches[lead].index ?? 0);
+      if (!separator.test(gap)) break;
+      lead -= 1;
+    }
+    const chosen = caseMatches[lead];
+    const caseNumber = chosen ? normaliseCaseNumber(chosen[0]) : undefined;
     const { documentType, stated } = documentTypeNear(text, index, match[0].length);
     const ecli = `ECLI:${match[0].toUpperCase().replace(/^ECLI:/, '')}`;
     add({

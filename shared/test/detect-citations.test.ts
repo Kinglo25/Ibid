@@ -180,6 +180,36 @@ describe('CURIA document-type detection', () => {
     assert.equal(citation.celex, '62024TO0139');
   });
 
+  test('recognises "Order in Case", a third convention in the same decision', () => {
+    // Alongside "Order of the President of…" and "Order of [date]". Each convention missed
+    // is a whole class of orders derived under the judgment sector, which is a well-formed
+    // identifier for a document that is not the one cited.
+    const [citation] = detectCitations('See Order in Case C-639/23 P(R), Commission v Amazon Services Europe, EU:C:2024:277, paragraph 162.');
+    assert.equal(citation.documentType, 'order');
+    assert.equal(citation.celex, '62023CO0639');
+  });
+
+  test('an ECLI takes the case number nearest it, not the first one in the footnote', () => {
+    // A footnote citing two authorities in sequence puts the first one's case number inside
+    // the second one's look-behind. Taking the first match derived the second citation's
+    // CELEX from the first citation's case — wrong, but well-formed, so nothing failed.
+    const citations = detectCitations(
+      'Order of the Vice President of the Court of 27 March 2024 in Case C-639/23 P(R), Commission v Amazon, EU:C:2024:277, paragraph 155. '
+      + 'See also Order of the President of the General Court of 2 July 2024 in Case T-138/24 R, Aylo Freesites v Commission, EU:T:2024:431, paragraph 113.',
+    );
+    const aylo = citations.find((citation) => citation.value.includes('2024:431'));
+    assert.equal(aylo?.caseNumber, 'T-138/24 R');
+    assert.equal(aylo?.celex, '62024TO0138');
+  });
+
+  test('a joined-cases group written without the words is still one authority', () => {
+    // The modern style writes no "Joined Cases" at all, so the group is read off the text
+    // between the numbers: separated by nothing but a connector, they are one judgment, and
+    // the first of them names it.
+    const [citation] = detectCitations('Judgment in Digital Rights Ireland (C-293/12 and C-594/12, EU:C:2014:238, paragraph 46).');
+    assert.equal(citation.caseNumber, 'C-293/12');
+  });
+
   test('recognises an order of the Vice-President', () => {
     const [citation] = detectCitations('Order of the Vice-President of the Court of 2 July 2024, Case C-511/24, ECLI:EU:C:2024:431.');
     assert.equal(citation.documentType, 'order');
