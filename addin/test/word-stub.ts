@@ -36,6 +36,13 @@ export type WordStub = {
    * what it is can identify it, and only the caret's own paragraph still can.
    */
   putCursorInFootnoteParagraph: (footnote: number) => void;
+  /**
+   * A selection dragged across a whole footnote. Word names the parent body as the section,
+   * not the footnote, and hands back more text than the footnote holds, with body paragraphs
+   * around it. Every route that asks what the caret is *inside* fails here; the only thing
+   * left is reading a footnote the pane already knows back out of the selection.
+   */
+  dragAcrossFootnote: (footnote: number, surrounding?: string) => void;
   /** Whether the pane registered a selection handler, i.e. whether it is following. */
   isFollowing: () => boolean;
   /**
@@ -46,9 +53,11 @@ export type WordStub = {
    */
   handlerChurn: () => { registrations: number; removals: number };
   /**
-   * How many times the pane has asked Word for the main document's text since the document
-   * was read. On a real decision that is 98,000 words across the add-in bridge, and the
-   * cursor moves constantly, so the honest answer here is none.
+   * How many times the pane has asked Word for the text of a body that holds the document,
+   * or a section of it, since the document was read. On a real decision that is 98,000 words
+   * across the add-in bridge, and the cursor moves constantly, so the honest answer here is
+   * none — for a section as much as for the document, since a decision converted from PDF
+   * arrives as one section.
    */
   documentTextLoads: () => number;
   remove: () => void;
@@ -65,8 +74,9 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
   let documentTextLoads = 0;
 
   // Where the caret is, and therefore what Word would report for it.
-  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' = 'reference';
+  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' | 'dragAcross' = 'reference';
   let selectedText = '';
+  let surroundingText = '';
 
   const context = {
     document: {
@@ -93,6 +103,23 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
               load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
             },
             paragraphs: { items: [{ text: items[cursor].body.text, load: noop }], load: noop },
+          };
+        }
+        if (mode === 'dragAcross' && cursor !== null) {
+          // More text than the footnote holds, in a body Word calls a section, with only
+          // body paragraphs to show for it. Asking that body for its text would drag the
+          // whole section across the bridge, so it is counted here the same as the
+          // document's.
+          const swallowed = `${surroundingText} ${items[cursor].body.text} ${surroundingText}`.trim();
+          return {
+            text: swallowed, load: noop,
+            footnotes: { items: [], load: noop },
+            parentBody: {
+              text: bodyText,
+              type: 'Section',
+              load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
+            },
+            paragraphs: { items: [{ text: surroundingText, load: noop }], load: noop },
           };
         }
         if (mode === 'unknownFootnote') {
@@ -161,6 +188,9 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
     putCursorInFootnoteText: (footnote) => { mode = 'footnoteText'; cursor = footnote; handler?.(); },
     putCursorInUnknownFootnote: (text = '') => { mode = 'unknownFootnote'; selectedText = text; handler?.(); },
     putCursorInFootnoteParagraph: (footnote) => { mode = 'footnoteParagraph'; cursor = footnote; handler?.(); },
+    dragAcrossFootnote: (footnote, surrounding = 'Text of the decision either side of it.') => {
+      mode = 'dragAcross'; cursor = footnote; surroundingText = surrounding; handler?.();
+    },
     isFollowing: () => handler !== undefined,
     handlerChurn: () => ({ registrations, removals }),
     documentTextLoads: () => documentTextLoads,

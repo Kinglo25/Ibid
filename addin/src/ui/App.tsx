@@ -102,16 +102,73 @@ export type CursorLocation =
   | { kind: 'outside'; reported?: string };
 
 const FOOTNOTE_BODIES = ['Footnote', 'Endnote', 'NoteItem'];
+// Bodies whose text is the document, or most of it. Reading one costs seconds on a 199-page
+// decision and can never equal a footnote, so no route below asks for their text. `Section`
+// is here because a real Word build reports the parent of a footnote selection as the
+// section: without it, the very cursor position this function had to be fixed for would
+// also have been the one that marshalled the whole section across the bridge.
+const LARGE_BODIES = ['MainDoc', 'Section'];
 // Below this a selection is too short to pin down a footnote by its text alone.
 const SUBSTRING_FLOOR = 12;
-// A caret sits in one paragraph; a selection across a footnote sits in a few. Past this the
-// selection is a stretch of the document, and loading every paragraph of it is the cost this
-// whole function was just rewritten to stop paying.
-const PARAGRAPH_CEILING = 4;
+// A footnote the cursor is in may be one paragraph, or several in a decision converted from
+// PDF. Past this the selection is a stretch of the document rather than a note, and loading
+// every paragraph of it is the cost this whole function was rewritten to stop paying.
+const PARAGRAPH_CEILING = 12;
+// Reading a footnote out of a selection that *contains* it is the riskier direction: this
+// document has 148 footnotes whose text is a duplicate of another's, and a short one such as
+// `Ibid.` sits inside almost any long passage. That direction therefore demands a footnote
+// long enough to be its own evidence.
+const CONTAINED_FLOOR = 40;
+
+/**
+ * One spelling for text that has to be compared across two different Word APIs.
+ *
+ * A decision converted from a PDF carries characters that survive the conversion but have no
+ * width on the page: soft hyphens left behind by justified line-breaking, zero-width joiners,
+ * compatibility forms of quotes and spaces. Word can hand back a footnote's body text and a
+ * selection inside that same footnote with those in different places, and then two strings
+ * that look identical do not compare equal. NFKC folds the compatibility forms together, the
+ * character class drops what has no width at all, and collapsing whitespace makes the tab
+ * runs between a footnote's citations count as one space.
+ */
+function normaliseText(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replace(/[\u00ad\u200b-\u200d\ufeff]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Which known footnote a piece of text belongs to, in either direction.
+ *
+ * A caret inside a footnote yields text that the footnote contains. A selection dragged
+ * across one yields text that contains the footnote instead — and Word reports the parent of
+ * such a selection as the section rather than the footnote, so this containing direction is
+ * the only thing left that can name it. Where several footnotes are contained, the longest
+ * wins: it is the one the selection is about, and the short notes it also swallowed are
+ * incidental to it.
+ */
+function findFootnote(known: readonly string[], text: string): number {
+  if (text.length < SUBSTRING_FLOOR) return -1;
+  const inside = known.findIndex((candidate) => candidate.includes(text));
+  if (inside >= 0) return inside;
+  let longest = -1;
+  known.forEach((candidate, index) => {
+    if (candidate.length < CONTAINED_FLOOR || !text.includes(candidate)) return;
+    if (longest < 0 || candidate.length > known[longest].length) longest = index;
+  });
+  return longest;
+}
+
+/** A footnote read back from Word, matched to the list the pane already holds. */
+function identify(known: readonly string[], text: string): number {
+  const exact = known.indexOf(text);
+  return exact >= 0 ? exact : findFootnote(known, text);
+}
 
 async function readCursorLocation(knownTexts: readonly string[]): Promise<CursorLocation> {
-  const normalise = (value: string) => value.replace(/\s+/g, ' ').trim();
-  const known = knownTexts.map(normalise);
+  const known = knownTexts.map(normaliseText);
 
   return Word.run(async (context) => {
     const selection = context.document.getSelection();
@@ -128,53 +185,54 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
       contained.items.forEach((footnote) => footnote.body.load('text'));
       await context.sync();
       const hits = contained.items
-        .map((footnote) => known.indexOf(normalise(footnote.body.text)))
+        .map((footnote) => identify(known, normaliseText(footnote.body.text)))
         .filter((index) => index >= 0);
       if (hits.length) return { kind: 'footnotes' as const, indexes: hits };
     }
 
-    // The parent body's own text — but never the main document's. With the cursor on a
-    // reference mark the parent *is* the document, so loading its text marshals every word
-    // of a 199-page decision across the bridge, on every cursor movement, before anything
-    // has been matched: seconds of waiting for a string that could never equal a footnote.
-    // Any other body is small enough to be worth reading, and an unrecognised type is read
-    // as before rather than skipped, since the cost of being wrong there is a match missed.
+    // The parent body's own text — but never the document's or a section's. With the cursor
+    // on a reference mark the parent *is* the document, so loading its text marshals every
+    // word of a 199-page decision across the bridge, on every cursor movement, before
+    // anything has been matched: seconds of waiting for a string that could never equal a
+    // footnote. Any other body is small enough to be worth reading, and an unrecognised type
+    // is read as before rather than skipped, since the cost of being wrong there is a match
+    // missed.
     const parentType = String(parent.type ?? '');
-    if (parentType.toLowerCase() !== 'maindoc') {
+    if (!LARGE_BODIES.includes(parentType)) {
       parent.load('text');
       await context.sync();
-      const parentText = normalise(parent.text ?? '');
-      const exact = parentText ? known.indexOf(parentText) : -1;
+      const parentText = normaliseText(parent.text ?? '');
+      const exact = parentText ? identify(known, parentText) : -1;
       if (exact >= 0) return { kind: 'footnotes' as const, indexes: [exact] };
     }
 
-    // What is actually selected, found inside a footnote. Survives a parent body that is a
-    // paragraph, or the main document body, rather than the footnote itself.
-    const selectedText = normalise(selection.text ?? '');
-    if (selectedText.length >= SUBSTRING_FLOOR) {
-      const containing = known.findIndex((text) => text.includes(selectedText));
-      if (containing >= 0) return { kind: 'footnotes' as const, indexes: [containing] };
-    }
+    // What is actually selected. Survives a parent body that is a paragraph, a section or
+    // the main document body rather than the footnote itself.
+    const selectedText = normaliseText(selection.text ?? '');
+    const selected = findFootnote(known, selectedText);
+    if (selected >= 0) return { kind: 'footnotes' as const, indexes: [selected] };
 
     // The paragraphs the caret actually sits in.
     //
     // `parentBody` is what ought to identify a footnote, and in at least one real Word build
     // it does not: a caret inside a long footnote of a converted decision was reported as
-    // being in no footnote at all, with a hundred characters of that footnote selected. A
-    // paragraph is a smaller, more local claim — whatever container the conversion left
-    // around it, the paragraph's own text is still part of the footnote's text. This runs
-    // only once every route above has failed, so its two round trips are paid on the way to
-    // an answer the pane would otherwise not have.
+    // sitting in a section. A paragraph is a smaller, more local claim — whatever container
+    // the conversion left around it, the paragraph's own text is still part of the
+    // footnote's. The longest goes first, because a selection's outermost paragraphs are the
+    // ones a drag is most likely to have cut in half. This runs only once every route above
+    // has failed, so its two round trips are paid on the way to an answer the pane would
+    // otherwise not have.
     const paragraphs = selection.paragraphs;
     paragraphs.load('items');
     await context.sync();
     if (paragraphs.items.length && paragraphs.items.length <= PARAGRAPH_CEILING) {
       paragraphs.items.forEach((paragraph) => paragraph.load('text'));
       await context.sync();
-      for (const paragraph of paragraphs.items) {
-        const text = normalise(paragraph.text ?? '');
-        if (text.length < SUBSTRING_FLOOR) continue;
-        const containing = known.findIndex((known_) => known_.includes(text));
+      const texts = paragraphs.items
+        .map((paragraph) => normaliseText(paragraph.text ?? ''))
+        .sort((a, b) => b.length - a.length);
+      for (const text of texts) {
+        const containing = findFootnote(known, text);
         if (containing >= 0) return { kind: 'footnotes' as const, indexes: [containing] };
       }
     }
@@ -182,7 +240,13 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
     // Nothing matched. Whether that is worth telling the reviewer depends entirely on
     // whether they were in a footnote at all — and when even that is wrong, `reported` is
     // what Word claimed, so the pane can say it rather than leave it to be inferred.
-    const reported = `body ${parentType || 'unnamed'}, ${selectedText.length} characters selected, ${paragraphs.items.length} paragraphs`;
+    const reported = [
+      `body ${parentType || 'unnamed'}`,
+      `${selectedText.length} characters selected`,
+      `${paragraphs.items.length} paragraphs`,
+      `${contained.items.length} reference marks`,
+      selectedText ? `starting "${selectedText.slice(0, 40)}"` : 'nothing selected',
+    ].join(', ');
     const inFootnote = FOOTNOTE_BODIES.includes(parentType);
     return inFootnote ? { kind: 'unidentified' as const, reported } : { kind: 'outside' as const, reported };
   });

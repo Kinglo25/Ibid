@@ -274,6 +274,61 @@ describe('following the cursor', () => {
     assert.equal(word.documentTextLoads(), 0, 'and still without reading the whole document');
   });
 
+  test('a footnote a selection was dragged across is read back out of the selection', async () => {
+    // What a reviewer actually did: swept the cursor over a long multi-citation footnote in
+    // a decision converted from PDF. Word named the parent body the section, handed back
+    // more text than the footnote holds, and offered body paragraphs for it — so every route
+    // that asks what the caret is inside failed, and the pane left the previous footnote's
+    // source standing as though it were the answer. A selection that contains a footnote
+    // identifies it just as well as one contained by it.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.dragAcrossFootnote(0);
+    await screen.findByText('Footnote 1 context');
+  });
+
+  test('a section the cursor turns out to be in is not read either', async () => {
+    // A section of a decision converted from PDF is the decision. Skipping only `MainDoc`
+    // meant the one cursor position that reports a section paid the whole cost the rest of
+    // this function exists to avoid, on every movement of the caret.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.dragAcrossFootnote(0);
+    await screen.findByText('Footnote 1 context');
+
+    assert.equal(word.documentTextLoads(), 0, 'a section is as expensive to read as the document');
+  });
+
+  test('a short footnote swallowed by a long selection is not claimed as the answer', async () => {
+    // The containing direction is the dangerous one. This document has 148 footnotes whose
+    // text duplicates another's, and the short ones — `Ibid.`, a bare cross-reference — sit
+    // inside almost any long passage. Matching on one would answer confidently with a
+    // footnote the reviewer had not gone anywhere near.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.dragAcrossFootnote(1);
+    await screen.findByRole('heading', { name: 'No citation selected' });
+  });
+
+  test('a selection holding two footnotes answers with the one it is about', async () => {
+    // The rule that settles the containing direction when more than one footnote qualifies:
+    // the longest. A sweep across a long note in a converted decision picks up whatever short
+    // notes sit beside it, and answering with one of those would be answering about a
+    // footnote the reviewer never went near.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.dragAcrossFootnote(0, crossReference);
+    await screen.findByText('Footnote 1 context');
+  });
+
   test('landing on a reference mark does not read the whole document', async () => {
     // The caret on a reference mark sits in the body, so `selection.parentBody` is the
     // document itself. Loading its text alongside its type cost every word of a 199-page
