@@ -97,9 +97,13 @@ async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFoot
  */
 export type CursorLocation =
   | { kind: 'footnotes'; indexes: number[] }
-  /** `reported` is what Word said about the caret's surroundings, for the pane to repeat. */
-  | { kind: 'unidentified'; reported?: string }
-  | { kind: 'outside'; reported?: string };
+  /**
+   * `reported` is what Word said about the caret's surroundings, for the pane to repeat.
+   * `selection` is text the reviewer deliberately selected that belongs to no footnote the
+   * pane holds — still a passage, and possibly still a citation. See `stray` in the pane.
+   */
+  | { kind: 'unidentified'; reported?: string; selection?: string }
+  | { kind: 'outside'; reported?: string; selection?: string };
 
 const FOOTNOTE_BODIES = ['Footnote', 'Endnote', 'NoteItem'];
 // Bodies whose text is the document, or most of it. Reading one costs seconds on a 199-page
@@ -119,6 +123,9 @@ const PARAGRAPH_CEILING = 12;
 // `Ibid.` sits inside almost any long passage. That direction therefore demands a footnote
 // long enough to be its own evidence.
 const CONTAINED_FLOOR = 40;
+// Below this a selection is a word or a phrase, not a passage worth reading citations out
+// of on its own. A full citation runs to a hundred characters or more.
+const PASSAGE_FLOOR = 24;
 
 /**
  * One spelling for text that has to be compared across two different Word APIs.
@@ -299,7 +306,13 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
       nearestFootnote(keys, selectedText),
     ].join(', ');
     const inFootnote = FOOTNOTE_BODIES.includes(parentType);
-    return inFootnote ? { kind: 'unidentified' as const, reported } : { kind: 'outside' as const, reported };
+    // Only a deliberate selection, never a bare caret. Reading every body paragraph the
+    // cursor passes through would replace the source a reviewer is working from at the first
+    // click into the text; asking for what they selected is something they did on purpose.
+    const passage = selectedText.length >= PASSAGE_FLOOR ? selectedText : undefined;
+    return inFootnote
+      ? { kind: 'unidentified' as const, reported, selection: passage }
+      : { kind: 'outside' as const, reported, selection: passage };
   });
 }
 
@@ -420,6 +433,17 @@ export default function App() {
   // the document, not with the source: it is for working out why the pane is wrong, which is
   // a question the reviewer only asks once the answer above them already looks wrong.
   const [cursorReport, setCursorReport] = useState<string | null>(null);
+  /**
+   * Text the reviewer selected that belongs to no footnote the pane holds.
+   *
+   * On a decision converted from PDF this is not a rare corner. The conversion of the X/DSA
+   * decision leaves some footnotes inline in the body: Word reports the parent body as the
+   * section, reports no reference mark, and the pane's list — 549 footnotes, none empty —
+   * simply has no entry whose text is the passage on screen, because Word does not consider
+   * it a footnote. The reviewer is nonetheless looking straight at a citation and asking
+   * what it is. Reading it out of what they selected needs no footnote to exist.
+   */
+  const [stray, setStray] = useState<string | null>(null);
   const [following, setFollowing] = useState(false);
   // Whether Word answered at all. Distinct from `following`, which is whether the selection
   // handler registered: the pane can be in Word and not be following it.
@@ -533,6 +557,7 @@ export default function App() {
           setFocused(location.kind === 'footnotes' ? location.indexes[0] : null);
           setUnidentified(location.kind === 'unidentified');
           setCursorReport(location.kind === 'footnotes' ? null : location.reported ?? null);
+          setStray(location.kind === 'footnotes' ? null : location.selection ?? null);
         })
         // Silent by design: this fires on every cursor movement, so a failure must not
         // produce an error the reviewer has to dismiss over and over. The list still works.
@@ -583,12 +608,43 @@ export default function App() {
     [detected, confirmations, footnotes],
   );
 
+  /**
+   * The selected passage, shaped like a footnote so everything downstream can treat it as
+   * one. `number` is 0 because it has none — Word does not know it is a footnote, and the
+   * pane must not invent a number for it that the reviewer could go looking for.
+   *
+   * Its citations are detected from the passage alone, not across the document, so a short
+   * form defined in some earlier footnote will not resolve here. That is the honest limit:
+   * the passage is not in the document's footnote sequence, so there is no position from
+   * which "the case cited above" means anything.
+   */
+  const strayFootnote = useMemo<ReviewFootnote | null>(
+    () => (stray ? { id: 'selection', number: 0, text: stray } : null),
+    [stray],
+  );
+  const strayCitations = useMemo(
+    () => (stray ? getCitationContextsForFootnotes([stray])[0] ?? [] : []),
+    [stray],
+  );
+
   const authorities = useMemo(() => citedAuthorities(detected), [detected]);
 
   // Landing on a footnote opens its source, but only where there is no choice to make —
   // see `autoSelectable`. Keyed on the footnote so moving the cursor within one footnote
   // does not reopen what the reviewer may have just navigated away from.
   useEffect(() => {
+    // No footnote to name, but a passage the reviewer selected on purpose. Answering from it
+    // is the only thing that works where the conversion left a footnote's text in the body:
+    // there is no footnote for Word to report or for the pane to match, and the citation is
+    // on screen regardless.
+    if (focused === null && strayFootnote) {
+      const citation = autoSelectable(strayCitations);
+      if (citation) { void selectCitation(citation, strayFootnote); return; }
+      // Several citations in the selection, or none. Nothing opens by itself, and whatever
+      // stands on screen belongs to somewhere the reviewer has since left.
+      setSelected((current) => (current && current.footnote.text !== strayFootnote.text ? null : current));
+      return;
+    }
     // In a footnote, but not one we can name. Holding the previous footnote's source on
     // screen here is the failure the reviewer cannot see: it looks like an answer.
     if (unidentified) { setSelected(null); return; }
@@ -605,7 +661,7 @@ export default function App() {
     // Deliberately keyed on the footnote and its citations only. `selectCitation` and
     // `footnotes` are read here but must not retrigger it: re-running on every render would
     // reopen the source the reviewer may have just navigated away from.
-  }, [focused, unidentified, citationsByFootnote]);
+  }, [focused, unidentified, citationsByFootnote, strayFootnote, strayCitations]);
   const reviewable = useMemo(() => footnotes.filter((footnote) => footnote.text), [footnotes]);
 
   const focusedFootnote = focused === null ? undefined : footnotes[focused];
@@ -617,7 +673,9 @@ export default function App() {
   // the cursor is, and the reviewer has no way to see that it is answering an older one.
   // This is the same illusion the unidentified-footnote case is about, in the branch where
   // Ibid is working correctly: it says which footnote the panel belongs to, and stops.
-  const panelFollowsCursor = !selected || focusedFootnote?.id === selected.footnote.id;
+  const panelFollowsCursor = !selected
+    || focusedFootnote?.id === selected.footnote.id
+    || strayFootnote?.text === selected.footnote.text;
   const listed = footnotes
     .map((footnote, index) => ({ footnote, index, citations: citationsByFootnote[index] ?? [] }))
     .filter((entry) => entry.footnote.text)
@@ -675,17 +733,22 @@ export default function App() {
       <section className="panel review-panel" aria-live="polite">
         <div className="panel-title">
           <h2>{selected ? 'Source' : 'No citation selected'}</h2>
-          {focusedFootnote && <span className="count">Footnote {focusedFootnote.number}</span>}
+          {focusedFootnote
+            ? <span className="count">Footnote {focusedFootnote.number}</span>
+            : strayFootnote && <span className="count">Selected text</span>}
         </div>
 
         {selected && following && !panelFollowsCursor && <p className="muted">
-          The cursor has left footnote {selected.footnote.number}. This is the last source opened,
+          {selected.footnote.number
+            ? `The cursor has left footnote ${selected.footnote.number}.`
+            : 'The cursor has left the text this was read from.'} This is the last source opened,
           not the citation the cursor is on now.
         </p>}
 
         {/* What Word said about a caret nothing could be matched to. Beside the source
             because that is where the reviewer is looking when the answer is wrong. */}
-        {cursorReport && <p className="muted">Word reported the cursor as: {cursorReport}</p>}
+        {cursorReport && !selected && strayCitations.length === 0 &&
+          <p className="muted">Word reported the cursor as: {cursorReport}</p>}
 
         {!selected && unidentified && <p className="error">
           The cursor is in a footnote Ibid could not match to one it has read. Use Refresh if the
@@ -708,10 +771,21 @@ export default function App() {
           >{citation.value}{citation.status === 'resolved' ? '' : ' ?'}</button>)}
         </div>}
 
+        {!focusedFootnote && strayFootnote && strayCitations.length > 1 && <div className="citation-chips focused-chips">
+          {strayCitations.map((citation) => <button
+            className={`citation-chip${citation.status === 'resolved' ? '' : ' unconfirmed'}${selected?.citation === citation ? ' current' : ''}`}
+            type="button"
+            key={citationKey(citation, strayFootnote.id)}
+            onClick={() => void selectCitation(citation, strayFootnote)}
+          >{citation.value}{citation.status === 'resolved' ? '' : ' ?'}</button>)}
+        </div>}
+
         {selected && <>
           <p className="selected-citation">{selected.citation.value}</p>
           {selected.citation.status === 'resolved' && <p className="resolution-note">{resolutionNote(selected.citation)}</p>}
-          <p className="context-label">Footnote {selected.footnote.number} context</p>
+          <p className="context-label">{selected.footnote.number
+            ? `Footnote ${selected.footnote.number} context`
+            : 'What you selected'}</p>
           <blockquote>{selected.citation.context}</blockquote>
           {review.kind === 'loading' && <p>Retrieving the official source passage…</p>}
           {review.kind === 'success' && <div className="source-results">{review.documents.map((document) =>

@@ -51,6 +51,13 @@ export type WordStub = {
    * than in the footnote's own body text.
    */
   selectWithinFootnote: (footnote: number, characters: number, spelling?: (text: string) => string) => void;
+  /**
+   * A selection of text belonging to no footnote this pane holds — what a PDF conversion
+   * leaves behind when it puts a footnote's text inline in the body. Word reports the
+   * section, no reference mark, and one paragraph, and nothing in the footnote list matches,
+   * because as far as Word is concerned there is no footnote here at all.
+   */
+  selectTextOutsideFootnotes: (text: string) => void;
   /** Whether the pane registered a selection handler, i.e. whether it is following. */
   isFollowing: () => boolean;
   /**
@@ -82,7 +89,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
   let documentTextLoads = 0;
 
   // Where the caret is, and therefore what Word would report for it.
-  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' | 'dragAcross' | 'within' = 'reference';
+  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' | 'dragAcross' | 'within' | 'outside' = 'reference';
   let selectedText = '';
   let surroundingText = '';
 
@@ -128,6 +135,18 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
               load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
             },
             paragraphs: { items: [{ text: surroundingText, load: noop }], load: noop },
+          };
+        }
+        if (mode === 'outside') {
+          return {
+            text: selectedText, load: noop,
+            footnotes: { items: [], load: noop },
+            parentBody: {
+              text: bodyText,
+              type: 'Section',
+              load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
+            },
+            paragraphs: { items: [{ text: selectedText, load: noop }], load: noop },
           };
         }
         if (mode === 'within' && cursor !== null) {
@@ -211,6 +230,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
     putCursorInFootnoteText: (footnote) => { mode = 'footnoteText'; cursor = footnote; handler?.(); },
     putCursorInUnknownFootnote: (text = '') => { mode = 'unknownFootnote'; selectedText = text; handler?.(); },
     putCursorInFootnoteParagraph: (footnote) => { mode = 'footnoteParagraph'; cursor = footnote; handler?.(); },
+    selectTextOutsideFootnotes: (text) => { mode = 'outside'; cursor = null; selectedText = text; handler?.(); },
     selectWithinFootnote: (footnote, characters, spelling = (text) => text) => {
       mode = 'within';
       cursor = footnote;

@@ -463,6 +463,61 @@ describe('finding the footnote the cursor is actually in', () => {
     await screen.findByText('Footnote 2', { selector: '.count' });
   });
 
+  test('a citation Word has no footnote for is answered from the text selected', async () => {
+    // The X/DSA decision, converted from PDF: some footnote text is left inline in the body,
+    // so Word reports the section, reports no reference mark, and the pane's list — 549
+    // footnotes, none of them empty — holds no entry matching what is on screen. There is no
+    // footnote here to find. The reviewer is still looking straight at a citation.
+    word = installWordStub([akzo]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.selectTextOutsideFootnotes(sevenCitations.slice(0, 121));
+    await screen.findByRole('heading', { name: 'Source' });
+    await screen.findByText('EU:C:2009:536', { selector: '.selected-citation' });
+  });
+
+  test('a passage answered from the selection claims no footnote number', async () => {
+    // Word does not know this is a footnote, so the pane must not invent a number the
+    // reviewer could go looking for in the document.
+    word = installWordStub([akzo]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.selectTextOutsideFootnotes(sevenCitations.slice(0, 121));
+    await screen.findByText('What you selected', { selector: '.context-label' });
+    assert.equal(screen.queryByText(/Footnote \d+ context/), null, 'no footnote number is claimed');
+    assert.ok(screen.getByText('Selected text', { selector: '.count' }), 'the panel says what it is about');
+  });
+
+  test('reading through the document does not answer from whatever words are under the caret', async () => {
+    // Answering from a selection is something the reviewer asked for by making one. Doing it
+    // for a caret would replace the source they are working from at the first click into the
+    // text, which is the behaviour the cursor-follow was careful to avoid.
+    word = installWordStub([akzo]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorOn(0);
+    await screen.findByText('Footnote 1 context');
+
+    word.selectTextOutsideFootnotes('Akzo Nobel');
+    await screen.findByText(/The cursor has left footnote 1/);
+    assert.ok(screen.getByText('Footnote 1 context'), 'the source itself stays, so nothing is taken away');
+  });
+
+  test('a selection holding several citations opens none of them by itself', async () => {
+    // The same rule a footnote holding several gets: the reviewer says which they meant.
+    word = installWordStub([akzo]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.selectTextOutsideFootnotes(sevenCitations);
+    const chips = await screen.findByText(/EU:C:2011:620/);
+    assert.ok(chips, 'each citation in the selection is offered');
+    assert.equal(screen.queryByText('What you selected', { selector: '.context-label' }), null, 'and none opens by itself');
+  });
+
   test('a footnote it cannot identify is admitted, not answered stale', async () => {
     word = installWordStub([akzo, sevenCitations]);
     render(<App />);
