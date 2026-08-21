@@ -58,6 +58,12 @@ export type WordStub = {
    * because as far as Word is concerned there is no footnote here at all.
    */
   selectTextOutsideFootnotes: (text: string) => void;
+  /**
+   * A bare caret in a body paragraph — nothing selected, no reference mark, Word reporting
+   * the section. This is where a PDF conversion leaves a footnote it did not convert, and
+   * the only evidence is the paragraph the caret is in.
+   */
+  putCursorInBodyParagraph: (text: string) => void;
   /** Whether the pane registered a selection handler, i.e. whether it is following. */
   isFollowing: () => boolean;
   /**
@@ -89,7 +95,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
   let documentTextLoads = 0;
 
   // Where the caret is, and therefore what Word would report for it.
-  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' | 'dragAcross' | 'within' | 'outside' = 'reference';
+  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' | 'dragAcross' | 'within' | 'outside' | 'bodyParagraph' = 'reference';
   let selectedText = '';
   let surroundingText = '';
 
@@ -135,6 +141,18 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
               load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
             },
             paragraphs: { items: [{ text: surroundingText, load: noop }], load: noop },
+          };
+        }
+        if (mode === 'bodyParagraph') {
+          return {
+            text: '', load: noop,
+            footnotes: { items: [], load: noop },
+            parentBody: {
+              text: bodyText,
+              type: 'Section',
+              load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
+            },
+            paragraphs: { items: [{ text: selectedText, load: noop }], load: noop },
           };
         }
         if (mode === 'outside') {
@@ -231,6 +249,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
     putCursorInUnknownFootnote: (text = '') => { mode = 'unknownFootnote'; selectedText = text; handler?.(); },
     putCursorInFootnoteParagraph: (footnote) => { mode = 'footnoteParagraph'; cursor = footnote; handler?.(); },
     selectTextOutsideFootnotes: (text) => { mode = 'outside'; cursor = null; selectedText = text; handler?.(); },
+    putCursorInBodyParagraph: (text) => { mode = 'bodyParagraph'; cursor = null; selectedText = text; handler?.(); },
     selectWithinFootnote: (footnote, characters, spelling = (text) => text) => {
       mode = 'within';
       cursor = footnote;

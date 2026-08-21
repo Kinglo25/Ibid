@@ -463,6 +463,34 @@ describe('finding the footnote the cursor is actually in', () => {
     await screen.findByText('Footnote 2', { selector: '.count' });
   });
 
+  test('a note the conversion left in the body is followed like any other', async () => {
+    // The point of picking those notes up at all: no selecting, no explaining. The caret
+    // lands in the paragraph and the pane answers, exactly as it does for a real footnote.
+    const inline = `72 ${sevenCitations}`;
+    word = installWordStub([akzo], `Body text of the decision.\r${inline}\rMore body text.`);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorInBodyParagraph(inline);
+    await screen.findByText('Note 72, in body text');
+  });
+
+  test('a note in the body keeps the number the document shows, not a position in the list', async () => {
+    // It is appended past the 549 real footnotes so that nothing already numbered moves,
+    // and it is the seventy-second note on the page. The reviewer goes looking for 72.
+    const inline = `72 ${sevenCitations}`;
+    word = installWordStub([akzo], `Body text of the decision.\r${inline}`);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorOn(0);
+    await screen.findByText('Footnote 1 context', undefined, { timeout: 3000 });
+
+    word.putCursorInBodyParagraph(inline);
+    await screen.findByText('Note 72, in body text');
+    assert.equal(screen.queryByText('Footnote 2 context'), null, 'its position in the list is not its number');
+  });
+
   test('a citation Word has no footnote for is answered from the text selected', async () => {
     // The X/DSA decision, converted from PDF: some footnote text is left inline in the body,
     // so Word reports the section, reports no reference mark, and the pane's list — 549

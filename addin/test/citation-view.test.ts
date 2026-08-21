@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { autoSelectable, candidateLabel, confirmationKey, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage } from '../src/ui/citation-view.ts';
+import { autoSelectable, candidateLabel, confirmationKey, inlineFootnotesInBody, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -179,5 +179,54 @@ describe('what the list shows, and what opens by itself', () => {
 
   test('landing on a footnote with no citation opens nothing', () => {
     assert.equal(autoSelectable([]), undefined);
+  });
+});
+
+/**
+ * Footnotes the conversion did not convert.
+ *
+ * The decision this was built against holds 549 Word footnotes and nine more that a PDF
+ * conversion left as body paragraphs, each opening with its PDF number typed as superscript.
+ * Word has no footnote to report for those and the pane's list has none to match, so on the
+ * page they look like every other footnote and to Ibid they did not exist at all.
+ */
+describe('footnotes a PDF conversion left in the body text', () => {
+  const inline = '72 See, by analogy judgments of 10 September 2009, Akzo Nobel and others v Commission, C-97/08 P, EU:C:2009:536, paragraph 61.';
+
+  test('a paragraph opening with a number and a capital is read as a note', () => {
+    const [note] = inlineFootnotesInBody(`Body text of the decision.\r${inline}\rMore body text.`);
+    assert.equal(note.number, 72, 'the number it carries in the document is the one to show');
+    assert.ok(note.text.startsWith('See, by analogy judgments'), 'the typed number is not part of the note');
+    assert.equal(note.inBody, true, 'and it is marked as something Word does not hold as a footnote');
+  });
+
+  test('the tail of a note broken across a page is not read as a note of its own', () => {
+    // Conversions split a long note at a page boundary and leave the remainder as its own
+    // paragraph, opening with whatever number the sentence happened to reach. Every one of
+    // those continues mid-sentence, in lower case, which is what tells them apart.
+    const fragments = [
+      '15 seconds. The accelerated delivery time did not create any inaccuracies in the system.',
+      '40 of that Regulation is to empower investigations by researchers on the evolution of risk.',
+      '45 million active recipients. In fact, X is a social media platform with a wide reach.',
+    ].join('\r');
+    assert.deepEqual(inlineFootnotesInBody(fragments), []);
+  });
+
+  test('an ordinary body paragraph is not mistaken for one', () => {
+    const body = 'The Commission observes that XIUC is legally a distinct entity.\r(48) Finally, the functional approach to the notion of provider applies here.';
+    assert.deepEqual(inlineFootnotesInBody(body), []);
+  });
+
+  test('a numeral with a few words after it is too little to be a note', () => {
+    assert.deepEqual(inlineFootnotesInBody('72 See Nature.'), []);
+  });
+
+  test('two notes carrying the same text are still two entries', () => {
+    // Two of the nine repeat a source verbatim under different numbers. Keying them by text
+    // would collapse them into one, and the second would vanish from the review.
+    const source = 'The Verge, https://www.theverge.com/2022/11/9/23450289/twitter-impersonators.';
+    const notes = inlineFootnotesInBody(`92 ${source}\r131 ${source}`);
+    assert.deepEqual(notes.map((note) => note.number), [92, 131]);
+    assert.equal(new Set(notes.map((note) => note.id)).size, 2, 'and they are told apart');
   });
 });

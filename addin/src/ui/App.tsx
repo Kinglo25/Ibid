@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { citedAuthorities, getCitationContextsForFootnotes, reresolveBackReferences, PREVIEW_FOOTNOTES, type CitationCandidate, type CitationContext } from '../../../shared/src';
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
-  autoSelectable, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes,
+  autoSelectable, inlineFootnotesInBody, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes,
   unresolvedMessage, type ReviewFootnote,
 } from './citation-view';
 
@@ -54,11 +54,19 @@ async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFoot
     footnotes.items.forEach((footnote) => footnote.body.load('text'));
     await context.sync();
 
+    const bodyText = body.text.trim();
     return {
-      body: body.text.trim(),
-      // Every footnote, empties included: numbering is what back-references count on, and
-      // dropping one here shifts every footnote after it. See `toReviewFootnotes`.
-      footnotes: toReviewFootnotes(footnotes.items.map((footnote) => footnote.body.text)),
+      body: bodyText,
+      footnotes: [
+        // Every footnote, empties included: numbering is what back-references count on, and
+        // dropping one here shifts every footnote after it. See `toReviewFootnotes`.
+        ...toReviewFootnotes(footnotes.items.map((footnote) => footnote.body.text)),
+        // Appended, never interleaved. Word's numbering is positional and back-references
+        // count on it, so anything inserted among the real footnotes would send `supra note
+        // 14` to a different authority than the document cited there. These sit past the end,
+        // where they add themselves to the list without moving anything already in it.
+        ...inlineFootnotesInBody(bodyText),
+      ],
     };
   });
 }
@@ -701,7 +709,10 @@ export default function App() {
           key={footnote.id}
           className={`footnote-item${index === focused ? ' focused' : ''}`}
         >
-          <div className="footnote-number">{footnote.number}</div>
+          <div
+            className="footnote-number"
+            title={footnote.inBody ? 'Left in the body text by the PDF conversion; Word does not hold this as a footnote.' : undefined}
+          >{footnote.number}{footnote.inBody ? '*' : ''}</div>
           <div className="footnote-content">
             <p>{footnote.text}</p>
             {citations.length ? <div className="citation-chips">
@@ -734,7 +745,9 @@ export default function App() {
         <div className="panel-title">
           <h2>{selected ? 'Source' : 'No citation selected'}</h2>
           {focusedFootnote
-            ? <span className="count">Footnote {focusedFootnote.number}</span>
+            ? <span className="count">{focusedFootnote.inBody
+              ? `Note ${focusedFootnote.number}, in body text`
+              : `Footnote ${focusedFootnote.number}`}</span>
             : strayFootnote && <span className="count">Selected text</span>}
         </div>
 
@@ -783,9 +796,11 @@ export default function App() {
         {selected && <>
           <p className="selected-citation">{selected.citation.value}</p>
           {selected.citation.status === 'resolved' && <p className="resolution-note">{resolutionNote(selected.citation)}</p>}
-          <p className="context-label">{selected.footnote.number
-            ? `Footnote ${selected.footnote.number} context`
-            : 'What you selected'}</p>
+          <p className="context-label">{!selected.footnote.number
+            ? 'What you selected'
+            : selected.footnote.inBody
+              ? `Note ${selected.footnote.number} context, in body text`
+              : `Footnote ${selected.footnote.number} context`}</p>
           <blockquote>{selected.citation.context}</blockquote>
           {review.kind === 'loading' && <p>Retrieving the official source passage…</p>}
           {review.kind === 'success' && <div className="source-results">{review.documents.map((document) =>

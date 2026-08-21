@@ -11,7 +11,11 @@ import type { CitationCandidate, CitationContext } from '../../../shared/src';
  * through a rendered component.
  */
 
-export type ReviewFootnote = { id: string; number: number; text: string };
+export type ReviewFootnote = {
+  id: string; number: number; text: string;
+  /** A note the conversion left in the body text, which Word does not know is a footnote. */
+  inBody?: boolean;
+};
 
 /**
  * The document's footnotes, every one of them, in document order and numbered by position.
@@ -29,6 +33,42 @@ export type ReviewFootnote = { id: string; number: number; text: string };
 export function toReviewFootnotes(texts: readonly string[]): ReviewFootnote[] {
   return texts.map((text, index) => ({ id: `footnote-${index + 1}`, number: index + 1, text: text.trim() }));
 }
+
+/**
+ * Footnotes a PDF conversion left behind in the body text.
+ *
+ * Converting a decision from PDF does not always produce a Word footnote. In the X/DSA
+ * decision it produces 549 of them and leaves nine more as ordinary body paragraphs, each
+ * opening with the number it had in the PDF, typed as superscript. Word has no footnote
+ * there to report and `Body.footnotes` has none to return, so the pane's list cannot hold
+ * them and nothing that matches text against that list can ever name one — while on the page
+ * they look exactly like every other footnote, and hold exactly the citations a reviewer is
+ * there to check.
+ *
+ * A superscript number is what distinguishes them, and body text does not carry formatting,
+ * so the shape is read instead: a paragraph opening with a number and then a capital or a
+ * quotation mark. The capital is what earns its keep. Conversions also break a note across a
+ * page and leave the tail as its own paragraph — `15 seconds. The accelerated delivery…`,
+ * `40 of that Regulation is to empower…` — and every one of those continues mid-sentence, in
+ * lower case. On the decision this was built against the rule finds all nine notes and none
+ * of the three fragments.
+ */
+export function inlineFootnotesInBody(bodyText: string): ReviewFootnote[] {
+  const notes: ReviewFootnote[] = [];
+  for (const paragraph of bodyText.split(/[\r\n\v\f\u2028\u2029]/)) {
+    const match = /^(\d{1,3})[ \t\u00a0]+([A-Z\u201c\u2018"'][\s\S]*)$/.exec(paragraph.trim());
+    if (!match) continue;
+    const [, number, text] = match;
+    // Long enough to be a note rather than a stray numeral with a word after it, short
+    // enough that a body paragraph opening with a figure is not swept up as one.
+    if (text.length < INLINE_NOTE_FLOOR || text.length > INLINE_NOTE_CEILING) continue;
+    notes.push({ id: `body-note-${notes.length + 1}`, number: Number(number), text, inBody: true });
+  }
+  return notes;
+}
+
+const INLINE_NOTE_FLOOR = 30;
+const INLINE_NOTE_CEILING = 2000;
 
 export function citationKey(citation: CitationContext, footnoteId: string): string {
   return `${footnoteId}-${citation.index}-${citation.value}`;
