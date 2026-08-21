@@ -561,3 +561,56 @@ describe('finding the footnote the cursor is actually in', () => {
     assert.equal(screen.queryByText('Footnote 1 context'), null);
   });
 });
+
+/**
+ * Footnotes a conversion rebuilt as an auto-numbered list.
+ *
+ * The third shape the X/DSA decision's footnotes arrive in. Fifty-three of them are body
+ * paragraphs whose number Word draws itself, so the paragraph's own text opens at "Judgment
+ * of 31 May 2018, Groningen Seaports v. Commission…" and no reading of the body text can
+ * find a number in it. It is also why the same decision shows two footnotes numbered 275:
+ * Word renumbered its own 549 from one, while these kept the numbers they had in the PDF.
+ */
+describe('footnotes Word numbers but does not hold', () => {
+  const groningen = 'Judgment of 31 May 2018, Groningen Seaports v. Commission, Case T-160/16, EU:T:2018:317, paragraph 116.';
+
+  let word: ReturnType<typeof installWordStub> | undefined;
+  afterEach(() => { word?.remove(); word = undefined; });
+
+  test('a note whose number only Word knows is read with that number', async () => {
+    word = installWordStub(['Reply to the second RFI, request 2 of section VII.'], 'Body text.', [
+      { label: '275', text: groningen },
+    ]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorInBodyParagraph(groningen);
+    await screen.findByText('Note 275, in body text');
+    await screen.findByText('EU:T:2018:317', { selector: '.selected-citation' });
+  });
+
+  test('a recital numbered as a list is not read as a note', async () => {
+    // The decision's own recitals are an auto-numbered list too. They render as `(48)`, and
+    // the converted footnotes as a bare `275` — which is the whole of the difference left
+    // between them after the conversion.
+    word = installWordStub(['A real footnote.'], 'Body text.', []);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorInBodyParagraph('A recital of the decision, numbered as a list.');
+    assert.equal(screen.queryByText(/in body text/), null, 'a recital is not a footnote');
+  });
+
+  test('a document Word cannot list paragraphs for still reads its footnotes', async () => {
+    // Guarded on purpose: this is one more call into API surface that varies by build, at
+    // the point where the whole document is being read. Losing the list-numbered notes is a
+    // gap; losing the 549 real footnotes with them would be the pane not working at all.
+    word = installWordStub(['Judgment of 10 September 2009, Akzo Nobel and Others v Commission, Case C-97/08 P, ECLI:EU:C:2009:536, paragraph 60.']);
+    word.breakParagraphs();
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.putCursorOn(0);
+    await screen.findByText('Footnote 1 context');
+  });
+});

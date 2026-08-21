@@ -64,6 +64,8 @@ export type WordStub = {
    * the only evidence is the paragraph the caret is in.
    */
   putCursorInBodyParagraph: (text: string) => void;
+  /** Make `body.paragraphs` throw, the way a build without `isListItem` would. */
+  breakParagraphs: () => void;
   /** Whether the pane registered a selection handler, i.e. whether it is following. */
   isFollowing: () => boolean;
   /**
@@ -86,13 +88,23 @@ export type WordStub = {
 
 const noop = () => undefined;
 
-export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Document body.'): WordStub {
+export function installWordStub(
+  footnoteTexts: readonly string[],
+  bodyText = 'Document body.',
+  /**
+   * Body paragraphs Word numbers itself. A conversion rebuilds some footnotes as an
+   * auto-numbered list, and then the number is drawn by Word rather than written in the
+   * paragraph — `label` is what `listString` reports, which is the only place it exists.
+   */
+  numbered: readonly { label: string; text: string }[] = [],
+): WordStub {
   const items: FootnoteItem[] = footnoteTexts.map((text) => ({ body: { text, load: noop } }));
   let cursor: number | null = null;
   let handler: (() => void) | undefined;
   let registrations = 0;
   let removals = 0;
   let documentTextLoads = 0;
+  let paragraphsBroken = false;
 
   // Where the caret is, and therefore what Word would report for it.
   let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' | 'dragAcross' | 'within' | 'outside' | 'bodyParagraph' = 'reference';
@@ -101,7 +113,26 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
 
   const context = {
     document: {
-      body: { text: bodyText, load: noop, footnotes: { items, load: noop } },
+      body: {
+        text: bodyText,
+        load: noop,
+        footnotes: { items, load: noop },
+        paragraphs: {
+          load: () => { if (paragraphsBroken) throw new Error('isListItem is not supported by this build'); },
+          items: [
+            // Ordinary body paragraphs carry no list number, and the decision's own recitals
+            // carry one that reads `(48)` — neither is a note.
+            { text: bodyText, isListItem: false, listItemOrNullObject: { listString: '', load: noop }, load: noop },
+            { text: 'A recital of the decision, numbered as a list.', isListItem: true, listItemOrNullObject: { listString: '(48)', load: noop }, load: noop },
+            ...numbered.map((note) => ({
+              text: note.text,
+              isListItem: true,
+              listItemOrNullObject: { listString: note.label, load: noop },
+              load: noop,
+            })),
+          ],
+        },
+      },
       getSelection: () => {
         if (mode === 'footnoteText' && cursor !== null) {
           return {
@@ -250,6 +281,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
     putCursorInFootnoteParagraph: (footnote) => { mode = 'footnoteParagraph'; cursor = footnote; handler?.(); },
     selectTextOutsideFootnotes: (text) => { mode = 'outside'; cursor = null; selectedText = text; handler?.(); },
     putCursorInBodyParagraph: (text) => { mode = 'bodyParagraph'; cursor = null; selectedText = text; handler?.(); },
+    breakParagraphs: () => { paragraphsBroken = true; },
     selectWithinFootnote: (footnote, characters, spelling = (text) => text) => {
       mode = 'within';
       cursor = footnote;

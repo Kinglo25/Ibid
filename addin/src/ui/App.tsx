@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { citedAuthorities, getCitationContextsForFootnotes, reresolveBackReferences, PREVIEW_FOOTNOTES, type CitationCandidate, type CitationContext } from '../../../shared/src';
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
-  autoSelectable, inlineFootnotesInBody, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes,
+  autoSelectable, inlineFootnotesInBody, INLINE_NOTE_FLOOR, needsReview, officialSourceUrl,
+  resolutionNote, toReviewFootnotes,
   unresolvedMessage, type ReviewFootnote,
 } from './citation-view';
 
@@ -44,6 +45,52 @@ async function waitForWordRuntime(): Promise<boolean> {
   }
 }
 
+/**
+ * Notes a conversion rebuilt as an auto-numbered list.
+ *
+ * The third shape this decision's footnotes arrive in, and the one nothing textual can find.
+ * Fifty-three of them are body paragraphs carrying `<w:numPr>`, so Word draws the number
+ * itself and the paragraph's own text begins at "Judgment of 31 May 2018, Groningen Seaports
+ * v. Commission…" with no number in it anywhere. `Body.text` never sees a list label, so the
+ * only way to read one is to ask Word for it.
+ *
+ * `listString` is what separates a note from a recital. Both are numbered lists here, but
+ * the decision's recitals render as `(48)` and its converted footnotes as a bare `275` —
+ * a difference in the numbering definition rather than in the text, which is why it survives
+ * where every other distinction between the two has been flattened by the conversion.
+ *
+ * One extra read of the body's paragraphs, once per document, and guarded: a build without
+ * `isListItem` returns nothing here rather than taking the whole document read down with it.
+ */
+async function numberedNotesInBody(
+  context: Word.RequestContext,
+  body: Word.Body,
+): Promise<ReviewFootnote[]> {
+  try {
+    const paragraphs = body.paragraphs;
+    paragraphs.load('items');
+    await context.sync();
+    paragraphs.items.forEach((paragraph) => {
+      paragraph.load('text,isListItem');
+      paragraph.listItemOrNullObject.load('listString');
+    });
+    await context.sync();
+
+    const notes: ReviewFootnote[] = [];
+    paragraphs.items.forEach((paragraph) => {
+      if (!paragraph.isListItem) return;
+      const label = String(paragraph.listItemOrNullObject?.listString ?? '').trim();
+      if (!/^\d{1,3}$/.test(label)) return;
+      const text = (paragraph.text ?? '').trim();
+      if (text.length < INLINE_NOTE_FLOOR) return;
+      notes.push({ id: `list-note-${notes.length + 1}`, number: Number(label), text, inBody: true });
+    });
+    return notes;
+  } catch {
+    return [];
+  }
+}
+
 async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFootnote[] }> {
   return Word.run(async (context) => {
     const body = context.document.body;
@@ -54,6 +101,7 @@ async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFoot
     footnotes.items.forEach((footnote) => footnote.body.load('text'));
     await context.sync();
 
+    const numbered = await numberedNotesInBody(context, body);
     const bodyText = body.text.trim();
     return {
       body: bodyText,
@@ -66,6 +114,8 @@ async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFoot
         // 14` to a different authority than the document cited there. These sit past the end,
         // where they add themselves to the list without moving anything already in it.
         ...inlineFootnotesInBody(bodyText),
+        // And the ones Word numbers itself, which no reading of the body text can find.
+        ...numbered,
       ],
     };
   });

@@ -67,7 +67,7 @@ export function inlineFootnotesInBody(bodyText: string): ReviewFootnote[] {
   return notes;
 }
 
-const INLINE_NOTE_FLOOR = 30;
+export const INLINE_NOTE_FLOOR = 30;
 const INLINE_NOTE_CEILING = 2000;
 
 export function citationKey(citation: CitationContext, footnoteId: string): string {
