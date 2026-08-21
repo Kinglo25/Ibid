@@ -140,6 +140,27 @@ function normaliseText(value: string): string {
 }
 
 /**
+ * The form two Word APIs can be compared in.
+ *
+ * Every route in `readCursorLocation` that has ever worked compares a *body's* text to a
+ * body's text: `known` is read from `Footnote.body`, and the parent-body route reads a body
+ * again. A selection is a `Range`, and Word does not guarantee that a range and the body
+ * around it spell the same content the same way — a footnote's auto-numbering mark, a
+ * hyperlinked ECLI, a non-breaking hyphen holding `C-97/08` together across a line break.
+ * The one route that must work when Word calls the parent a section is the only one making
+ * that cross-API comparison, and it was failing on 122 characters that were plainly, to the
+ * reviewer looking at them, the footnote's own opening words.
+ *
+ * So comparison happens on letters, digits and single spaces alone. Punctuation carries none
+ * of the identity of a citation — `EU:C:2009:536` is the same citation however Word chose to
+ * hand back its colons — and dropping it costs nothing at the lengths the floors below
+ * demand.
+ */
+function comparisonKey(value: string): string {
+  return normaliseText(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+/**
  * Which known footnote a piece of text belongs to, in either direction.
  *
  * A caret inside a footnote yields text that the footnote contains. A selection dragged
@@ -149,26 +170,51 @@ function normaliseText(value: string): string {
  * wins: it is the one the selection is about, and the short notes it also swallowed are
  * incidental to it.
  */
-function findFootnote(known: readonly string[], text: string): number {
-  if (text.length < SUBSTRING_FLOOR) return -1;
-  const inside = known.findIndex((candidate) => candidate.includes(text));
+function findFootnote(keys: readonly string[], text: string): number {
+  const key = comparisonKey(text);
+  if (key.length < SUBSTRING_FLOOR) return -1;
+  const inside = keys.findIndex((candidate) => candidate.includes(key));
   if (inside >= 0) return inside;
   let longest = -1;
-  known.forEach((candidate, index) => {
-    if (candidate.length < CONTAINED_FLOOR || !text.includes(candidate)) return;
-    if (longest < 0 || candidate.length > known[longest].length) longest = index;
+  keys.forEach((candidate, index) => {
+    if (candidate.length < CONTAINED_FLOOR || !key.includes(candidate)) return;
+    if (longest < 0 || candidate.length > keys[longest].length) longest = index;
   });
   return longest;
 }
 
 /** A footnote read back from Word, matched to the list the pane already holds. */
-function identify(known: readonly string[], text: string): number {
-  const exact = known.indexOf(text);
-  return exact >= 0 ? exact : findFootnote(known, text);
+function identify(known: readonly string[], keys: readonly string[], text: string): number {
+  const exact = known.indexOf(normaliseText(text));
+  return exact >= 0 ? exact : findFootnote(keys, text);
+}
+
+/**
+ * The footnote that agrees with this text for longest, and how far it got.
+ *
+ * For the reviewer this is the difference between two very different failures: a pane whose
+ * list does not hold the footnote they are in at all, and a pane that holds it but stopped
+ * recognising it at character 45. Only one of those is a matching bug, and without this the
+ * pane cannot say which it is having.
+ */
+function nearestFootnote(keys: readonly string[], text: string): string {
+  const key = comparisonKey(text);
+  if (!key) return 'nothing to compare';
+  let best = -1;
+  let agreed = 0;
+  keys.forEach((candidate, index) => {
+    let shared = 0;
+    while (shared < candidate.length && shared < key.length && candidate[shared] === key[shared]) shared += 1;
+    if (shared > agreed) { agreed = shared; best = index; }
+  });
+  return best < 0 || agreed === 0
+    ? `no footnote of ${keys.length} opens like it`
+    : `nearest is footnote ${best + 1}, alike for ${agreed} of ${key.length}`;
 }
 
 async function readCursorLocation(knownTexts: readonly string[]): Promise<CursorLocation> {
   const known = knownTexts.map(normaliseText);
+  const keys = known.map(comparisonKey);
 
   return Word.run(async (context) => {
     const selection = context.document.getSelection();
@@ -185,7 +231,7 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
       contained.items.forEach((footnote) => footnote.body.load('text'));
       await context.sync();
       const hits = contained.items
-        .map((footnote) => identify(known, normaliseText(footnote.body.text)))
+        .map((footnote) => identify(known, keys, footnote.body.text))
         .filter((index) => index >= 0);
       if (hits.length) return { kind: 'footnotes' as const, indexes: hits };
     }
@@ -202,14 +248,14 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
       parent.load('text');
       await context.sync();
       const parentText = normaliseText(parent.text ?? '');
-      const exact = parentText ? identify(known, parentText) : -1;
+      const exact = parentText ? identify(known, keys, parentText) : -1;
       if (exact >= 0) return { kind: 'footnotes' as const, indexes: [exact] };
     }
 
     // What is actually selected. Survives a parent body that is a paragraph, a section or
     // the main document body rather than the footnote itself.
     const selectedText = normaliseText(selection.text ?? '');
-    const selected = findFootnote(known, selectedText);
+    const selected = findFootnote(keys, selectedText);
     if (selected >= 0) return { kind: 'footnotes' as const, indexes: [selected] };
 
     // The paragraphs the caret actually sits in.
@@ -232,7 +278,7 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
         .map((paragraph) => normaliseText(paragraph.text ?? ''))
         .sort((a, b) => b.length - a.length);
       for (const text of texts) {
-        const containing = findFootnote(known, text);
+        const containing = findFootnote(keys, text);
         if (containing >= 0) return { kind: 'footnotes' as const, indexes: [containing] };
       }
     }
@@ -246,6 +292,7 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
       `${paragraphs.items.length} paragraphs`,
       `${contained.items.length} reference marks`,
       selectedText ? `starting "${selectedText.slice(0, 40)}"` : 'nothing selected',
+      nearestFootnote(keys, selectedText),
     ].join(', ');
     const inFootnote = FOOTNOTE_BODIES.includes(parentType);
     return inFootnote ? { kind: 'unidentified' as const, reported } : { kind: 'outside' as const, reported };

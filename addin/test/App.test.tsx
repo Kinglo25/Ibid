@@ -274,6 +274,32 @@ describe('following the cursor', () => {
     assert.equal(word.documentTextLoads(), 0, 'and still without reading the whole document');
   });
 
+  test('one citation picked out of a footnote holding several names that footnote', async () => {
+    // A reviewer with seven citations in one footnote selects the one they want. Word calls
+    // the parent body the section, reports no reference mark, and hands back the fragment —
+    // 122 characters that are plainly the footnote's own opening words.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.selectWithinFootnote(0, 60);
+    await screen.findByText('Footnote 1 context');
+  });
+
+  test('a fragment Word spells differently from the footnote it came from still matches', async () => {
+    // The failure this was written for. Every route that worked compared a body's text to a
+    // body's text; this is the only one comparing a `Range` to a `Body`, and Word need not
+    // spell them alike — a hyperlinked ECLI, a non-breaking hyphen holding a case number
+    // together across a line break, the footnote's own numbering mark. So identity rests on
+    // letters and digits, not on how Word chose to punctuate them.
+    word = installWordStub([googleSpain, crossReference]);
+    render(<App />);
+    await screen.findByText('Look through the footnotes instead');
+
+    word.selectWithinFootnote(0, 60, (text) => `\u0002 ${text.replace(/-/g, '\u2011').replace(/, /g, ',\u00a0')}`);
+    await screen.findByText('Footnote 1 context');
+  });
+
   test('a footnote a selection was dragged across is read back out of the selection', async () => {
     // What a reviewer actually did: swept the cursor over a long multi-citation footnote in
     // a decision converted from PDF. Word named the parent body the section, handed back

@@ -43,6 +43,14 @@ export type WordStub = {
    * left is reading a footnote the pane already knows back out of the selection.
    */
   dragAcrossFootnote: (footnote: number, surrounding?: string) => void;
+  /**
+   * A selection of part of one footnote — a reviewer picking out the citation they want from
+   * a footnote holding seven. Word names the parent body the section again, so the only
+   * evidence is the selected text, read back from a `Range` rather than from a `Body`.
+   * `spelling` is how the range spells that fragment when Word spells it differently there
+   * than in the footnote's own body text.
+   */
+  selectWithinFootnote: (footnote: number, characters: number, spelling?: (text: string) => string) => void;
   /** Whether the pane registered a selection handler, i.e. whether it is following. */
   isFollowing: () => boolean;
   /**
@@ -74,7 +82,7 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
   let documentTextLoads = 0;
 
   // Where the caret is, and therefore what Word would report for it.
-  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' | 'dragAcross' = 'reference';
+  let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' | 'dragAcross' | 'within' = 'reference';
   let selectedText = '';
   let surroundingText = '';
 
@@ -120,6 +128,21 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
               load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
             },
             paragraphs: { items: [{ text: surroundingText, load: noop }], load: noop },
+          };
+        }
+        if (mode === 'within' && cursor !== null) {
+          // Less text than the footnote holds, in a body Word calls a section, and the one
+          // paragraph is the fragment itself. Nothing here is a `Body`, so this is the only
+          // route that compares what a `Range` says to what a `Body` said.
+          return {
+            text: selectedText, load: noop,
+            footnotes: { items: [], load: noop },
+            parentBody: {
+              text: bodyText,
+              type: 'Section',
+              load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
+            },
+            paragraphs: { items: [{ text: selectedText, load: noop }], load: noop },
           };
         }
         if (mode === 'unknownFootnote') {
@@ -188,6 +211,12 @@ export function installWordStub(footnoteTexts: readonly string[], bodyText = 'Do
     putCursorInFootnoteText: (footnote) => { mode = 'footnoteText'; cursor = footnote; handler?.(); },
     putCursorInUnknownFootnote: (text = '') => { mode = 'unknownFootnote'; selectedText = text; handler?.(); },
     putCursorInFootnoteParagraph: (footnote) => { mode = 'footnoteParagraph'; cursor = footnote; handler?.(); },
+    selectWithinFootnote: (footnote, characters, spelling = (text) => text) => {
+      mode = 'within';
+      cursor = footnote;
+      selectedText = spelling(items[footnote].body.text.slice(0, characters));
+      handler?.();
+    },
     dragAcrossFootnote: (footnote, surrounding = 'Text of the decision either side of it.') => {
       mode = 'dragAcross'; cursor = footnote; surroundingText = surrounding; handler?.();
     },
