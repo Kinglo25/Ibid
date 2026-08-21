@@ -292,6 +292,10 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
       `${paragraphs.items.length} paragraphs`,
       `${contained.items.length} reference marks`,
       selectedText ? `starting "${selectedText.slice(0, 40)}"` : 'nothing selected',
+      // What the pane is matching against, not just what it failed to match. A list that is
+      // short, or full of footnotes Word handed back empty, is a different fault from a list
+      // that holds the footnote and does not recognise it, and the two want opposite fixes.
+      `${keys.length} read, ${keys.filter((key) => !key).length} of them empty`,
       nearestFootnote(keys, selectedText),
     ].join(', ');
     const inFootnote = FOOTNOTE_BODIES.includes(parentType);
