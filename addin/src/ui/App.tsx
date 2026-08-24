@@ -27,7 +27,6 @@ type ReviewState =
   | { kind: 'unresolved' }
   | { kind: 'error'; message: string };
 
-const sampleBody = 'Browser preview of a realistic EU data-protection and competition memo. Every case number and ECLI below is a real citation, verified against the official EUR-Lex/CELLAR record. Open Ibid in Word to review your own document.';
 // The preview document lives in `shared` so this and the `real citations` test suite use
 // one array rather than two copies that can silently drift apart.
 const sampleFootnotes: ReviewFootnote[] = toReviewFootnotes(PREVIEW_FOOTNOTES);
@@ -94,7 +93,7 @@ async function numberedNotesInBody(
   }
 }
 
-async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFootnote[] }> {
+async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
   return Word.run(async (context) => {
     const body = context.document.body;
     const footnotes = body.footnotes;
@@ -107,7 +106,6 @@ async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFoot
     const numbered = await numberedNotesInBody(context, body);
     const bodyText = body.text.trim();
     return {
-      body: bodyText,
       footnotes: [
         // Every footnote, empties included: numbering is what back-references count on, and
         // dropping one here shifts every footnote after it. See `toReviewFootnotes`.
@@ -159,12 +157,11 @@ async function readWordDocument(): Promise<{ body: string; footnotes: ReviewFoot
 export type CursorLocation =
   | { kind: 'footnotes'; indexes: number[] }
   /**
-   * `reported` is what Word said about the caret's surroundings, for the pane to repeat.
    * `selection` is text the reviewer deliberately selected that belongs to no footnote the
    * pane holds — still a passage, and possibly still a citation. See `stray` in the pane.
    */
-  | { kind: 'unidentified'; reported?: string; selection?: string }
-  | { kind: 'outside'; reported?: string; selection?: string };
+  | { kind: 'unidentified'; selection?: string }
+  | { kind: 'outside'; selection?: string };
 
 const FOOTNOTE_BODIES = ['Footnote', 'Endnote', 'NoteItem'];
 // Bodies whose text is the document, or most of it. Reading one costs seconds on a 199-page
@@ -257,29 +254,6 @@ function identify(known: readonly string[], keys: readonly string[], text: strin
   return exact >= 0 ? exact : findFootnote(keys, text);
 }
 
-/**
- * The footnote that agrees with this text for longest, and how far it got.
- *
- * For the reviewer this is the difference between two very different failures: a pane whose
- * list does not hold the footnote they are in at all, and a pane that holds it but stopped
- * recognising it at character 45. Only one of those is a matching bug, and without this the
- * pane cannot say which it is having.
- */
-function nearestFootnote(keys: readonly string[], text: string): string {
-  const key = comparisonKey(text);
-  if (!key) return 'nothing to compare';
-  let best = -1;
-  let agreed = 0;
-  keys.forEach((candidate, index) => {
-    let shared = 0;
-    while (shared < candidate.length && shared < key.length && candidate[shared] === key[shared]) shared += 1;
-    if (shared > agreed) { agreed = shared; best = index; }
-  });
-  return best < 0 || agreed === 0
-    ? `no footnote of ${keys.length} opens like it`
-    : `nearest is footnote ${best + 1}, alike for ${agreed} of ${key.length}`;
-}
-
 async function readCursorLocation(knownTexts: readonly string[]): Promise<CursorLocation> {
   const known = knownTexts.map(normaliseText);
   const keys = known.map(comparisonKey);
@@ -352,28 +326,15 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
     }
 
     // Nothing matched. Whether that is worth telling the reviewer depends entirely on
-    // whether they were in a footnote at all — and when even that is wrong, `reported` is
-    // what Word claimed, so the pane can say it rather than leave it to be inferred.
-    const reported = [
-      `body ${parentType || 'unnamed'}`,
-      `${selectedText.length} characters selected`,
-      `${paragraphs.items.length} paragraphs`,
-      `${contained.items.length} reference marks`,
-      selectedText ? `starting "${selectedText.slice(0, 40)}"` : 'nothing selected',
-      // What the pane is matching against, not just what it failed to match. A list that is
-      // short, or full of footnotes Word handed back empty, is a different fault from a list
-      // that holds the footnote and does not recognise it, and the two want opposite fixes.
-      `${keys.length} read, ${keys.filter((key) => !key).length} of them empty`,
-      nearestFootnote(keys, selectedText),
-    ].join(', ');
+    // whether they were in a footnote at all.
     const inFootnote = FOOTNOTE_BODIES.includes(parentType);
     // Only a deliberate selection, never a bare caret. Reading every body paragraph the
     // cursor passes through would replace the source a reviewer is working from at the first
     // click into the text; asking for what they selected is something they did on purpose.
     const passage = selectedText.length >= PASSAGE_FLOOR ? selectedText : undefined;
     return inFootnote
-      ? { kind: 'unidentified' as const, reported, selection: passage }
-      : { kind: 'outside' as const, reported, selection: passage };
+      ? { kind: 'unidentified' as const, selection: passage }
+      : { kind: 'outside' as const, selection: passage };
   });
 }
 
@@ -403,6 +364,19 @@ function lookupFor(citation: CitationContext) {
   };
 }
 
+/**
+ * A retrieval failure carrying a sentence a reviewer can act on.
+ *
+ * Only messages written here are ever put on screen. `fetch` rejects with a `TypeError`
+ * reading "Failed to fetch" when the server is unreachable — which is exactly the failure a
+ * hosted deployment produces when its API is down, and exactly the wrong thing to show a
+ * lawyer. Locally the Vite proxy hides that behind a `500`, so the raw browser message is a
+ * production-only path and would not have been seen in dev.
+ */
+class RetrievalError extends Error {}
+
+const RETRIEVAL_FAILED = 'The source could not be retrieved. Open the official record below.';
+
 async function resolveSource(citation: CitationContext, signal?: AbortSignal): Promise<ReviewDocument[]> {
   // `import.meta.env` is Vite's, and exists only in a Vite-built bundle. Reaching through
   // it unguarded threw a TypeError under every other runtime — which meant the task-pane
@@ -411,7 +385,7 @@ async function resolveSource(citation: CitationContext, signal?: AbortSignal): P
   // runnable wherever it is imported.
   const apiBase = import.meta.env?.VITE_IBID_API_BASE_URL?.replace(/\/$/, '') ?? '/api';
   const response = await fetch(`${apiBase}/sources?lookup=${encodeURIComponent(JSON.stringify(lookupFor(citation)))}`, { signal });
-  if (!response.ok) throw new Error(`Source lookup failed (${response.status}).`);
+  if (!response.ok) throw new RetrievalError(`The source could not be retrieved (${response.status}). Open the official record below.`);
   const payload = await response.json() as { documents?: ReviewDocument[] };
   return payload.documents ?? [];
 }
@@ -511,7 +485,6 @@ function UnresolvedReview({ citation, authorities, onConfirm }: {
 }
 
 export default function App() {
-  const [body, setBody] = useState('');
   const [footnotes, setFootnotes] = useState<ReviewFootnote[]>([]);
   const [status, setStatus] = useState('Loading source material…');
   const [selected, setSelected] = useState<{ citation: CitationContext; footnote: ReviewFootnote } | null>(null);
@@ -522,10 +495,6 @@ export default function App() {
   // The cursor is in a footnote Ibid could not identify. Distinct from `focused === null`,
   // which is the ordinary case of a cursor somewhere that is not a footnote at all.
   const [unidentified, setUnidentified] = useState(false);
-  // What Word said about the caret the last time nothing could be matched to it. Shown with
-  // the document, not with the source: it is for working out why the pane is wrong, which is
-  // a question the reviewer only asks once the answer above them already looks wrong.
-  const [cursorReport, setCursorReport] = useState<string | null>(null);
   /**
    * Text the reviewer selected that belongs to no footnote the pane holds.
    *
@@ -560,7 +529,6 @@ export default function App() {
     setStatus('Connecting to Word…');
     const runtimeAvailable = await waitForWordRuntime();
     if (!runtimeAvailable) {
-      setBody(sampleBody);
       setFootnotes(sampleFootnotes);
       setStatus('Browser preview: sample footnotes are shown. Open Ibid in Word to review your document.');
       return;
@@ -570,11 +538,10 @@ export default function App() {
     setStatus('Reading the document and its footnotes…');
     try {
       const next = await readWordDocument();
-      setBody(next.body);
       setFootnotes(next.footnotes);
       setStatus(next.footnotes.length
         ? `${next.footnotes.length} footnote${next.footnotes.length === 1 ? '' : 's'} ready for review.`
-        : 'No footnotes found. The document body is still available below.');
+        : 'No footnotes found in this document.');
     } catch {
       setStatus('Ibid could not read this document. Confirm that Word supports the WordApi 1.5 requirement set.');
     }
@@ -619,7 +586,7 @@ export default function App() {
       const documents = await retrieve(citation);
       setReview(documents.length ? { kind: 'success', documents } : { kind: 'empty' });
     } catch (error) {
-      setReview({ kind: 'error', message: error instanceof Error ? error.message : 'The source lookup could not be completed.' });
+      setReview({ kind: 'error', message: error instanceof RetrievalError ? error.message : RETRIEVAL_FAILED });
     }
   };
 
@@ -635,7 +602,7 @@ export default function App() {
       const documents = await retrieve(confirmed);
       setReview(documents.length ? { kind: 'success', documents } : { kind: 'empty' });
     } catch (error) {
-      setReview({ kind: 'error', message: error instanceof Error ? error.message : 'The source lookup could not be completed.' });
+      setReview({ kind: 'error', message: error instanceof RetrievalError ? error.message : RETRIEVAL_FAILED });
     }
   };
 
@@ -697,7 +664,6 @@ export default function App() {
           if (cancelled) return;
           setFocused(location.kind === 'footnotes' ? location.indexes[0] : null);
           setUnidentified(location.kind === 'unidentified');
-          setCursorReport(location.kind === 'footnotes' ? null : location.reported ?? null);
           setStray(location.kind === 'footnotes' ? null : location.selection ?? null);
         })
         // Silent by design: this fires on every cursor movement, so a failure must not
@@ -931,11 +897,14 @@ export default function App() {
       <section className="panel review-panel" aria-live="polite">
         <div className="panel-title">
           <h2>{selected ? 'Source' : 'No citation selected'}</h2>
+          {/* A label, not a count — see `.count.label`. "Note" rather than "Footnote" is
+              already the whole of what `inBody` needs to say here: it is the word that
+              distinguishes the two, and the context line below spells it out in full. */}
           {focusedFootnote
-            ? <span className="count">{focusedFootnote.inBody
-              ? `Note ${focusedFootnote.number}, in body text`
+            ? <span className="count label">{focusedFootnote.inBody
+              ? `Note ${focusedFootnote.number}`
               : `Footnote ${focusedFootnote.number}`}</span>
-            : strayFootnote && <span className="count">Selected text</span>}
+            : strayFootnote && <span className="count label">Selected text</span>}
         </div>
 
         {selected && following && !panelFollowsCursor && <p className="muted">
@@ -944,11 +913,6 @@ export default function App() {
             : 'The cursor has left the text this was read from.'} This is the last source opened,
           not the citation the cursor is on now.
         </p>}
-
-        {/* What Word said about a caret nothing could be matched to. Beside the source
-            because that is where the reviewer is looking when the answer is wrong. */}
-        {cursorReport && !selected && strayCitations.length === 0 &&
-          <p className="muted">Word reported the cursor as: {cursorReport}</p>}
 
         {!selected && unidentified && <p className="error">
           The cursor is in a footnote Ibid could not match to one it has read. Use Refresh if the
@@ -1011,29 +975,21 @@ export default function App() {
         </>}
       </section>
 
-      {/* The index of footnotes.
+      {/* The index of footnotes, where it is the only way to reach one.
 
-          Where the cursor is being followed this is a fallback, not the way the pane is
-          meant to be used: the reviewer works from the document, and the pane answers about
-          whatever they are looking at. Listing every footnote that still needs a decision
-          is a handful of entries on a brief and a hundred and twelve on a real Commission
-          decision — a wall to scroll past to reach the one panel that was wanted. So it
-          collapses, and what is on screen is the citation under the cursor.
+          Not where the cursor is being followed. There the reviewer works from the document
+          and the pane answers about whatever they are looking at, so a list of citations is
+          a second place to read the same document from — and it is the bigger one: three
+          entries already pushed the source panel off the screen, and a real decision has a
+          hundred and twelve. What is outstanding is said in one line beside the document
+          instead, which is the part a reviewer cannot get by moving the cursor.
 
           Where following is unavailable — the browser preview, or a Word build whose
-          selection events did not register — it is the only route to a citation, so it
-          stays open. */}
-      <section className="panel">
-        {following
-          ? <details className="footnote-index">
-            <summary>
-              Look through the footnotes instead
-              {outstanding > 0 && <span className="index-count">{outstanding} need{outstanding === 1 ? 's' : ''} review</span>}
-            </summary>
-            {footnoteIndex}
-          </details>
-          : footnoteIndex}
-      </section>
+          selection events did not register — the list is the only route to a citation, so
+          it is shown in full. */}
+      {!following && <section className="panel">
+        {footnoteIndex}
+      </section>}
 
       <section className="panel source-overview">
         <div className="panel-actions">
@@ -1044,14 +1000,16 @@ export default function App() {
                 what it could not get: a count that stalls two short of the total with no
                 explanation invites the reader to wait for something that is not coming. */}
             {prefetching && prefetchStatus(prefetching) && <p className="status">{prefetchStatus(prefetching)}</p>}
-            {cursorReport && <p className="status">Word reported the cursor as: {cursorReport}</p>}
+            {/* Said, not listed. Which footnotes they are is a question the cursor answers,
+                but that there is anything waiting at all is not — a reviewer moving through
+                a document has no way to discover it, and would finish believing every
+                citation had resolved. One line, and only when the answer is not zero. */}
+            {following && outstanding > 0 && <p className="status">
+              {outstanding} citation{outstanding === 1 ? '' : 's'} still need{outstanding === 1 ? 's' : ''} a decision.
+            </p>}
           </div>
           <button type="button" onClick={() => void refresh()}>Refresh</button>
         </div>
-        <details>
-          <summary>View document body</summary>
-          <pre className="source-text">{body || 'No document body text available.'}</pre>
-        </details>
       </section>
     </main>
   );

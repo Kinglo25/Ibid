@@ -184,15 +184,40 @@ describe('what the pane says about it', () => {
 
   test('says plainly what it could not get, rather than stalling short of the total', () => {
     // A count that stops at 21 of 23 with no explanation invites the reader to wait for
-    // something that is not coming. Some documents genuinely are not in CELLAR, and those
-    // citations still open — as the official CURIA link, which is a working answer.
+    // something that is not coming.
     assert.equal(
       prefetchStatus({ retrieved: 21, attempted: 23, total: 23 }),
-      'Retrieved 21 of 23 sources; 2 are not held by EUR-Lex and will open as a link.',
+      'Retrieved 21 of 23 sources; 2 could not be retrieved and open as a link instead.',
     );
     assert.equal(
       prefetchStatus({ retrieved: 22, attempted: 23, total: 23 }),
-      'Retrieved 22 of 23 sources; 1 is not held by EUR-Lex and will open as a link.',
+      'Retrieved 22 of 23 sources; 1 could not be retrieved and opens as a link instead.',
+    );
+  });
+
+  test('does not blame EUR-Lex for a lookup that never completed', () => {
+    // The wording this replaced said the missing documents were "not held by EUR-Lex",
+    // which is a statement about the authorities the lawyer is citing. What actually
+    // reaches this count is a lookup that failed — and observed live, with the API
+    // stopped, that turned a dead server into the pane asserting that all 38 authorities
+    // of a Commission decision were absent from EUR-Lex. A document CELLAR genuinely does
+    // not hold never arrives here at all: it comes back as a link-only preview, which is a
+    // successful lookup and is counted as one.
+    const everythingFailed = prefetchStatus({ retrieved: 0, attempted: 38, total: 38 });
+    assert.ok(!/EUR-Lex/.test(everythingFailed!.replace('reach its server', '')),
+      'must not claim EUR-Lex does not hold the documents');
+    assert.match(everythingFailed!, /may not be able to reach its server/);
+    // And it still says what the reviewer can do, because they can: the official link is
+    // built on this machine and does not depend on the server that just failed.
+    assert.match(everythingFailed!, /open their official link/);
+  });
+
+  test('does not diagnose the server from a single failure', () => {
+    // One document failing among many is an ordinary miss. Only a clean sweep is evidence
+    // about the connection, so a lone failure gets the plain count and no theory.
+    assert.equal(
+      prefetchStatus({ retrieved: 0, attempted: 1, total: 1 }),
+      'Retrieved 0 of 1 sources; 1 could not be retrieved and opens as a link instead.',
     );
   });
 

@@ -44,6 +44,16 @@ const findChip = async (label: string) => {
   return chips;
 };
 
+/**
+ * The document has been read and the pane has rendered it.
+ *
+ * The footnote index used to be what these waited on. It is no longer always there — it
+ * appears when a citation needs a decision and otherwise is not rendered at all — so they
+ * wait on the status line instead, which is what the pane says once it holds a document and
+ * is what was really being waited for.
+ */
+const paneReady = () => screen.findByText(/footnotes? ready for review\./);
+
 /** The list defaults to what needs a decision; resolved citations live behind the toggle. */
 const showEveryFootnote = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(await screen.findByRole('button', { name: /Show all/ }));
@@ -326,22 +336,64 @@ describe('following the cursor', () => {
   let word: ReturnType<typeof installWordStub> | undefined;
   afterEach(() => { word?.remove(); word = undefined; });
 
-  test('the footnote index is collapsed, so the pane is the citation under the cursor', async () => {
-    // The complaint this answers: on a real Commission decision the index is a hundred-odd
-    // entries, and it stood between the reviewer and the one panel they wanted.
+  test("a footnote carrying Word's reference mark still knows what Ibid. means", async () => {
+    // Found by opening back-reference-test.docx in Word, and invisible to every fixture in
+    // this repository: `Footnote.body.text` opens with the mark that draws the note's
+    // number (U+0002), which is not whitespace and so survives `trim`. `Ibid.` is
+    // recognised only at the start of a footnote, so the mark sat between the anchor and
+    // the word — and every back-reference in a real document silently became no citation at
+    // all, while `Ibidem` was reported as a short form the document never defines.
+    const mark = String.fromCharCode(2);
+    word = installWordStub([mark + googleSpain, mark + 'Ibid., para. 97.']);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(1);
+    await screen.findByText('Ibid.', { selector: '.selected-citation' });
+    // And the mark is not on screen either: an exact match here fails if it survived.
+    await screen.findByText('Ibid., para. 97.');
+  });
+
+  test('no footnote list while the cursor is being followed', async () => {
+    // On a real Commission decision the index is a hundred and twelve entries, and it stood
+    // between the reviewer and the one panel they wanted. Three entries were already enough
+    // to push the source off the screen. Where the pane answers about the cursor, the list
+    // is a second place to read the same document from.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
+    await paneReady();
 
-    const summary = await screen.findByText('Look through the footnotes instead');
-    const index = summary.closest('details');
-    assert.ok(index, 'the index should be inside a disclosure');
-    assert.equal(index.open, false, 'the index should start collapsed');
+    assert.equal(screen.queryByRole('heading', { name: 'Needs review' }), null);
+    assert.equal(screen.queryByRole('button', { name: /Show all/ }), null);
+    // The pane still answers about the cursor, which is the whole point of removing it.
+    word.putCursorOn(0);
+    await screen.findByText('ECLI:EU:C:2014:317', { selector: '.selected-citation' });
+  });
+
+  test('what is outstanding is said in one line rather than listed', async () => {
+    // Which footnotes they are is a question the cursor answers. That anything is waiting
+    // at all is not — without this a reviewer moves through the document and finishes
+    // believing every citation resolved.
+    word = installWordStub([googleSpain, 'See Akzo Nobel, para. 40.']);
+    render(<App />);
+    await paneReady();
+
+    await screen.findByText(/1 citation still needs a decision\./);
+    assert.equal(screen.queryByRole('heading', { name: 'Needs review' }), null, 'said, not listed');
+  });
+
+  test('the list is still the whole pane where the cursor cannot be followed', async () => {
+    // The browser preview, and any Word build whose selection events do not register. There
+    // the list is the only route to a citation, so removing it would leave nothing at all.
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Needs review' });
+    assert.ok(await screen.findByRole('button', { name: /Show all/ }));
   });
 
   test('landing on a citation opens it without being asked', async () => {
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorOn(0);
     await screen.findByRole('heading', { name: 'Source' });
@@ -353,7 +405,7 @@ describe('following the cursor', () => {
     // is worse with the index collapsed than it was with a list to re-orient against.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorOn(0);
     await screen.findByRole('heading', { name: 'Source' });
@@ -370,7 +422,7 @@ describe('following the cursor', () => {
     // footnote's source up as the answer. The paragraph is the smaller, more local claim.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorInFootnoteParagraph(0);
     await screen.findByText('Footnote 1 context');
@@ -383,7 +435,7 @@ describe('following the cursor', () => {
     // 122 characters that are plainly the footnote's own opening words.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.selectWithinFootnote(0, 60);
     await screen.findByText('Footnote 1 context');
@@ -397,7 +449,7 @@ describe('following the cursor', () => {
     // letters and digits, not on how Word chose to punctuate them.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.selectWithinFootnote(0, 60, (text) => `\u0002 ${text.replace(/-/g, '\u2011').replace(/, /g, ',\u00a0')}`);
     await screen.findByText('Footnote 1 context');
@@ -412,7 +464,7 @@ describe('following the cursor', () => {
     // identifies it just as well as one contained by it.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.dragAcrossFootnote(0);
     await screen.findByText('Footnote 1 context');
@@ -424,7 +476,7 @@ describe('following the cursor', () => {
     // this function exists to avoid, on every movement of the caret.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.dragAcrossFootnote(0);
     await screen.findByText('Footnote 1 context');
@@ -439,7 +491,7 @@ describe('following the cursor', () => {
     // footnote the reviewer had not gone anywhere near.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.dragAcrossFootnote(1);
     await screen.findByRole('heading', { name: 'No citation selected' });
@@ -452,7 +504,7 @@ describe('following the cursor', () => {
     // footnote the reviewer never went near.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.dragAcrossFootnote(0, crossReference);
     await screen.findByText('Footnote 1 context');
@@ -465,7 +517,7 @@ describe('following the cursor', () => {
     // the one thing that string can never be is equal to a footnote.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorOn(0);
     await screen.findByText('Footnote 1 context');
@@ -483,7 +535,7 @@ describe('following the cursor', () => {
     const user = userEvent.setup();
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
     await screen.findByText(/footnotes ready for review/);
@@ -501,7 +553,7 @@ describe('following the cursor', () => {
     // still describing.
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorOn(0);
     await screen.findByText('Footnote 1 context');
@@ -529,7 +581,7 @@ describe('finding the footnote the cursor is actually in', () => {
   test('clicking inside the footnote text finds that footnote, not the one before it', async () => {
     word = installWordStub([akzo, sevenCitations]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorOn(0);
     await screen.findByText('Footnote 1 context');
@@ -544,7 +596,7 @@ describe('finding the footnote the cursor is actually in', () => {
   test('a footnote citing several authorities offers each of them', async () => {
     word = installWordStub([akzo, sevenCitations]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorInFootnoteText(1);
     await screen.findByText('Footnote 2', { selector: '.count' });
@@ -559,7 +611,7 @@ describe('finding the footnote the cursor is actually in', () => {
   test('a selection identifies its footnote even when the parent body does not', async () => {
     word = installWordStub([akzo, sevenCitations]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     // Word reported a body the pane never read; the selected text still pins it down.
     word.putCursorInUnknownFootnote('Elf Aquitaine v Commission, C-521/09 P');
@@ -572,10 +624,12 @@ describe('finding the footnote the cursor is actually in', () => {
     const inline = `72 ${sevenCitations}`;
     word = installWordStub([akzo], `Body text of the decision.\r${inline}\rMore body text.`);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorInBodyParagraph(inline);
-    await screen.findByText('Note 72, in body text');
+    // "Note" rather than "Footnote" is the body-text distinction; the badge is a fixed
+    // pill, so it carries the label and the context line below carries the explanation.
+    await screen.findByText('Note 72', { selector: '.count' });
   });
 
   test('a note in the body keeps the number the document shows, not a position in the list', async () => {
@@ -584,13 +638,15 @@ describe('finding the footnote the cursor is actually in', () => {
     const inline = `72 ${sevenCitations}`;
     word = installWordStub([akzo], `Body text of the decision.\r${inline}`);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorOn(0);
     await screen.findByText('Footnote 1 context', undefined, { timeout: 3000 });
 
     word.putCursorInBodyParagraph(inline);
-    await screen.findByText('Note 72, in body text');
+    // "Note" rather than "Footnote" is the body-text distinction; the badge is a fixed
+    // pill, so it carries the label and the context line below carries the explanation.
+    await screen.findByText('Note 72', { selector: '.count' });
     assert.equal(screen.queryByText('Footnote 2 context'), null, 'its position in the list is not its number');
   });
 
@@ -601,7 +657,7 @@ describe('finding the footnote the cursor is actually in', () => {
     // footnote here to find. The reviewer is still looking straight at a citation.
     word = installWordStub([akzo]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.selectTextOutsideFootnotes(sevenCitations.slice(0, 121));
     await screen.findByRole('heading', { name: 'Source' });
@@ -613,7 +669,7 @@ describe('finding the footnote the cursor is actually in', () => {
     // reviewer could go looking for in the document.
     word = installWordStub([akzo]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.selectTextOutsideFootnotes(sevenCitations.slice(0, 121));
     await screen.findByText('What you selected', { selector: '.context-label' });
@@ -627,7 +683,7 @@ describe('finding the footnote the cursor is actually in', () => {
     // text, which is the behaviour the cursor-follow was careful to avoid.
     word = installWordStub([akzo]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorOn(0);
     await screen.findByText('Footnote 1 context');
@@ -641,7 +697,7 @@ describe('finding the footnote the cursor is actually in', () => {
     // The same rule a footnote holding several gets: the reviewer says which they meant.
     word = installWordStub([akzo]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.selectTextOutsideFootnotes(sevenCitations);
     const chips = await screen.findByText(/EU:C:2011:620/);
@@ -652,7 +708,7 @@ describe('finding the footnote the cursor is actually in', () => {
   test('a footnote it cannot identify is admitted, not answered stale', async () => {
     word = installWordStub([akzo, sevenCitations]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorOn(0);
     await screen.findByText('Footnote 1 context');
@@ -685,10 +741,11 @@ describe('footnotes Word numbers but does not hold', () => {
       { label: '275', text: groningen },
     ]);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorInBodyParagraph(groningen);
-    await screen.findByText('Note 275, in body text');
+    await screen.findByText('Note 275', { selector: '.count' });
+    await screen.findByText('Note 275 context, in body text');
     await screen.findByText('EU:T:2018:317', { selector: '.selected-citation' });
   });
 
@@ -698,7 +755,7 @@ describe('footnotes Word numbers but does not hold', () => {
     // between them after the conversion.
     word = installWordStub(['A real footnote.'], 'Body text.', []);
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorInBodyParagraph('A recital of the decision, numbered as a list.');
     assert.equal(screen.queryByText(/in body text/), null, 'a recital is not a footnote');
@@ -711,7 +768,7 @@ describe('footnotes Word numbers but does not hold', () => {
     word = installWordStub(['Judgment of 10 September 2009, Akzo Nobel and Others v Commission, Case C-97/08 P, ECLI:EU:C:2009:536, paragraph 60.']);
     word.breakParagraphs();
     render(<App />);
-    await screen.findByText('Look through the footnotes instead');
+    await paneReady();
 
     word.putCursorOn(0);
     await screen.findByText('Footnote 1 context');

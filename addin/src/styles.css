@@ -117,3 +117,12 @@ button.candidate-confirm:hover { background: #10357f; }
    authority. A revalidated cache is the official text with proof, not a copy with a caveat,
    and it should not be dressed as a caveat. */
 .source-verified { color: #5f6d86; font-size: 11px; margin: 6px 0 0; }
+
+/* The same pill, sized to a word rather than to a digit.
+
+   `.count` is a 24px circle, which is right for the single number in a list heading and
+   wrong for every label the review panel puts in it: "Footnote 507" wrapped to two lines
+   and "Note 72, in body text" broke one character per line across the heading. Seen in
+   Word on a real Commission decision, and invisible at every width the browser preview is
+   normally read at — the task pane is narrower than anything a developer resizes to. */
+.count.label { width: auto; height: auto; padding: 2px 10px; white-space: nowrap; }

@@ -79,18 +79,31 @@ export type PrefetchProgress = {
  *
  * Honest about failures rather than rounding them away: a queue that stalls at "Retrieved
  * 21 of 23" with no explanation invites the reader to assume the last two are still coming.
- * Some documents genuinely are not in CELLAR — six of 196 identifiers in the corpus run —
- * and those citations fall back to their official CURIA link when opened, which is a
- * working answer rather than a failure of the pane.
+ *
+ * Honest about *what* the failure was, too, which this got wrong once and is worth keeping
+ * right. A document CELLAR does not hold is not a failure here at all — the resolver
+ * answers with the official CURIA link instead of text, which is a successful lookup and is
+ * counted as one. What reaches the missing count is a lookup that did not complete: the
+ * Ibid server unreachable or erroring, a response that would not parse. Saying those
+ * documents "are not held by EUR-Lex" states something about the authorities the lawyer is
+ * citing on the strength of something that went wrong in the plumbing, which is precisely
+ * the kind of claim this pane exists not to make. Observed live: the API stopped, and the
+ * pane reported all 38 of a Commission decision's authorities as absent from EUR-Lex.
+ *
+ * Every lookup failing is itself informative — 38 documents do not individually vanish —
+ * so that case says what is actually likely, hedged, and points at the thing the reviewer
+ * can still do.
  */
 export function prefetchStatus(progress: PrefetchProgress): string | undefined {
   const { retrieved, attempted, total } = progress;
   if (!total) return undefined;
   if (attempted < total) return `Retrieved ${retrieved} of ${total} sources…`;
   const missing = total - retrieved;
-  return missing
-    ? `Retrieved ${retrieved} of ${total} sources; ${missing} ${missing === 1 ? 'is' : 'are'} not held by EUR-Lex and will open as a link.`
-    : `Retrieved all ${total} sources.`;
+  if (!missing) return `Retrieved all ${total} sources.`;
+  if (!retrieved && total > 1) {
+    return `No sources could be retrieved — Ibid may not be able to reach its server. Citations still open their official link.`;
+  }
+  return `Retrieved ${retrieved} of ${total} sources; ${missing} could not be retrieved and ${missing === 1 ? 'opens' : 'open'} as a link instead.`;
 }
 
 export type Prefetcher = {
@@ -140,9 +153,11 @@ export function startPrefetch(options: {
         if (cancelled) return;
         retrieved += 1;
       } catch {
-        // A document CELLAR does not hold, or a request abandoned because the reviewer
-        // moved on. Neither is worth an error in the pane: the citation still opens, and
-        // falls back to its official link the same way it would without any of this.
+        // A lookup that did not complete — the server unreachable, an error response, a
+        // request abandoned because the reviewer moved on. Not worth an error in the pane:
+        // the citation still opens, and falls back to its official link the same way it
+        // would without any of this. Note that this is *not* where a document CELLAR does
+        // not hold arrives; that comes back as a link-only preview, which is a success.
         if (cancelled) return;
       }
       attempted += 1;
