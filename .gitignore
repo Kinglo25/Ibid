@@ -17,3 +17,7 @@ corpus-report.json
 
 # Word lock files, written beside a document while it is open.
 ~$*
+
+# Throwaway trial state: the tunnel URL of the day, its logs, and the add-in Id.
+# The Id is deliberately kept across runs but is local to this machine.
+.trial/
