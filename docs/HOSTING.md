@@ -17,6 +17,34 @@ Hosting removes all of it. Once the pane and API are on a real HTTPS origin, the
 | **One origin for pane and API** | The pane calls `/api` relatively. Serving both from one origin keeps it same-origin, so CORS never enters into it. |
 | **Word 2302+ / Office 2024 / Word on the web / Mac 16.70+** | Footnote enumeration is WordApi 1.5. The manifest declares it, so Word refuses to activate rather than loading a pane that finds nothing. **Volume-licensed Office 2019 and 2021 cannot run Ibid at all.** Worth confirming the client's build before anything else. |
 
+## Two shapes, and which one you want
+
+| | When | What it costs |
+| --- | --- | --- |
+| **One process** | Letting a client try it. Any free tier, or a tunnel from your own machine. | Nothing, and no proxy to configure. |
+| **Proxy in front** | A host you control and intend to keep. | A VM, and a Caddyfile. |
+
+They differ in one setting. `IBID_STATIC_DIR` makes the API serve the built pane as well as
+answer `/api`, which is what a platform host needs, because a platform host gives you one
+process, one port and nothing to configure a proxy in:
+
+```bash
+npm ci && npm run build
+IBID_STATIC_DIR=./addin/dist IBID_BIND_HOST=0.0.0.0 \
+IBID_USER_AGENT='Ibid/1.0 (+https://your-host; you@example.com)' \
+  node api/server.mjs
+```
+
+That is the whole difference. The pane calls `/api/...` either way and does not have to know
+which deployment it is in. See `api/README.md` for what the static server refuses to serve.
+
+**A trial has a confidentiality choice in it that a deployment does not.** No text from the
+client's document ever reaches the server — that is structural, and `DATA-FLOW.md` is
+written for their IT to check it. But the *lookups* name the authorities their document
+cites, which is metadata about it. Served from your own machine through a tunnel, nobody
+else sees those. Served from a third-party free tier, that provider does. For a first look
+at a client's own document, the tunnel is the honest default.
+
 ## Deploy
 
 Any small VM will do — the API is a single Node process and the pane is static files.

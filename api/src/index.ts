@@ -3,6 +3,9 @@ import { createMemoryDocumentStore, type DocumentStore, type StoredDocument } fr
 export { createFileDocumentStore, createMemoryDocumentStore, defaultCacheDirectory } from './document-store.ts';
 export type { DocumentStore, StoredDocument } from './document-store.ts';
 
+export { createStaticFiles, contentTypeFor, resolveWithinRoot } from './static-files.ts';
+export type { StaticAsset } from './static-files.ts';
+
 export type EuLookup = {
   source: 'curia' | 'eur-lex' | 'commission';
   value: string;

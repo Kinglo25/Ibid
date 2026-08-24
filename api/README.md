@@ -149,4 +149,41 @@ IBID_EURLEX_MAX_RETRIES=2
 IBID_CACHE_DIR=/var/cache/ibid          # retrieved documents; defaults outside the repository
 IBID_CACHE_ENTRIES=512                  # 0 disables the disk cache entirely
 IBID_ALLOWED_ORIGIN=https://your-addin-host.example
+IBID_STATIC_DIR=/srv/ibid/addin/dist    # serve the pane from here too; unset = API only
+IBID_BIND_HOST=127.0.0.1                # 0.0.0.0 on a platform host, which forwards to you
+IBID_API_PORT=4000                      # `PORT` is used instead when a platform sets it
 ```
+
+## Serving the pane from this process
+
+Unset by default, and the documented deployment does not use it: Caddy serves `addin/dist`
+and forwards `/api` here, which is the right shape for a host you control.
+
+`IBID_STATIC_DIR` exists for the hosts where that is not available. A free tier or any
+platform-as-a-service gives you one process, one port and no proxy layer to configure, so
+without this there is no way to put Ibid in front of a client without first paying for a
+VM. Point it at the built pane and this process answers both:
+
+```bash
+npm run build
+IBID_STATIC_DIR=./addin/dist IBID_BIND_HOST=0.0.0.0 node api/server.mjs
+```
+
+The pane always calls `/api/...`. Behind a proxy that prefix is stripped before it arrives;
+served from here there is nothing to strip it, so both spellings are answered and the pane
+does not have to know which deployment it is in.
+
+What it will not serve: anything outside the directory, however the path is spelled
+(`../`, `%2e%2e%2f`, an absolute path, or a symlink pointing out of it — the check is made
+on the resolved real path, not on the shape of the request); any dot-file, which is where
+`.env` and `.git` live; and any extension not on the allow-list, rather than guessing a
+type for it. `api/test/static-files.test.ts` is mostly those refusals.
+
+Content-hashed files under `assets/` are served immutable for a year, since those bytes
+cannot change under that name. Everything that keeps its name across deployments —
+`taskpane.html`, the manifest icons — is `no-cache`, so a reviewer is never pinned to the
+build they first opened.
+
+**`IBID_BIND_HOST` is not inferred from this.** What a server listens on should be
+something an operator said rather than something another setting implied — but note that
+loopback is unreachable on a platform host, so `0.0.0.0` is required there.
