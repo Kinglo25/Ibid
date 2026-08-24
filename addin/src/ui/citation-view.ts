@@ -30,8 +30,38 @@ export type ReviewFootnote = {
  * An empty footnote contributes no citations, so carrying it costs nothing. The list skips
  * them at the point of display instead, which is where they are merely noise.
  */
+/**
+ * Word's own reference mark, and anything else in the control range.
+ *
+ * `Footnote.body.text` opens with the mark that draws the note's number in the document —
+ * `U+0002` for an auto-numbered footnote — and it is not whitespace, so `trim` leaves it
+ * where it is. It cost far more than the stray glyph it drew in the pane.
+ *
+ * `Ibid.` is recognised only at the *start* of a footnote, because that is the only place
+ * the word occurs in drafting (see `IBID_REFERENCE` in `shared/src/index.ts`). A control
+ * character sitting in front of it defeats that anchor, so in a real Word document every
+ * `Ibid.` and `Id.` silently stopped being a citation: detected as nothing at all, or — for
+ * `Ibidem`, which is not in the not-a-case-name list — reported as a short form the document
+ * never defines. Both were visible on screen as the pane simply failing to know what a
+ * back-reference meant.
+ *
+ * Invisible to every test in this repository, because the fixtures are written by hand and
+ * hand-written text has no reference marks in it. Found by opening
+ * `samples/ibid-demo-docx/back-reference-test.docx` in Word and reading the pane.
+ *
+ * Replaced with a space rather than removed: a tab between the mark and the text is
+ * ordinary, and joining words across a paragraph break would be worse than a space too many.
+ */
+// Matching control characters is the point here: Word's reference mark is one.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/g;
+
 export function toReviewFootnotes(texts: readonly string[]): ReviewFootnote[] {
-  return texts.map((text, index) => ({ id: `footnote-${index + 1}`, number: index + 1, text: text.trim() }));
+  return texts.map((text, index) => ({
+    id: `footnote-${index + 1}`,
+    number: index + 1,
+    text: text.replace(CONTROL_CHARACTERS, ' ').trim(),
+  }));
 }
 
 /**

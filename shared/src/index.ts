@@ -1090,9 +1090,17 @@ function hasAdjacentPinpoint(text: string, endIndex: number, limit: number): boo
  * A lead-in is allowed before it ("See ibid."), and `id` is the one spelling that
  * requires its period — unlike the others it is a word fragment in both English and
  * French, and the period is what marks it as the abbreviation.
+ *
+ * Control characters are skipped along with the whitespace and quotes. Word opens a
+ * footnote's text with the reference mark that draws its number (`U+0002`), which is not
+ * whitespace and so sat between the anchor and the word — silently turning every `Ibid.`
+ * in a real document into no citation at all. The pane strips those marks before it gets
+ * here, and this makes the anchor unable to be defeated that way a second time by a caller
+ * that does not: for a word whose entire meaning is "the authority above", failing to
+ * recognise it is indistinguishable from a footnote that cites nothing.
  */
 const IBID_REFERENCE = new RegExp(
-  String.raw`^[\s(«"'“‘]*(?:(?:see(?:\s+also)?|cf\.?|voir|but\s+see|compare|accord|and)\s+)?((?:ibidem|ibid|idem)\.?|id\.)(?![\p{L}\p{N}])`,
+  String.raw`^[\s(«"'“‘\p{Cc}]*(?:(?:see(?:\s+also)?|cf\.?|voir|but\s+see|compare|accord|and)\s+)?((?:ibidem|ibid|idem)\.?|id\.)(?![\p{L}\p{N}])`,
   'iu',
 );
 

@@ -995,6 +995,28 @@ const BACK_REFERENCE_DOCUMENT = [
   "Ibid., para. 45.",
 ];
 
+describe('a back-reference behind a control character', () => {
+  test("Word's footnote reference mark does not stop `Ibid.` meaning what it means", () => {
+    // The pane strips these before detection ever sees them, and this is the second lock on
+    // the same door. A word whose entire meaning is "the authority above" failing to be
+    // recognised is indistinguishable, on screen, from a footnote that cites nothing — so
+    // of everything a stray character could break, this is the one worth pinning twice.
+    const mark = String.fromCharCode(2);
+    const resolved = detectCitationsAcrossFootnotes([
+      'Judgment of 13 May 2014, Google Spain SL and Google Inc. v AEPD, Case C-131/12, ECLI:EU:C:2014:317, paras 80-82.',
+      mark + 'Ibid., para. 97.',
+      mark + 'Ibidem, point 119.',
+    ]);
+
+    assert.equal(resolved[1][0]?.status, 'resolved');
+    assert.equal(resolved[1][0]?.celex, '62012CJ0131');
+    // `Ibidem` is not in the not-a-case-name list, so when the anchor failed it came back as
+    // a short form the document never defines — a different wrong answer from the same bug.
+    assert.equal(resolved[2][0]?.status, 'resolved');
+    assert.equal(resolved[2][0]?.celex, '62012CJ0131');
+  });
+});
+
 describe('regression — samples/ibid-demo-docx/back-reference-test.docx', () => {
   const resolved = detectCitationsAcrossFootnotes(BACK_REFERENCE_DOCUMENT);
   const footnote = (number: number) => resolved[number - 1];

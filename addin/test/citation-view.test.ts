@@ -262,3 +262,22 @@ describe('when a passage was last confirmed against EUR-Lex', () => {
     assert.equal(verificationNote('not a date'), undefined);
   });
 });
+
+describe('what Word hands back as a footnote', () => {
+  test("the reference mark is stripped, because `Ibid.` is anchored to what follows it", () => {
+    // `Footnote.body.text` opens with the mark that draws the note's number — U+0002 for an
+    // auto-numbered footnote, and it is not whitespace, so `trim` alone left it in place.
+    // See CONTROL_CHARACTERS in citation-view.ts for what it cost.
+    const [note] = toReviewFootnotes([String.fromCharCode(2) + 'Ibid., para. 97.']);
+    assert.equal(note.text, 'Ibid., para. 97.');
+  });
+
+  test('a tab after the mark becomes a space rather than disappearing', () => {
+    // Word writes the mark and then a tab. Removing both outright would join the number to
+    // the first word; a space is what the document shows anyway.
+    const [note] = toReviewFootnotes([String.fromCharCode(2) + String.fromCharCode(9) + 'Ibid.']);
+    assert.equal(note.text, 'Ibid.');
+    const [split] = toReviewFootnotes(['Judgment of 13 May 2014,' + String.fromCharCode(11) + 'Google Spain.']);
+    assert.equal(split.text, 'Judgment of 13 May 2014, Google Spain.', 'and words are not run together');
+  });
+});
