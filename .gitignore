@@ -14,3 +14,6 @@ corpus-report.json
 # usual location. See docs/DATA-FLOW.md.
 .ibid-cache/
 
+
+# Word lock files, written beside a document while it is open.
+~$*
