@@ -1,10 +1,26 @@
 import http from 'node:http';
-import { createEuSourceResolver } from './dist/index.js';
+import { createEuSourceResolver, createFileDocumentStore, defaultCacheDirectory } from './dist/index.js';
 
 const eurLexHeaders = {};
 if (process.env.IBID_EURLEX_API_KEY) eurLexHeaders['X-API-Key'] = process.env.IBID_EURLEX_API_KEY;
 if (process.env.IBID_EURLEX_BEARER_TOKEN) eurLexHeaders.Authorization = `Bearer ${process.env.IBID_EURLEX_BEARER_TOKEN}`;
+/**
+ * Retrieved CELLAR documents, kept across restarts.
+ *
+ * This is the one thing the server writes to disk, and what it writes is public EU legal
+ * text fetched from `publications.europa.eu` — never anything from the user's document,
+ * which never leaves the task pane (see `docs/DATA-FLOW.md`). It lives outside the
+ * repository by default; set `IBID_CACHE_DIR` to place it deliberately, or
+ * `IBID_CACHE_ENTRIES=0` to run with no disk cache at all, which falls back to the bounded
+ * in-memory one.
+ */
+const cacheEntries = Number(process.env.IBID_CACHE_ENTRIES ?? 512);
+const documentStore = cacheEntries > 0
+  ? createFileDocumentStore({ directory: process.env.IBID_CACHE_DIR, maxEntries: cacheEntries })
+  : undefined;
+
 const resolver = createEuSourceResolver({
+  documentStore,
   cellarBaseUrl: process.env.IBID_EURLEX_CELLAR_BASE_URL,
   userAgent: process.env.IBID_USER_AGENT,
   // Order of preference, e.g. "en,fr". CELLAR answers 404 for a language a document was
@@ -44,4 +60,11 @@ server.once('error', (error) => {
   process.exitCode = 1;
 });
 
-server.listen(port, '127.0.0.1', () => console.log(`Ibid API listening on http://127.0.0.1:${port}`));
+server.listen(port, '127.0.0.1', () => {
+  console.log(`Ibid API listening on http://127.0.0.1:${port}`);
+  // Said once, at startup, so an operator knows where the only files this process writes
+  // are going — and can point them somewhere else, or switch them off.
+  console.log(documentStore
+    ? `Retrieved EUR-Lex documents cached in ${process.env.IBID_CACHE_DIR ?? defaultCacheDirectory()} (${cacheEntries} max).`
+    : 'Retrieved EUR-Lex documents cached in memory only; nothing is written to disk.');
+});

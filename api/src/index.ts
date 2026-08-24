@@ -1,3 +1,8 @@
+import { createMemoryDocumentStore, type DocumentStore, type StoredDocument } from './document-store.ts';
+
+export { createFileDocumentStore, createMemoryDocumentStore, defaultCacheDirectory } from './document-store.ts';
+export type { DocumentStore, StoredDocument } from './document-store.ts';
+
 export type EuLookup = {
   source: 'curia' | 'eur-lex' | 'commission';
   value: string;
@@ -58,6 +63,17 @@ export type SourcePreview = {
    * downstream may present a translated excerpt as the official source.
    */
   translation?: { from: SourceLanguage; officialUrl: string };
+  /**
+   * When this text was last confirmed to be what EUR-Lex holds, as an ISO timestamp.
+   *
+   * Present on any preview whose text came from CELLAR, whether it was downloaded just now
+   * or served from cache and revalidated. Those two are deliberately not distinguished:
+   * a `304` means the stored bytes are the current official text, which is the same
+   * statement a `200` makes, and the pane says so as a plain fact rather than as a warning
+   * about a cache. Absent on the link-only previews (CURIA case record, Commission
+   * register), which retrieve no text and so confirm nothing.
+   */
+  verifiedAt?: string;
 };
 
 /**
@@ -137,6 +153,15 @@ export type ResolverOptions = {
   translate?: (text: string, from: SourceLanguage) => Promise<string>;
   /** Server-side credentials only; never pass these to the Word client. */
   eurLexHeaders?: Record<string, string>;
+  /**
+   * Where retrieved CELLAR documents are kept between lookups, and — if the store persists
+   * them — between restarts.
+   *
+   * Defaults to a bounded in-process store, so importing this resolver never writes to a
+   * disk the caller did not ask it to write to. `api/server.mjs` supplies the file-backed
+   * one, which is where persistence is opted into.
+   */
+  documentStore?: DocumentStore;
   sleep?: (milliseconds: number) => Promise<void>;
   now?: () => number;
 };
@@ -241,6 +266,56 @@ function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: numbe
 /** The two renditions CELLAR serves, in the order to try when nothing is known about an era. */
 const CELLAR_FORMATS = ['application/xhtml+xml', 'text/html'] as const;
 
+/**
+ * The combination a document is actually held under: what CELLAR was asked for, and in
+ * which language. Both are part of the cache key, because both change the bytes returned.
+ */
+type Rendition = { language: SourceLanguage; accept: string };
+
+/**
+ * How CELLAR is being asked for a document: by which identifier, at which URL, and the
+ * year that identifier carries (which is what the rendition memo is keyed on).
+ */
+type CellarTarget = { id: string; url: string; year: string };
+
+function documentKey(target: CellarTarget, rendition: Rendition): string {
+  return `${target.id}:${rendition.language}:${rendition.accept}`;
+}
+
+/**
+ * The ECLI's year segment: `ECLI:EU:T:2024:431` is 2024. Only used to pick which rendition
+ * to try first, so a malformed ECLI costs one wrong guess rather than anything worse.
+ */
+function ecliYear(ecli: string): string {
+  return ecli.split(':')[3] ?? '';
+}
+
+/**
+ * CELLAR answers two different `404`s, and they mean opposite things. Confirmed live
+ * (2026-08-21), both with an ordinary `404` status and only the body to tell them apart:
+ *
+ *   Resource [system 'celex' - id '62023CJ0639'] not found.
+ *   None of the requests returned successfully a redirection. The following exception was
+ *   thrown: [cellar identifier cellar:99d7f858-… does not hold a content datastream of the
+ *   requested type]
+ *
+ * The first says CELLAR has never heard of this identifier: no Accept header and no
+ * language will ever produce it, so continuing to ask is four round trips spent proving
+ * something the first one already said. The second says the document exists and this
+ * particular rendition of it does not — which is exactly the case the format and language
+ * chains exist for.
+ *
+ * That distinction is worth more than either chain. A citation CELLAR does not mirror is
+ * common in real documents (six of 196 identifiers in the corpus run), and it is the case
+ * where the reviewer waits longest, because every attempt is spent on the way to the CURIA
+ * link rather than on the way to an answer.
+ *
+ * Matched loosely, and unrecognised `404` bodies keep the old behaviour of trying the next
+ * rendition: if the Publications Office rewords this, the cost is the four requests that
+ * were being paid anyway, not a document wrongly declared missing.
+ */
+const NO_SUCH_DOCUMENT = /\bResource\b[\s\S]{0,160}?\bnot found\b/i;
+
 const ARTICLE_HEADING = /<p[^>]*>\s*Article\s+(\d+)\s*<\/p>/gi;
 const RECITAL_HEADING = /<p[^>]*>\s*\(\s*(\d+)\s*\)/gi;
 
@@ -313,6 +388,13 @@ function expandRange(start: number, end?: number): number[] {
 /** Bounds a pathological citation ("paras 1 to 400") without truncating an ordinary one. */
 const MAX_RUNS = 8;
 const MAX_EXCERPT = 20_000;
+
+/**
+ * How many derived excerpts to keep. Small objects — an excerpt is capped at 20KB and most
+ * are a fraction of that — and they are cheap to rebuild from a document that is itself
+ * cached, so this only has to stop unbounded growth, not conserve anything.
+ */
+const MAX_CACHED_PREVIEWS = 512;
 
 /**
  * Extracts every span the citation names, in order, with the gaps marked.
@@ -442,6 +524,24 @@ function cellarUrl(celex: string, baseUrl: string): string {
   return `${baseUrl.replace(/\/$/, '')}/${encodeURIComponent(celex)}`;
 }
 
+/**
+ * The same CELLAR service, addressed by ECLI instead of by CELEX.
+ *
+ * Built the same way and with the same guarantee: a fixed base from environment
+ * configuration plus `encodeURIComponent`, so the identifier cannot introduce `/`, `:`,
+ * `?` or `#` and therefore cannot leave the path segment, change the host, or append a
+ * query. The colons in an ECLI are percent-encoded, which is what CELLAR expects.
+ *
+ * Returns `undefined` when no ECLI base can be derived from the configured CELEX base —
+ * the fallback is then simply not attempted, rather than a URL being guessed at.
+ */
+function ecliUrl(ecli: string, baseUrl: string): string | undefined {
+  const base = baseUrl.replace(/\/$/, '');
+  const ecliBase = base.replace(/\/celex$/i, '/ecli');
+  if (ecliBase === base) return undefined;
+  return `${ecliBase}/${encodeURIComponent(ecli)}`;
+}
+
 function curiaUrl(lookup: EuLookup): string {
   // CURIA's case-number search is its stable, official case record entry point.
   const query = lookup.caseNumber ?? lookup.ecli ?? lookup.value;
@@ -481,7 +581,20 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
   const cellarBaseUrl = options.cellarBaseUrl ?? 'https://publications.europa.eu/resource/celex';
   const sleep = options.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const now = options.now ?? Date.now;
-  const cache = new Map<string, SourcePreview>();
+  const documentStore = options.documentStore ?? createMemoryDocumentStore();
+  /**
+   * Excerpts, keyed by the citation that asked for one.
+   *
+   * This is now a cache of *work*, not of retrieval: the document behind it is held
+   * separately by `documentStore`, and every excerpt here was cut out of one locally. Two
+   * footnotes citing paragraph 62 and paragraph 65 of the same judgment are two entries
+   * here and one download, where they used to be two downloads — that is the split.
+   *
+   * Bounded, unlike the map it replaces. This process is meant to run for months and part
+   * of the key is caller-supplied; an unbounded map of previews was a weakness this
+   * repository had already written down against itself (`docs/DATA-FLOW.md`).
+   */
+  const previewCache = new Map<string, SourcePreview>();
   /**
    * Which rendition documents of a given year turned out to have.
    *
@@ -495,18 +608,57 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
    */
   const formatByYear = new Map<string, string>();
   let nextRequestAt = 0;
+  let wire: Promise<unknown> = Promise.resolve();
 
-  async function fetchEurLex(url: string, accept: string, language: SourceLanguage): Promise<Response> {
-    const wait = nextRequestAt - now();
-    if (wait > 0) await sleep(wait);
-    nextRequestAt = now() + minRequestIntervalMs;
+  /**
+   * One logical lookup's turn at the wire.
+   *
+   * The politeness interval is about the shape of this client's traffic against a public
+   * service — one document at a time, spaced, never in parallel. It was being charged
+   * per *request* instead, which made it the largest single component of a cold lookup:
+   * measured live, a wrong-Accept `404` costs ~165ms and the interval stacked in front of
+   * the retry that works costs 1,000ms, so ~74% of the wait was self-inflicted delay in
+   * front of a probe that is not the traffic anyone needs protecting from.
+   *
+   * So the interval now spaces *lookups*. Everything one lookup does — probing the two
+   * renditions, falling through a language, revalidating what is already held — happens
+   * inside a single slot, and the next lookup waits a full interval after it. The volume
+   * of traffic CELLAR sees per unit time is unchanged; what changed is that the delay is
+   * no longer multiplied by however many attempts a single document happened to need.
+   *
+   * Serial by construction, which the previous version only approximated: it reserved the
+   * next slot before awaiting, so starts were spaced but two lookups could still be in
+   * flight together. Requests to CELLAR are deliberately never parallelised — a burst of
+   * concurrent connections is the fingerprint anti-bot protection reacts to, and this tool
+   * gains nothing by being one.
+   */
+  function onTheWire<T>(work: () => Promise<T>): Promise<T> {
+    const run = wire.then(async () => {
+      const wait = nextRequestAt - now();
+      if (wait > 0) await sleep(wait);
+      try {
+        return await work();
+      } finally {
+        nextRequestAt = now() + minRequestIntervalMs;
+      }
+    });
+    wire = run.then(() => undefined, () => undefined);
+    return run;
+  }
 
+  async function fetchEurLex(url: string, rendition: Rendition, conditional: Record<string, string> = {}): Promise<Response> {
     for (let attempt = 0; ; attempt += 1) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetcher(url, {
-          headers: { Accept: accept, 'Accept-Language': CELLAR_LANGUAGE[language], 'User-Agent': userAgent, ...options.eurLexHeaders },
+          headers: {
+            Accept: rendition.accept,
+            'Accept-Language': CELLAR_LANGUAGE[rendition.language],
+            'User-Agent': userAgent,
+            ...conditional,
+            ...options.eurLexHeaders,
+          },
           signal: controller.signal,
         });
         if (response.ok || (response.status !== 429 && response.status < 500) || attempt >= maxRetries) return response;
@@ -535,52 +687,248 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
    * so it fails immediately rather than doubling up on a struggling server.
    */
   /**
-   * Retrieves the document in the best available language, and says which it got.
+   * The renditions to try, in order.
    *
    * The language loop is outermost because a `404` means something different at each level:
    * across Accept headers it is a format the document does not have (older documents are
-   * `text/html` only), and across languages it is a language it was never published in. Only
-   * once every format has been refused for a language is that language genuinely absent.
+   * `text/html` only), and across languages it is a language it was never published in.
+   * Only once every format has been refused for a language is that language genuinely
+   * absent.
+   *
+   * The language chain is a real fallback and not a preference — verified live, again, on
+   * 2026-08-21: `Accept-Language: gle` returns `404` for both a directive and a judgment,
+   * because neither was published in Irish. A request that appears to contradict this
+   * (`Accept-Language: mlt` returning a Maltese judgment with `200`) is CELLAR answering
+   * correctly: CJEU judgments are translated into every official language *except* Irish,
+   * so Maltese genuinely exists for that document.
+   *
+   * That last point is also what the chain costs for case law: nothing, and nothing gained.
+   * English exists for every judgment CELLAR mirrors — confirmed across 1962, 1964 and 2014
+   * judgments — so French is only ever reached for a document CELLAR does not hold at all,
+   * where it 404s too. Those are precisely the lookups `NO_SUCH_DOCUMENT` now ends after
+   * one request, so the chain no longer has a case in which it costs anything. It stays for
+   * legislation, where a French-only document is real.
    */
-  async function fetchCellarDocument(url: string, year: string): Promise<{ html: string; language: SourceLanguage }> {
-    let lastResponse: Response | undefined;
+  function renditionsFor(year: string): Rendition[] {
     const remembered = formatByYear.get(year);
     const formats = remembered
       ? [remembered, ...CELLAR_FORMATS.filter((format) => format !== remembered)]
       : [...CELLAR_FORMATS];
-    for (const language of preferredLanguages) {
-      for (const accept of formats) {
-        const response = await fetchEurLex(url, accept, language);
-        lastResponse = response;
-        if (response.status === 404) continue;
-        if (!response.ok) throw new Error(`EUR-Lex/CELLAR lookup failed (${response.status}).`);
-        const html = await response.text();
-        if (looksLikeCellarDocument(html)) {
-          formatByYear.set(year, accept);
-          return { html, language };
-        }
-        // A 200 without a recognisable document body is CELLAR's bot-verification
-        // page, not a format-availability issue — the other Accept header would
-        // not help, and would cost another request against the same block.
-        throw new Error('EUR-Lex/CELLAR did not return a recognisable document (possibly a bot-verification page).');
+    return preferredLanguages.flatMap((language) => formats.map((accept) => ({ language, accept })));
+  }
+
+  /**
+   * A document in hand, and when it was last confirmed to be what EUR-Lex holds.
+   *
+   * `verifiedAt` is the point of the whole exercise. A cached copy of a legal text is a
+   * liability; a cached copy that has just been confirmed against the issuing authority is
+   * the official text with a timestamp on it. The two differ by one conditional request.
+   */
+  /**
+   * `url` is the address the document actually came from, which is not always the one built
+   * from the CELEX: a document CELLAR holds only under its ECLI answers on the `/ecli` path,
+   * and the CELEX URL for it `404`s. The preview links wherever the reader is told the text
+   * came from, so this has to be the URL that answered rather than the one first tried.
+   */
+  type LoadedDocument = { html: string; language: SourceLanguage; verifiedAt: number; url: string };
+
+  const BOT_PAGE = 'EUR-Lex/CELLAR did not return a recognisable document (possibly a bot-verification page).';
+
+  async function acceptDocument(target: CellarTarget, key: string, rendition: Rendition, response: Response): Promise<LoadedDocument> {
+    const html = await response.text();
+    // A 200 without a recognisable document body is CELLAR's bot-verification page, not a
+    // format-availability issue — the other Accept header would not help, and would cost
+    // another request against the same block.
+    if (!looksLikeCellarDocument(html)) throw new Error(BOT_PAGE);
+    const verifiedAt = now();
+    formatByYear.set(target.year, rendition.accept);
+    await documentStore.set(key, {
+      html,
+      etag: response.headers.get('etag') ?? undefined,
+      lastModified: response.headers.get('last-modified') ?? undefined,
+      fetchedAt: verifiedAt,
+    });
+    return { html, language: rendition.language, verifiedAt, url: target.url };
+  }
+
+  /**
+   * How a held document would be confirmed, or `undefined` if it cannot be.
+   *
+   * `If-None-Match` first because CELLAR's `ETag` is the stronger validator and the one it
+   * always sends; `If-Modified-Since` is the fallback for a response that carried only a
+   * `Last-Modified`. Both were confirmed live to produce a `304` with a zero-length body.
+   */
+  function conditionalHeaders(stored: StoredDocument): Record<string, string> | undefined {
+    if (stored.etag) return { 'If-None-Match': stored.etag };
+    if (stored.lastModified) return { 'If-Modified-Since': stored.lastModified };
+    return undefined;
+  }
+
+  /**
+   * Confirms a document already held, rather than downloading it again.
+   *
+   * CELLAR sends `Cache-Control: no-cache` with an `ETag` and a `Last-Modified` — cache
+   * this freely, and check before you use it. That is exactly what a legal-source tool
+   * wants: the saving is the entire body (CELLAR serves no compression, so a judgment is
+   * 149KB on the wire every time), and what is given up is nothing, because the answer
+   * still comes from EUR-Lex on every single lookup.
+   *
+   * Returns `undefined` when the held rendition can no longer be confirmed, which puts the
+   * caller back to probing from scratch rather than serving text CELLAR has stopped
+   * standing behind.
+   */
+  async function revalidate(
+    target: CellarTarget, rendition: Rendition, key: string, stored: StoredDocument,
+    conditional: Record<string, string>,
+  ): Promise<LoadedDocument | undefined> {
+    const response = await fetchEurLex(target.url, rendition, conditional);
+
+    if (response.status === 304) {
+      // Deliberately before any read of the body: a 304 has none. Running the
+      // document-shape check on it would reject every revalidated document as
+      // unrecognisable and send the reviewer to a link, having just been told by CELLAR
+      // that the text already in hand is current.
+      const verifiedAt = now();
+      await documentStore.set(key, { ...stored, fetchedAt: verifiedAt });
+      return { html: stored.html, language: rendition.language, verifiedAt, url: target.url };
+    }
+    if (response.ok) return acceptDocument(target, key, rendition, response);
+    if (response.status === 404) {
+      await documentStore.delete(key);
+      return undefined;
+    }
+    throw new Error(`EUR-Lex/CELLAR lookup failed (${response.status}).`);
+  }
+
+  /**
+   * Finds the rendition CELLAR actually holds, when nothing is held locally to confirm.
+   *
+   * Returns `undefined` when every rendition answered `404` — meaning this identifier
+   * yields nothing, and the caller should try the next one it has. Any other status throws,
+   * because a different identifier will not fix a server that is failing for another
+   * reason: the same rule the rendition chain follows, applied one level up.
+   */
+  async function probeCellar(target: CellarTarget, renditions: readonly Rendition[]): Promise<LoadedDocument | undefined> {
+    for (const rendition of renditions) {
+      const response = await fetchEurLex(target.url, rendition);
+      if (response.status === 404) {
+        // CELLAR has never heard of this identifier: no other rendition of it can exist,
+        // and the three remaining probes would only spell out what this one already said.
+        if (NO_SUCH_DOCUMENT.test(await response.text().catch(() => ''))) return undefined;
+        continue;
+      }
+      if (!response.ok) throw new Error(`EUR-Lex/CELLAR lookup failed (${response.status}).`);
+      return acceptDocument(target, documentKey(target, rendition), rendition, response);
+    }
+    return undefined;
+  }
+
+  /**
+   * Retrieves the document in the best available language, and says which it got.
+   *
+   * A document already held is confirmed in the rendition it was held under: one
+   * conditional request, which also skips the format and language probing entirely, because
+   * what is in the store is by definition the combination that worked last time.
+   *
+   * The store is consulted before any request slot is taken, so a document that needs no
+   * network at all does not make the *next* lookup wait out a politeness interval for a
+   * request that never happened. Where a request is needed, confirming and — if that fails
+   * — probing both happen inside one slot: they are one lookup of one document, and item by
+   * item is exactly how the interval used to be charged.
+   *
+   * Two identifiers are tried, in order, and the second one matters more than it looks.
+   * The CELEX is *derived* — its sector letter comes from the document type, its year from
+   * the case number — whereas the ECLI is quoted verbatim from the footnote. Where CELLAR
+   * has never heard of the derived CELEX, asking it by the identifier the document itself
+   * stated is not a guess at a different document; it is the same document under the name
+   * its own court gave it.
+   *
+   * This is not a rare corner. Every one of the identifiers the corpus run recorded as
+   * "unavailable" — recent orders of the President of the General Court and of the
+   * Vice-President of the Court, and a 2005 judgment — resolves through the ECLI path,
+   * confirmed live on 2026-08-21, while their derived CELEX returns "Resource … not found".
+   * CELLAR appears simply not to mint a CELEX for some case-law documents it nonetheless
+   * holds and indexes by ECLI.
+   */
+  function cellarTargets(celex: string, ecli: string | undefined): CellarTarget[] {
+    // The CELEX carries its year directly after the sector digit: 61999J0309 is 1999.
+    const targets: CellarTarget[] = [{ id: `celex:${celex}`, url: cellarUrl(celex, cellarBaseUrl), year: celex.slice(1, 5) }];
+    const byEcli = ecli && ecliUrl(ecli, cellarBaseUrl);
+    if (ecli && byEcli) targets.push({ id: `ecli:${ecli}`, url: byEcli, year: ecliYear(ecli) });
+    return targets;
+  }
+
+  async function loadCellarDocument(celex: string, ecli?: string): Promise<LoadedDocument> {
+    const targets = cellarTargets(celex, ecli);
+
+    for (const target of targets) {
+      for (const rendition of renditionsFor(target.year)) {
+        const key = documentKey(target, rendition);
+        const stored = await documentStore.get(key);
+        if (!stored) continue;
+
+        const conditional = conditionalHeaders(stored);
+        // Held, with no validator to confirm it by. An EU legal text does not change — a
+        // directive is amended by another instrument with its own CELEX, and a judgment is
+        // never rewritten — so this is served rather than downloaded again, dated with the
+        // last time it genuinely was confirmed rather than with now. Every real CELLAR
+        // response carries an ETag, so this is the path for a store written by something
+        // else, not the ordinary one.
+        if (!conditional) return { html: stored.html, language: rendition.language, verifiedAt: stored.fetchedAt, url: target.url };
+
+        return onTheWire(async () => {
+          const confirmed = await revalidate(target, rendition, key, stored, conditional);
+          return confirmed ?? probeEveryTarget(targets);
+        });
       }
     }
-    throw new Error(`EUR-Lex/CELLAR lookup failed (${lastResponse!.status}).`);
+
+    return onTheWire(() => probeEveryTarget(targets));
+  }
+
+  /** Each identifier in turn, until one of them yields the document. */
+  async function probeEveryTarget(targets: readonly CellarTarget[]): Promise<LoadedDocument> {
+    for (const target of targets) {
+      const found = await probeCellar(target, renditionsFor(target.year));
+      if (found) return found;
+    }
+    throw new Error('EUR-Lex/CELLAR lookup failed (404).');
+  }
+
+  /**
+   * Every part of the citation that changes the excerpt belongs in this key. The paragraph
+   * list especially: "para. 62" and "paras 62 and 65" share a kind and a start, so keying
+   * on those alone served one footnote's excerpt to the other — a passage the second
+   * footnote never cited, shown as though it had.
+   *
+   * What is deliberately *not* keyed this way any more is the document itself. This used to
+   * be the retrieval key too, which meant paragraph 62 and paragraph 65 of one judgment
+   * were two full downloads of the same 149KB — the same authority fetched once per
+   * pinpoint that cited it. The document is keyed by what identifies a document (see
+   * `documentKey`) and the excerpt is cut out of it locally, so a judgment cited twenty
+   * times in a brief is retrieved once.
+   */
+  function previewKey(celex: string, lookup: EuLookup, source: SourcePreview['source']): string {
+    return [celex, source, lookup.locator?.kind ?? '', lookup.locator?.start ?? '',
+      lookup.locator?.paragraph ?? '', lookup.locator?.end ?? '', (lookup.paragraphs ?? []).join('.')].join(':');
+  }
+
+  function rememberPreview(key: string, preview: SourcePreview): void {
+    previewCache.set(key, preview);
+    // Insertion-ordered, so the first key is the oldest. One at a time is enough: entries
+    // only ever arrive one at a time.
+    if (previewCache.size > MAX_CACHED_PREVIEWS) {
+      const oldest = previewCache.keys().next().value;
+      if (oldest !== undefined) previewCache.delete(oldest);
+    }
   }
 
   async function resolveCellarPreview(celex: string, lookup: EuLookup, source: SourcePreview['source']): Promise<SourcePreview> {
-    // Every part of the citation that changes the excerpt belongs in the key. The paragraph
-    // list especially: "para. 62" and "paras 62 and 65" share a kind and a start, so keying
-    // on those alone served one footnote's excerpt to the other — a passage the second
-    // footnote never cited, shown as though it had.
-    const key = [celex, lookup.locator?.kind ?? '', lookup.locator?.start ?? '',
-      lookup.locator?.paragraph ?? '', lookup.locator?.end ?? '', (lookup.paragraphs ?? []).join('.')].join(':');
-    const cached = cache.get(key);
+    const key = previewKey(celex, lookup, source);
+    const cached = previewCache.get(key);
     if (cached) return cached;
 
-    const url = cellarUrl(celex, cellarBaseUrl);
-    // The CELEX carries its year directly after the sector digit: 61999J0309 is 1999.
-    const { html, language } = await fetchCellarDocument(url, celex.slice(1, 5));
+    const { html, language, verifiedAt, url } = await loadCellarDocument(celex, lookup.ecli);
 
     // Judgments and legislative acts use different paragraph-numbering
     // markup (see sliceByHeadingAnchor), so they need different extraction —
@@ -593,8 +941,8 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
           title: decodeHtml(html).slice(0, 260).split('Official Journal')[0].trim() || describeDocument(lookup),
           ...extractLegislativeLocator(html, lookup.locator, lookup.paragraphs), url, source, locator: locatorLabel(lookup), language,
         };
-    const preview = await translateIfNeeded(base);
-    cache.set(key, preview);
+    const preview = await translateIfNeeded({ ...base, verifiedAt: new Date(verifiedAt).toISOString() });
+    rememberPreview(key, preview);
     return preview;
   }
 
@@ -666,6 +1014,16 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       if (lookup.source === 'commission') return resolveCommission(lookup);
       return resolveEurLex(lookup);
     },
-    clearCache() { cache.clear(); },
+    /**
+     * Empties both caches: the derived excerpts, and the documents they were cut from.
+     *
+     * Synchronous for the caller's purposes — the in-memory layer of every store here is
+     * cleared before the first `await` inside it — so a test or an operator can clear and
+     * immediately expect the next lookup to reach the network.
+     */
+    clearCache() {
+      previewCache.clear();
+      void documentStore.clear();
+    },
   };
 }

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { createEuSourceResolver, createApiHealthCheck, type EuLookup, type ResolverOptions } from '../src/index.ts';
+import { createEuSourceResolver, createApiHealthCheck, createMemoryDocumentStore, type EuLookup, type ResolverOptions } from '../src/index.ts';
 
 type Call = { url: string; init: RequestInit };
 
@@ -24,6 +24,31 @@ function stubFetcher(responses: Array<Response | Error | (() => Response | Error
 // bot-verification interstitial (a real, live-observed HTTP 200 response that
 // is not the document — see `looksLikeCellarDocument` in src/index.ts).
 const html = (body: string) => new Response(`<!-- fmx2xhtml # test-fixture -->${body}`, { status: 200, headers: { 'content-type': 'text/html' } });
+
+/**
+ * A document response carrying the validators CELLAR really sends. Every live CELLAR
+ * document answers with an `ETag` and a `Last-Modified` alongside `Cache-Control: no-cache`
+ * — cache this, and confirm it before you use it — so this, not the bare `html` above, is
+ * the shape the revalidating paths are asserted against.
+ */
+const documentResponse = (body: string, validators: Record<string, string> = { etag: '"Con-20190721062819000"', 'last-modified': 'Sun, 21 Jul 2019 04:28:19 GMT' }) =>
+  new Response(`<!-- fmx2xhtml # test-fixture -->${body}`, {
+    status: 200,
+    headers: { 'content-type': 'text/html', 'cache-control': 'no-cache', ...validators },
+  });
+
+/** What CELLAR answers a conditional request with: no body at all. */
+const notModified = () => new Response(null, { status: 304, headers: { etag: '"Con-20190721062819000"' } });
+
+/** The 404 that means CELLAR has never heard of this identifier, body and all. */
+const noSuchDocument = (celex: string) => new Response(`Resource [system 'celex' - id '${celex}'] not found.`, { status: 404 });
+
+/** The 404 that means the document exists but not in the rendition asked for. */
+const noSuchRendition = () => new Response(
+  'None of the requests returned successfully a redirection. The following exception was thrown: '
+  + '[cellar identifier cellar:99d7f858-bf30-11e3-86f9-01aa75ed71a1 does not hold a content datastream of the requested type]',
+  { status: 404 },
+);
 
 /** A 200 OK response that is not a real document — the bot-verification page CELLAR was observed serving live. */
 const botChallengeResponse = () => new Response(
@@ -872,12 +897,26 @@ describe('EUR-Lex caching', () => {
     assert.ok(second.excerpt.includes('Directive text'));
   });
 
-  test('treats a different locator as a different cache entry', async () => {
-    const { fetcher, calls } = stubFetcher([html('<p>Article 15 one</p>'), html('<p>Article 20 two</p>')]);
+  test('one authority is retrieved once, however many pinpoints cite it', async () => {
+    // The reason the cache was split. The retrieval key used to include the locator, so
+    // "para. 62" and "para. 65" of one judgment were two full downloads of the same
+    // document — measured live at 149KB and ~1.5s each, uncompressed. The document is now
+    // keyed by what identifies a document, and each excerpt is cut out of it locally.
+    const { fetcher, calls } = stubFetcher([
+      documentResponse('<p>Article 15</p><p>fifteen</p><p>Article 20</p><p>twenty</p>'),
+      notModified(),
+    ]);
     const { resolver } = makeResolver({ fetcher });
-    await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 15 } }));
-    await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 20 } }));
-    assert.equal(calls.length, 2);
+    const [fifteen] = await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 15 } }));
+    const [twenty] = await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 20 } }));
+
+    assert.equal(calls.length, 2, 'one download, then one conditional request to confirm it');
+    assert.equal(calls[1].init.headers && (calls[1].init.headers as Record<string, string>)['If-None-Match'], '"Con-20190721062819000"');
+    // Two different excerpts, so this is genuinely one document serving both pinpoints
+    // rather than one cache entry serving the wrong passage to the second.
+    assert.ok(fifteen.excerpt.includes('fifteen'), fifteen.excerpt);
+    assert.ok(twenty.excerpt.includes('twenty'), twenty.excerpt);
+    assert.ok(!fifteen.excerpt.includes('twenty'));
   });
 
   test('clearCache forces the next lookup back to the network', async () => {
@@ -887,6 +926,268 @@ describe('EUR-Lex caching', () => {
     resolver.clearCache();
     await resolver.resolve(eurLexLookup());
     assert.equal(calls.length, 2);
+  });
+});
+
+describe('revalidating a document already held', () => {
+  test('confirms the held text with a conditional request instead of downloading it again', async () => {
+    const { fetcher, calls } = stubFetcher([documentResponse('<p>Directive text</p>'), notModified()]);
+    const { resolver } = makeResolver({ fetcher });
+
+    await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 1 } }));
+    const [second] = await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 2 } }));
+
+    const conditional = calls[1].init.headers as Record<string, string>;
+    assert.equal(conditional['If-None-Match'], '"Con-20190721062819000"');
+    assert.equal(conditional['If-Modified-Since'], undefined, 'the ETag is the stronger validator; both together is noise');
+    // A 304 carries no body. If the document-shape check ran on it, this lookup would have
+    // failed as an unrecognisable response rather than serving the text already in hand.
+    assert.ok(second.excerpt.includes('Directive text'));
+  });
+
+  test('a 304 is what dates the preview, so a served document is confirmed now and not when it was downloaded', async () => {
+    const { fetcher } = stubFetcher([documentResponse('<p>Directive text</p>'), notModified()]);
+    const { resolver, clock } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [first] = await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 1 } }));
+    clock.advance(3_600_000);
+    const [second] = await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 2 } }));
+
+    assert.ok(first.verifiedAt, 'a retrieved passage says when it was confirmed');
+    assert.ok(second.verifiedAt);
+    assert.ok(new Date(second.verifiedAt!).getTime() > new Date(first.verifiedAt!).getTime(),
+      'the whole point of revalidating is that the confirmation is current, not the download');
+  });
+
+  test('a 200 on revalidation replaces the held text', async () => {
+    const { fetcher, calls } = stubFetcher([
+      documentResponse('<p>Article 1</p><p>the old text</p>'),
+      documentResponse('<p>Article 1</p><p>the new text</p>', { etag: '"Con-20260101000000000"' }),
+    ]);
+    const { resolver } = makeResolver({ fetcher });
+
+    await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 1 } }));
+    const [second] = await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 1 }, paragraphs: [1] }));
+
+    assert.equal(calls.length, 2);
+    assert.ok(second.excerpt.includes('the new text'), second.excerpt);
+  });
+
+  test('falls back to If-Modified-Since when the response carried no ETag', async () => {
+    const { fetcher, calls } = stubFetcher([
+      documentResponse('<p>Article 1</p><p>text</p>', { 'last-modified': 'Sun, 21 Jul 2019 04:28:19 GMT' }),
+      notModified(),
+    ]);
+    const { resolver } = makeResolver({ fetcher });
+
+    await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 1 } }));
+    await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 2 } }));
+
+    const conditional = calls[1].init.headers as Record<string, string>;
+    assert.equal(conditional['If-Modified-Since'], 'Sun, 21 Jul 2019 04:28:19 GMT');
+  });
+
+  test('a held document with no validator at all is served rather than downloaded again', async () => {
+    // `html()` carries no ETag and no Last-Modified. There is nothing to confirm it with,
+    // and an EU legal text does not change, so it is served with the time it was genuinely
+    // last confirmed rather than re-fetched or dated on trust.
+    const { fetcher, calls } = stubFetcher([html('<p>Article 1</p><p>text</p>')]);
+    const { resolver, clock } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [first] = await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 1 } }));
+    clock.advance(60_000);
+    const [second] = await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 1 }, paragraphs: [1] }));
+
+    assert.equal(calls.length, 1);
+    assert.equal(second.verifiedAt, first.verifiedAt, 'an unconfirmed document must not claim a fresh confirmation');
+  });
+
+  test('a document store carries documents across a restart', async () => {
+    // Two resolvers, one store: the second is the process that comes back up. It must start
+    // from "confirm this is still the text" rather than from downloading everything again.
+    const documentStore = createMemoryDocumentStore();
+    const first = stubFetcher([documentResponse('<p>Article 1</p><p>text</p>')]);
+    await createEuSourceResolver({ fetcher: first.fetcher, cellarBaseUrl: 'https://example.test/celex', documentStore, minRequestIntervalMs: 0 })
+      .resolve(eurLexLookup({ locator: { kind: 'article', start: 1 } }));
+
+    const second = stubFetcher([notModified()]);
+    const [preview] = await createEuSourceResolver({ fetcher: second.fetcher, cellarBaseUrl: 'https://example.test/celex', documentStore, minRequestIntervalMs: 0 })
+      .resolve(eurLexLookup({ locator: { kind: 'article', start: 1 } }));
+
+    assert.equal(second.calls.length, 1, 'a restart is one conditional request per document, not one download');
+    assert.equal((second.calls[0].init.headers as Record<string, string>)['If-None-Match'], '"Con-20190721062819000"');
+    assert.ok(preview.excerpt.includes('text'));
+  });
+
+  test('a held rendition CELLAR has stopped serving falls back to probing, not to failure', async () => {
+    const documentStore = createMemoryDocumentStore();
+    const first = stubFetcher([documentResponse('<p>Article 1</p><p>old</p>')]);
+    await createEuSourceResolver({ fetcher: first.fetcher, cellarBaseUrl: 'https://example.test/celex', documentStore, minRequestIntervalMs: 0 })
+      .resolve(eurLexLookup({ locator: { kind: 'article', start: 1 } }));
+
+    const second = stubFetcher([noSuchRendition(), documentResponse('<p>Article 1</p><p>new</p>')]);
+    const [preview] = await createEuSourceResolver({ fetcher: second.fetcher, cellarBaseUrl: 'https://example.test/celex', documentStore, minRequestIntervalMs: 0 })
+      .resolve(eurLexLookup({ locator: { kind: 'article', start: 1 } }));
+
+    assert.ok(preview.excerpt.includes('new'), preview.excerpt);
+  });
+
+  test('a link-only preview claims no verification, because it retrieved nothing', async () => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([]).fetcher });
+    const [preview] = await resolver.resolve({ source: 'curia', value: 'C-293/12', caseNumber: 'C-293/12' });
+    assert.equal(preview.verifiedAt, undefined);
+  });
+});
+
+describe('the two 404s CELLAR answers with', () => {
+  test('stops after one request when CELLAR has never heard of the identifier', async () => {
+    // Confirmed live: "Resource [system 'celex' - id '62023CJ0639'] not found." No Accept
+    // header and no language can produce a document CELLAR does not hold, so the other
+    // three probes only spell out what the first already said — and this is the lookup the
+    // reviewer waits longest for, because every attempt is spent on the way to a link.
+    const { fetcher, calls } = stubFetcher([noSuchDocument('62023CJ0639')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    await assert.rejects(resolver.resolve(eurLexLookup({ celex: '62023CJ0639' })), /lookup failed \(404\)/);
+    assert.equal(calls.length, 1, 'one request settles it');
+  });
+
+  test('a case-law citation CELLAR does not mirror reaches its CURIA link in one request', async () => {
+    const { fetcher, calls } = stubFetcher([noSuchDocument('62023CJ0639')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62023CJ0639' }));
+    assert.equal(calls.length, 1);
+    assert.ok(preview.url.startsWith('https://curia.europa.eu/'));
+  });
+
+  test('keeps trying renditions when the 404 means only that this rendition is missing', async () => {
+    // "does not hold a content datastream of the requested type" is the opposite message:
+    // the document exists and this particular rendition of it does not, which is exactly
+    // what the format and language chains are for.
+    const { fetcher, calls } = stubFetcher([noSuchRendition(), documentResponse('<p>older format</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [preview] = await resolver.resolve(eurLexLookup());
+    assert.equal(calls.length, 2);
+    assert.equal((calls[1].init.headers as Record<string, string>).Accept, 'text/html');
+    assert.ok(preview.excerpt.includes('older format'));
+  });
+
+  test('an unrecognised 404 body keeps the old behaviour of trying every rendition', async () => {
+    // If the Publications Office rewords the message, the cost is the four requests that
+    // were being paid anyway — never a document wrongly declared missing.
+    const { fetcher, calls } = stubFetcher(Array.from({ length: 4 }, () => new Response('something else entirely', { status: 404 })));
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    await assert.rejects(resolver.resolve(eurLexLookup()), /lookup failed \(404\)/);
+    assert.equal(calls.length, 4);
+  });
+});
+
+describe('asking CELLAR by the ECLI when it does not know the CELEX', () => {
+  // The CELEX Ibid sends is *derived* — sector letter from the document type, year from the
+  // case number — while the ECLI is quoted verbatim from the footnote. CELLAR turns out not
+  // to mint a CELEX for some case law it nonetheless holds and indexes by ECLI: every
+  // identifier the corpus run recorded as "unavailable" resolves this way, confirmed live
+  // on 2026-08-21. Before this, each of those citations fell back to a CURIA link telling
+  // the lawyer to go and look it up themselves, with the text sitting one request away.
+  const order = (overrides: Partial<EuLookup> = {}): EuLookup => ({
+    source: 'curia', value: 'ECLI:EU:T:2024:431', caseNumber: 'C-511/24',
+    caseName: 'Aylo Freesites LTD v Commission', celex: '62024TO0511',
+    ecli: 'ECLI:EU:T:2024:431', documentType: 'order', ...overrides,
+  });
+
+  test('retrieves the document the footnote actually named', async () => {
+    const { fetcher, calls } = stubFetcher([
+      noSuchDocument('62024TO0511'),
+      noSuchRendition(),
+      documentResponse('<P class="C01PointnumeroteAltN"><A NAME="point112">112</A>The order says this.</P>'),
+    ]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [preview] = await resolver.resolve(order({ locator: { kind: 'point', start: 112 }, paragraphs: [112] }));
+
+    assert.equal(calls[0].url, 'https://example.test/celex/62024TO0511');
+    assert.equal(calls[1].url, 'https://example.test/ecli/ECLI%3AEU%3AT%3A2024%3A431',
+      'the ECLI is percent-encoded onto the sibling /ecli base, never interpolated raw');
+    assert.equal(preview.source, 'CURIA');
+    assert.equal(preview.locator, 'Point 112');
+    assert.ok(preview.excerpt.includes('The order says this.'), preview.excerpt);
+    assert.ok(preview.verifiedAt, 'it was retrieved, so it carries a confirmation time');
+    // The link has to be the address that answered. The CELEX URL 404s for this document —
+    // sending the reader there would be worse than the CURIA link this replaces.
+    assert.equal(preview.url, 'https://example.test/ecli/ECLI%3AEU%3AT%3A2024%3A431');
+  });
+
+  test('the unknown CELEX still costs only one request before moving on', async () => {
+    const { fetcher, calls } = stubFetcher([noSuchDocument('62024TO0511'), documentResponse('<p>text</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    await resolver.resolve(order());
+    assert.equal(calls.length, 2, 'one request to learn the CELEX is unknown, one to the ECLI that works');
+  });
+
+  test('never asks by ECLI when the CELEX answered', async () => {
+    const { fetcher, calls } = stubFetcher([documentResponse('<p>text</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    await resolver.resolve(order());
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].url.includes('/celex/'));
+  });
+
+  test('never asks by ECLI when the failure was not a 404', async () => {
+    // A second identifier does not fix a server failing for an unrelated reason — the same
+    // rule the rendition chain follows, one level up.
+    const { fetcher, calls } = stubFetcher([new Response('nope', { status: 400 })]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    await assert.rejects(resolver.resolve(eurLexLookup({ ecli: 'ECLI:EU:C:2014:238' })), /lookup failed \(400\)/);
+    assert.equal(calls.length, 1);
+  });
+
+  test('holds what the ECLI returned under its own key, and revalidates it next time', async () => {
+    const { fetcher, calls } = stubFetcher([
+      noSuchDocument('62024TO0511'), documentResponse('<p>Article 1</p><p>the order</p>'), notModified(),
+    ]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    await resolver.resolve(order({ locator: { kind: 'point', start: 1 } }));
+    const [second] = await resolver.resolve(order({ locator: { kind: 'point', start: 2 } }));
+
+    assert.equal(calls.length, 3, 'the second lookup goes straight to the ECLI it worked under, and confirms it');
+    assert.equal(calls[2].url, 'https://example.test/ecli/ECLI%3AEU%3AT%3A2024%3A431');
+    assert.equal((calls[2].init.headers as Record<string, string>)['If-None-Match'], '"Con-20190721062819000"');
+    assert.ok(second.excerpt.includes('the order'));
+  });
+
+  test('falls back to the CURIA link only once both identifiers are exhausted', async () => {
+    const { fetcher, calls } = stubFetcher([noSuchDocument('62024TO0511'), noSuchDocument('ECLI')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [preview] = await resolver.resolve(order());
+    assert.equal(calls.length, 2);
+    assert.ok(preview.url.startsWith('https://curia.europa.eu/'));
+  });
+
+  test('a citation with no ECLI is unchanged', async () => {
+    const { fetcher, calls } = stubFetcher([noSuchDocument('62023CJ0639')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    await resolver.resolve(curiaJudgmentLookup({ celex: '62023CJ0639' }));
+    assert.equal(calls.length, 1, 'nothing to fall back to, so nothing extra is asked');
+  });
+
+  test('a base URL with no /celex segment does not have an ECLI URL guessed for it', async () => {
+    // Rather than inventing a path against a differently-shaped deployment, the fallback is
+    // simply not attempted.
+    const { fetcher, calls } = stubFetcher([noSuchDocument('62024TO0511')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, cellarBaseUrl: 'https://gateway.test/documents' });
+
+    const [preview] = await resolver.resolve(order());
+    assert.equal(calls.length, 1);
+    assert.ok(preview.url.startsWith('https://curia.europa.eu/'));
   });
 });
 
@@ -1020,5 +1321,72 @@ describe('EUR-Lex request spacing', () => {
     await resolver.resolve(eurLexLookup());
 
     assert.deepEqual(clock.slept, []);
+  });
+
+  test('the interval is not charged to each attempt within one lookup', async () => {
+    // What the interval is for is the shape of this client's traffic against a public
+    // service: one document at a time, spaced, never in parallel. Charging it per *request*
+    // stacked a contrived second in front of a rendition probe that costs ~165ms live —
+    // measured as roughly 74% of a cold lookup, spent on the resolver's own guessing rather
+    // than on anything CELLAR needs protecting from.
+    const { fetcher, calls } = stubFetcher([noSuchRendition(), documentResponse('<p>older format</p>')]);
+    const { resolver, clock } = makeResolver({ fetcher, minRequestIntervalMs: 1_000 });
+
+    await resolver.resolve(eurLexLookup());
+
+    assert.equal(calls.length, 2, 'two attempts, one document');
+    assert.deepEqual(clock.slept, [], 'the second attempt is the same lookup, so it waits for nothing');
+  });
+
+  test('distinct document lookups are still spaced, however many attempts each took', async () => {
+    const { fetcher } = stubFetcher([
+      noSuchRendition(), documentResponse('<p>one</p>'),
+      noSuchRendition(), documentResponse('<p>two</p>'),
+    ]);
+    const { resolver, clock } = makeResolver({ fetcher, minRequestIntervalMs: 1_000 });
+
+    await resolver.resolve(eurLexLookup({ celex: '32002L0058' }));
+    await resolver.resolve(eurLexLookup({ celex: '32011L0083' }));
+
+    assert.deepEqual(clock.slept, [1_000], 'one interval between the two documents, not one per request');
+  });
+
+  test('a document served without a request does not make the next lookup wait for it', async () => {
+    // A held document with no validator needs no network at all. Making the next lookup sit
+    // out a politeness interval for a request that never happened would be the same
+    // accounting error in the other direction — and with the pane now warming the cache in
+    // the background, that error would be paid once per already-held document.
+    const { fetcher } = stubFetcher([html('<p>one</p>'), html('<p>two</p>')]);
+    const { resolver, clock } = makeResolver({ fetcher, minRequestIntervalMs: 1_000 });
+
+    await resolver.resolve(eurLexLookup({ celex: '32002L0058', locator: { kind: 'article', start: 1 } }));
+    clock.advance(1_000);
+    await resolver.resolve(eurLexLookup({ celex: '32002L0058', locator: { kind: 'article', start: 2 } }));
+    await resolver.resolve(eurLexLookup({ celex: '32011L0083' }));
+
+    assert.deepEqual(clock.slept, [], 'only the two real requests count, and they were a full interval apart');
+  });
+
+  test('lookups issued together go to CELLAR one at a time, in order', async () => {
+    // Requests to CELLAR are deliberately never parallelised: a burst of concurrent
+    // connections is the fingerprint anti-bot protection reacts to, and the previous
+    // version only spaced the *starts* — two lookups could still be in flight together.
+    const { fetcher, calls } = stubFetcher([
+      documentResponse('<p>one</p>'), documentResponse('<p>two</p>'), documentResponse('<p>three</p>'),
+    ]);
+    const { resolver, clock } = makeResolver({ fetcher, minRequestIntervalMs: 1_000 });
+
+    await Promise.all([
+      resolver.resolve(eurLexLookup({ celex: '32002L0058' })),
+      resolver.resolve(eurLexLookup({ celex: '32011L0083' })),
+      resolver.resolve(eurLexLookup({ celex: '32016R0679' })),
+    ]);
+
+    assert.deepEqual(calls.map((call) => call.url), [
+      'https://example.test/celex/32002L0058',
+      'https://example.test/celex/32011L0083',
+      'https://example.test/celex/32016R0679',
+    ], 'issued in the order asked for, one after another');
+    assert.deepEqual(clock.slept, [1_000, 1_000], 'each spaced from the one before it');
   });
 });

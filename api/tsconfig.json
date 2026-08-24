@@ -5,7 +5,14 @@
     "declarationMap": true,
     "emitDeclarationOnly": false,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    // `api/src` now spans more than one file, and the tests run the TypeScript
+    // sources directly under Node's type stripping — which resolves an import
+    // literally, so a relative import between them has to carry its real `.ts`
+    // extension. `rewriteRelativeImportExtensions` turns that back into `.js`
+    // on the way into `dist`, so the built server still imports what exists.
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true
   },
   "include": ["src"]
 }

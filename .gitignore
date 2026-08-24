@@ -9,3 +9,8 @@ node_modules
 # Corpus harness downloads: public documents, but large and re-fetchable.
 .corpus-cache/
 corpus-report.json
+# The retrieved-document cache, if IBID_CACHE_DIR is ever pointed inside the tree. It
+# defaults to a platform cache directory outside any checkout — this is a guard, not the
+# usual location. See docs/DATA-FLOW.md.
+.ibid-cache/
+
