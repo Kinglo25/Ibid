@@ -1351,11 +1351,39 @@ first, so the stub's globals are removed *before* React unmounts the component t
 still using them.
 
 One detail worth knowing before starting: the runner is invoked with `--test-timeout=0`,
-so a stuck `await` hangs indefinitely instead of failing. Passing a real `--test-timeout`
-would not fix anything, but it would turn this from a silent stall into a named failing
-test with a stack — which is most of the diagnosis. It is deliberately not set here,
-because that is a change to how every test in the repository fails and is the next
-person's call rather than a side effect of a retrieval-performance pass.
+so a stuck `await` hangs indefinitely instead of failing.
+
+**`--test-timeout` does not help, and this was worth finding out.** Run with
+`--test-timeout=5000`, the file still fails as a whole at 35s with no individual test or
+hook named. Whatever is stuck is therefore *between* tests, in the runner's own
+progression, not inside a test body or a hook where the timeout applies. That is a
+sharper statement of the fault than "something hangs", and it removes the step this
+document used to recommend taking first.
+
+**Four more hypotheses, all falsified** (2026-08-24), measured rather than reasoned about
+— the rate is ~40%, so nothing below was called on a single run:
+
+- **Not teardown ordering.** The obvious reading of the note above — `cleanup` unmounting
+  after the Word stub has already deleted the globals — is wrong. Unmounting *first*
+  (`afterEach(() => { cleanup(); word?.remove(); })`) made it **worse**: 3 of 6 runs hung
+  before, 7 of 10 after. Reverted rather than kept. Whatever this is, unmounting while the
+  stub is still installed provokes it more often, which is a clue pointing the opposite way.
+- **Not the worker or the IPC channel.** With `--test-isolation=none`, which runs the file
+  in the runner's own process instead of a child, the rate is unchanged: 3 of 8. So it is
+  in-process, and the parent's "idle, waiting on the worker" report is a symptom rather
+  than the site.
+- **Not `cleanup()` returning a thenable** that `node:test` would await. It returns
+  `undefined` in `@testing-library/react` 16 — checked directly, not assumed.
+- **Not confined to one place in the file.** This document recorded it as always stalling
+  between `following the cursor` and the suite after it. It has also been seen stalling
+  immediately after `a footnote carrying Word's reference mark…`, in a different suite.
+  The region is not the signal it was taken for.
+
+What is left, then: something in-process that blocks the runner between one test and the
+next while the event loop stays alive — happy-dom's own task manager and React 19's `act`
+environment are the two candidates neither ruled in nor out. The cheapest next move is a
+bisect of the file by suite, remembering that a single green run proves nothing at a 40%
+rate and each measurement needs eight or so.
 
 Capture the report from the **child**, not the parent. Working that out took the longest:
 
