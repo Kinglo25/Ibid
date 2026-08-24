@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { autoSelectable, candidateLabel, confirmationKey, inlineFootnotesInBody, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage } from '../src/ui/citation-view.ts';
+import { autoSelectable, candidateLabel, confirmationKey, inlineFootnotesInBody, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -228,5 +228,37 @@ describe('footnotes a PDF conversion left in the body text', () => {
     const notes = inlineFootnotesInBody(`92 ${source}\r131 ${source}`);
     assert.deepEqual(notes.map((note) => note.number), [92, 131]);
     assert.equal(new Set(notes.map((note) => note.id)).size, 2, 'and they are told apart');
+  });
+});
+
+describe('when a passage was last confirmed against EUR-Lex', () => {
+  const at = (iso: string) => new Date(iso);
+
+  test('states the time as a fact, with no hedging around it', () => {
+    // The point of revalidating on every use is that this is not a disclaimer. CELLAR
+    // answering `304` is the Publications Office saying the text in hand is current, so the
+    // pane says when that happened and stops — no "cached", no "may be out of date".
+    const note = verificationNote(at('2026-08-21T14:32:00').toISOString(), at('2026-08-21T14:35:00'));
+    assert.equal(note, 'Verified against EUR-Lex at 14:32');
+  });
+
+  test('names the day when the confirmation was not today', () => {
+    // A document served from a store with nothing left to revalidate it against carries the
+    // time it genuinely was last confirmed. Rendered as "at 14:32" alone, last week's
+    // confirmation would be read as this afternoon's.
+    const note = verificationNote(at('2026-08-18T09:05:00').toISOString(), at('2026-08-21T14:35:00'));
+    assert.equal(note, 'Verified against EUR-Lex on 18 August at 09:05');
+  });
+
+  test('names the year too once it is a different one', () => {
+    const note = verificationNote(at('2025-12-30T23:59:00').toISOString(), at('2026-08-21T14:35:00'));
+    assert.equal(note, 'Verified against EUR-Lex on 30 December 2025 at 23:59');
+  });
+
+  test('claims nothing where nothing was retrieved', () => {
+    // The CURIA case-record and Commission register previews fetch no text, so they have
+    // confirmed nothing and must not appear to have.
+    assert.equal(verificationNote(undefined), undefined);
+    assert.equal(verificationNote('not a date'), undefined);
   });
 });

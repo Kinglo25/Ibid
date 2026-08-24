@@ -41,12 +41,25 @@ sits in, the argument it supports, the rest of the footnote, the rest of the doc
 
 ## What leaves the machine
 
-Exactly one outbound request, from one line of code (`addin/src/ui/App.tsx`), sent only
-when the reviewer selects a citation:
+Exactly one kind of outbound request, built and sent from one line of code
+(`addin/src/ui/App.tsx`):
 
 ```
 GET {api-origin}/api/sources?lookup={...}
 ```
+
+It is sent when the reviewer selects a citation, and — since the pane began warming the
+cache at document open — also once per distinct authority the document cites, in reading
+order, in the background. **The content of the request is identical either way**: both paths
+build it through the same `lookupFor` function, which names the nine fields below one by
+one. Warming changes *when* lookups happen and how many, not what is in them.
+
+What that means for a reviewer of this document: opening a file in Word now produces a
+lookup for each authority it cites, rather than one per citation the reviewer clicks. The
+requests are issued one at a time, never in parallel, and are abandoned when the document is
+closed or changed. If lookup volume rather than lookup content is the concern — see point 6
+below, which is about exactly that — this is the paragraph that matters, and warming can be
+removed without touching anything else in the pane.
 
 The `lookup` object contains only these fields, and nothing else:
 
@@ -69,10 +82,16 @@ The exclusion is structural rather than incidental. The object handed to the loo
 function is a `CitationContext`, which is defined as `CitationMatch & { context: string }`
 (`shared/src/index.ts`) — the surrounding prose *is* present on the object, in memory, at
 the moment the request is built. The request is nonetheless assembled by naming its nine
-fields one by one (`addin/src/ui/App.tsx`), not by spreading the citation object. A
-developer adding a new field to the citation type therefore cannot cause it to start
-crossing the wire by accident: it would have to be typed out inside the lookup. That is
-the difference between "context is not sent today" and "context is not sent".
+fields one by one, in `lookupFor` (`addin/src/ui/App.tsx`), not by spreading the citation
+object. A developer adding a new field to the citation type therefore cannot cause it to
+start crossing the wire by accident: it would have to be typed out inside that function.
+That is the difference between "context is not sent today" and "context is not sent".
+
+There is exactly one such function, and both the click path and the background warming go
+through it — which makes the guarantee stronger than it was when only one caller existed,
+because a second caller spelling the fields out again is precisely how a field like
+`context` gets added to one of them and not the other. `addin/test/App.test.tsx` asserts
+the exact key set on a warming request for this reason.
 
 The server then requests the cited document from the EU Publications Office
 (`publications.europa.eu`) and returns the relevant passage.
@@ -83,11 +102,12 @@ The server then requests the cited document from the EU Publications Office
 | --- | --- | --- |
 | `appsforoffice.microsoft.com` | Word | Microsoft's own Office.js library. Required by every Office add-in; loaded by Word, not by Ibid. |
 | Your Ibid host | The pane | The single lookup request above. |
-| `publications.europa.eu` | The Ibid server | Retrieves the cited official text. Public EU legal database; equivalent to opening EUR-Lex in a browser. |
+| `publications.europa.eu` | The Ibid server | Retrieves the cited official text, by CELEX or by ECLI. Public EU legal database; equivalent to opening EUR-Lex in a browser. |
 
 There are no analytics, no telemetry, no error-reporting service, no advertising, no
 fonts or scripts from any CDN, and no cookies. The pane uses neither `localStorage` nor
-`sessionStorage`. Grep the source for `fetch(`: there is one occurrence.
+`sessionStorage`. Grep the source for `fetch(`: there is one occurrence, used by both the
+click path and the background warming.
 
 ## Third-party code in the running system
 
@@ -104,10 +124,35 @@ built from this repository's own source plus React.
 
 ## Accounts, storage and retention
 
-No user accounts, no sign-in, no user identifier of any kind. The server keeps an
-**in-memory** cache of retrieved passages, keyed by document identifier and paragraph,
-which is lost when the process restarts. Nothing is written to disk. The server logs only
-its own startup and startup failures (`api/server.mjs`) — it does not log requests.
+No user accounts, no sign-in, no user identifier of any kind. The server logs only its own
+startup and startup failures (`api/server.mjs`) — it does not log requests.
+
+**The server does write to disk, in exactly one place, and it is worth being precise about
+what.** It keeps the EU legal documents it has retrieved from `publications.europa.eu` —
+the judgments and legislation themselves — in a cache directory
+(`api/src/document-store.ts`), so that a citation of an authority already retrieved costs a
+conditional request that CELLAR answers with `304` and no body, rather than another download
+of the same text. Each entry is the document's HTML plus its `ETag`, `Last-Modified`, and
+the time it was last confirmed.
+
+- **What is written:** public EU legal texts, byte for byte as the Publications Office
+  serves them. The same documents anyone can fetch from EUR-Lex without an account.
+- **What is never written:** anything from the user's document. Nothing from the document
+  reaches the server in the first place — the analysis is entirely local to the task pane —
+  so there is nothing of the user's for this to hold. The cache key is the CELEX identifier,
+  the language, and the format; no part of it comes from the user's text.
+- **Where:** outside the repository by default (`$XDG_CACHE_HOME/ibid/documents`,
+  `%LOCALAPPDATA%\Ibid\Cache\documents`, or `~/.cache/ibid/documents`). Set
+  `IBID_CACHE_DIR` to place it deliberately, or `IBID_CACHE_ENTRIES=0` to run with no disk
+  cache at all, which falls back to the bounded in-memory one. The server prints the
+  directory it is using at startup.
+- **Bounded:** an entry count (512 by default) and a byte ceiling, oldest confirmation
+  evicted first. There is deliberately no expiry: a published EU legal text does not change
+  — an amended directive is a different instrument with its own CELEX — so revalidation on
+  every use, not a timer, is what keeps it correct.
+
+Derived excerpts are still held only in memory, and are now bounded too (see point 3 below,
+which this closes).
 
 ## What a reviewer should weigh
 
@@ -134,19 +179,31 @@ server presents *to* EUR-Lex, never anything it demands of a caller. The only in
 headers the handler reads at all are `origin` and `host`.
 
 **2. Request throttling is global, not per-caller.** The resolver spaces its outbound
-requests by `minRequestIntervalMs` (default 1000ms) through a single queue held in the
-resolver closure (`api/src/index.ts`). That is a politeness limit toward EUR-Lex, not a
-defence: it is shared by every caller, so one client issuing continuous lookups delays
-everyone else's behind it. Together with point 1, an unauthenticated public deployment can
-be rendered unusable by a single script. Per-IP rate limiting belongs at the proxy.
+requests by `minRequestIntervalMs` (default 1000ms) through a single serial queue held in
+the resolver closure (`api/src/index.ts`); lookups run one at a time, in the order they
+arrive. That is a politeness limit toward EUR-Lex, not a defence: it is shared by every
+caller, so one client issuing continuous lookups delays everyone else's behind it. Together
+with point 1, an unauthenticated public deployment can be rendered unusable by a single
+script. Per-IP rate limiting belongs at the proxy.
 
-**3. The retrieved-passage cache is unbounded.** Previews are held in a `Map` with no size
-limit and no expiry (`api/src/index.ts`); only an explicit `clearCache()` empties it, and
-part of the cache key is caller-supplied. Growth is slow — an entry is stored only after a
-successful upstream fetch, which the throttle caps at roughly one per second — and the
-cache holds public EU legal text, not client material. But it is unbounded in a process
-intended to run for months. Restarting the process is today's mitigation; a bounded LRU is
-the fix.
+The interval spaces *lookups* rather than individual requests, so the retries a single
+document needs — a second `Accept` header for an older document, a fallback language — are
+not each charged a full second. The rate of traffic CELLAR sees is unchanged; what changed
+is that the delay is no longer multiplied by however many attempts one document happened to
+need.
+
+**3. The caches are now bounded — and one of them is on disk.** This was previously listed
+here as a defect: previews were held in a `Map` with no size limit, in a process intended to
+run for months, with part of the key caller-supplied. Both caches are now bounded by entry
+count, oldest-first (`api/src/index.ts`, `api/src/document-store.ts`).
+
+What replaces it as the thing to weigh is the disk cache described under "Accounts, storage
+and retention" above. It holds public EU legal text and nothing of the user's, but it is
+persistent state on the host, and an operator should know it exists, know where it is, and
+be able to point it elsewhere or switch it off — `IBID_CACHE_DIR` and `IBID_CACHE_ENTRIES`
+do both, and the server prints the directory at startup. There is deliberately no expiry;
+freshness comes from revalidating every entry against EUR-Lex before it is used, not from a
+timer.
 
 **4. The task pane declares no Content-Security-Policy.** `addin/index.html` ships without
 one. Nothing in the pane writes markup to the DOM: there is no `dangerouslySetInnerHTML`,
@@ -164,7 +221,16 @@ endpoint to accept `POST`, if lookup retention is unacceptable.
 **6. Citation lookups are matter intelligence, even without document text.** Ibid does not
 transmit client material. It does transmit *which authorities are being researched, and
 when*, to whichever host runs the API. That is not privileged content, but it is not
-nothing either, and it is the fact on which the hosting decision should turn:
+nothing either, and it is the fact on which the hosting decision should turn.
+
+Warming the cache at document open sharpens this rather than changing its nature. Before,
+the host learned which authorities a reviewer *clicked*; now it learns which authorities the
+document *cites*, as soon as it is opened — a fuller picture, and arguably a more revealing
+one, since it is the shape of the whole memo rather than a reading path through it. The
+mitigation is the same and is the point of this section: run the API inside the firm's own
+infrastructure, where "the host" is the firm. Where that is not possible and lookup volume
+is the concern, warming is one effect in `addin/src/ui/App.tsx` and removing it returns the
+pane to click-triggered lookups with nothing else affected.
 
 - **Hosted inside the firm's own infrastructure** — nothing leaves the firm's control
   except the onward request to the EU's public database. Recommended for real use.
@@ -181,18 +247,28 @@ include any request data.
 ## Why the lookup cannot be turned into a server-side request forgery
 
 Point 1 means untrusted input can reach the resolver, so the natural next question is what
-that input can make the server fetch. The answer is: only a CELEX document on the
-configured host. The outbound URL is built by `cellarUrl` (`api/src/index.ts`) as the
-fixed base URL plus `encodeURIComponent(celex)`. Percent-encoding the identifier means a
-caller cannot introduce `/`, `:`, `?` or `#`, and therefore cannot traverse out of the
-path segment, change the host, or append a query. The base URL comes from environment
-configuration, never from the request.
+that input can make the server fetch. The answer is: only a document on the configured
+host, under one of two fixed paths.
+
+The outbound URL is built by `cellarUrl` or `ecliUrl` (`api/src/index.ts`) as a fixed base
+URL plus `encodeURIComponent(identifier)` — the CELEX for the first, the ECLI for the
+second. Percent-encoding the identifier means a caller cannot introduce `/`, `:`, `?` or
+`#`, and therefore cannot traverse out of the path segment, change the host, or append a
+query. (An ECLI's own colons are percent-encoded by this, which is what CELLAR expects.)
+The base URL comes from environment configuration, never from the request; `ecliUrl`
+derives its base from the same configured value by replacing a trailing `/celex` segment
+with `/ecli`, and returns nothing at all — so no request is made — if that segment is not
+there to replace. Neither function can be reached with a base the caller supplied.
 
 ## Verifying these claims
 
 ```bash
 # One outbound request in the pane, and no browser storage. Expect a single hit.
-grep -rn "fetch(\|XMLHttpRequest\|sendBeacon\|WebSocket\|localStorage\|sessionStorage" addin/src/ shared/src/
+grep -rnE "\bfetch\(|XMLHttpRequest|sendBeacon|WebSocket|localStorage|sessionStorage" addin/src/ shared/src/
+
+# Both request paths — a click and the background warming — build the lookup here, and
+# only here. Expect one definition and no other place naming these fields.
+grep -n "function lookupFor" -A 10 addin/src/ui/App.tsx
 
 # The add-in cannot write to the document. Expect no hits.
 grep -rn "insertText\|insertParagraph\|insertHtml\|insertOoxml" addin/src/
@@ -203,8 +279,14 @@ grep -n "Permissions" addin/manifest.xml
 # Exactly what is put on the wire — nine named fields, no spread.
 sed -n '/const lookup = {/,/};/p' addin/src/ui/App.tsx
 
-# Nothing is written to disk, anywhere in the server. Expect no hits.
+# Everything the server writes to disk, and the only place it does. Expect hits in
+# document-store.ts alone — the retrieved-document cache described above.
 grep -rn "node:fs\|writeFile\|createWriteStream\|appendFile" api/src/ api/server.mjs
+
+# What goes into a cache entry: the document, its validators, and when it was confirmed.
+# Nothing caller-supplied beyond the CELEX, language and format that form the key.
+sed -n '/export type StoredDocument/,/^};/p' api/src/document-store.ts
+grep -n "function documentKey" -A 3 api/src/index.ts
 
 # The server logs startup only, never requests.
 grep -n "console\." api/server.mjs
@@ -217,6 +299,8 @@ npm audit
 
 # The claims above that are weaknesses, checkable the same way.
 grep -n "Content-Security-Policy" addin/index.html          # expect no hits (point 4)
+grep -n "MAX_CACHED_PREVIEWS\|DEFAULT_MAX_ENTRIES" api/src/index.ts api/src/document-store.ts   # bounded (point 3)
 grep -n "request.headers" api/server.mjs                     # only origin and host (point 1)
-sed -n '/function cellarUrl/,/^}/p' api/src/index.ts        # encodeURIComponent, fixed base
+sed -n '/^function cellarUrl/,/^}/p' api/src/index.ts       # encodeURIComponent, fixed base
+sed -n '/^function ecliUrl/,/^}/p' api/src/index.ts         # the same, for the /ecli path
 ```

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { citedAuthorities, getCitationContextsForFootnotes, reresolveBackReferences, PREVIEW_FOOTNOTES, type CitationCandidate, type CitationContext } from '../../../shared/src';
+import { prefetchStatus, prefetchTargets, startPrefetch, type PrefetchProgress, type Prefetcher } from './prefetch';
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
   autoSelectable, inlineFootnotesInBody, INLINE_NOTE_FLOOR, needsReview, officialSourceUrl,
   resolutionNote, toReviewFootnotes,
-  unresolvedMessage, type ReviewFootnote,
+  unresolvedMessage, verificationNote, type ReviewFootnote,
 } from './citation-view';
 
 type ReviewDocument = {
@@ -15,6 +16,8 @@ type ReviewDocument = {
   passage?: 'cited' | 'opening';
   language?: 'en' | 'fr';
   translation?: { from: 'en' | 'fr'; officialUrl: string };
+  /** When the resolver last confirmed this text against EUR-Lex, as an ISO timestamp. */
+  verifiedAt?: string;
 };
 type ReviewState =
   | { kind: 'idle' }
@@ -374,14 +377,22 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
   });
 }
 
-async function resolveSource(citation: CitationContext): Promise<ReviewDocument[]> {
-  // `import.meta.env` is Vite's, and exists only in a Vite-built bundle. Reaching through
-  // it unguarded threw a TypeError under every other runtime — which meant the task-pane
-  // tests never reached `fetch` at all, and every retrieval state below was silently
-  // untested. Optional-chaining here costs nothing in the browser and makes the pane
-  // runnable wherever it is imported.
-  const apiBase = import.meta.env?.VITE_IBID_API_BASE_URL?.replace(/\/$/, '') ?? '/api';
-  const lookup = {
+/**
+ * Exactly what is put on the wire, and nothing else.
+ *
+ * The nine fields are named one by one rather than spread from the citation, and this is
+ * the only place they are named. The object in hand is a `CitationContext`, which carries
+ * `context` — the prose surrounding the citation — so spreading it would put the document's
+ * own text on the wire; naming the fields means a developer adding a field to the citation
+ * type cannot cause it to start crossing the wire by accident. See `docs/DATA-FLOW.md`.
+ *
+ * One function rather than one expression because there are now two callers — a reviewer
+ * selecting a citation, and the background warming that starts at document open — and the
+ * guarantee is stronger for their sharing it than it would be for each spelling the fields
+ * out again.
+ */
+function lookupFor(citation: CitationContext) {
+  return {
     source: citation.source, value: citation.value, celex: citation.celex, ecli: citation.ecli,
     caseNumber: citation.caseNumber, caseName: citation.caseName,
     documentType: citation.documentType, locator: citation.locator,
@@ -390,7 +401,16 @@ async function resolveSource(citation: CitationContext): Promise<ReviewDocument[
     // locator alone.
     paragraphs: citation.pinpoint?.paragraphs,
   };
-  const response = await fetch(`${apiBase}/sources?lookup=${encodeURIComponent(JSON.stringify(lookup))}`);
+}
+
+async function resolveSource(citation: CitationContext, signal?: AbortSignal): Promise<ReviewDocument[]> {
+  // `import.meta.env` is Vite's, and exists only in a Vite-built bundle. Reaching through
+  // it unguarded threw a TypeError under every other runtime — which meant the task-pane
+  // tests never reached `fetch` at all, and every retrieval state below was silently
+  // untested. Optional-chaining here costs nothing in the browser and makes the pane
+  // runnable wherever it is imported.
+  const apiBase = import.meta.env?.VITE_IBID_API_BASE_URL?.replace(/\/$/, '') ?? '/api';
+  const response = await fetch(`${apiBase}/sources?lookup=${encodeURIComponent(JSON.stringify(lookupFor(citation)))}`, { signal });
   if (!response.ok) throw new Error(`Source lookup failed (${response.status}).`);
   const payload = await response.json() as { documents?: ReviewDocument[] };
   return payload.documents ?? [];
@@ -418,6 +438,21 @@ function SourceLanguageNote({ document }: { document: ReviewDocument }) {
     return <p className="source-note">Published only in French. Shown in the official language.</p>;
   }
   return null;
+}
+
+/**
+ * When this passage was last confirmed against EUR-Lex.
+ *
+ * Shown on every retrieved passage, and phrased as a fact rather than as a warning. Ibid
+ * keeps documents it has retrieved and revalidates each one on use — CELLAR answers a
+ * conditional request with `304` and no body, which is the Publications Office confirming
+ * that the text already in hand is the current one. So a lawyer reading this is not reading
+ * a copy that might be stale; they are reading the official text, with the time it was last
+ * checked printed underneath it. That is worth stating plainly and worth not hedging.
+ */
+function VerificationNote({ document }: { document: ReviewDocument }) {
+  const note = verificationNote(document.verifiedAt);
+  return note ? <p className="source-verified">{note}</p> : null;
 }
 
 /**
@@ -513,6 +548,13 @@ export default function App() {
   // confirmation is a judgement about this document, and silently carrying it into the next
   // one would be exactly the kind of unexamined reuse this whole design avoids.
   const [confirmations, setConfirmations] = useState<Record<string, CitationCandidate>>({});
+  /**
+   * How far the background warming has got, for the pane to say plainly.
+   *
+   * Null before it starts and after a document with nothing to warm — the reviewer is told
+   * about work that is happening, not reassured about work that is not.
+   */
+  const [prefetching, setPrefetching] = useState<PrefetchProgress | null>(null);
 
   const refresh = async () => {
     setStatus('Connecting to Word…');
@@ -538,6 +580,24 @@ export default function App() {
     }
   };
 
+  /**
+   * Retrieve a citation's source, or hand back what warming already retrieved for it.
+   *
+   * Keyed on the exact request that would be sent, so only a citation asking for precisely
+   * the same passage is served from here. A different pinpoint of the same judgment misses
+   * this and goes to the API — where the document itself is cached, so what it costs is one
+   * conditional request rather than another download.
+   */
+  const alreadyRetrieved = (citation: CitationContext) => retrieved.current.get(JSON.stringify(lookupFor(citation)));
+
+  const retrieve = async (citation: CitationContext): Promise<ReviewDocument[]> => {
+    const held = alreadyRetrieved(citation);
+    if (held) return held;
+    const documents = await resolveSource(citation);
+    retrieved.current.set(JSON.stringify(lookupFor(citation)), documents);
+    return documents;
+  };
+
   const selectCitation = async (citation: CitationContext, footnote: ReviewFootnote) => {
     setSelected({ citation, footnote });
     // A short form Ibid could not tie to a specific authority has nothing to look up.
@@ -547,9 +607,16 @@ export default function App() {
       setReview({ kind: 'unresolved' });
       return;
     }
+    // Already in hand from the background warming: showing a loading state for something
+    // that is going to appear in the same tick is a flicker, not information.
+    const held = alreadyRetrieved(citation);
+    if (held) {
+      setReview(held.length ? { kind: 'success', documents: held } : { kind: 'empty' });
+      return;
+    }
     setReview({ kind: 'loading' });
     try {
-      const documents = await resolveSource(citation);
+      const documents = await retrieve(citation);
       setReview(documents.length ? { kind: 'success', documents } : { kind: 'empty' });
     } catch (error) {
       setReview({ kind: 'error', message: error instanceof Error ? error.message : 'The source lookup could not be completed.' });
@@ -565,7 +632,7 @@ export default function App() {
     setSelected({ citation: confirmed, footnote: selected.footnote });
     setReview({ kind: 'loading' });
     try {
-      const documents = await resolveSource(confirmed);
+      const documents = await retrieve(confirmed);
       setReview(documents.length ? { kind: 'success', documents } : { kind: 'empty' });
     } catch (error) {
       setReview({ kind: 'error', message: error instanceof Error ? error.message : 'The source lookup could not be completed.' });
@@ -578,6 +645,22 @@ export default function App() {
   // live in refs so that re-reading the document leaves the Office handler alone.
   const footnoteTexts = useRef<readonly string[]>([]);
   const readLocation = useRef<() => void>(() => undefined);
+  /**
+   * Sources already retrieved for the document currently open, keyed by the exact request
+   * that fetched them. Emptied whenever the document is re-read: a preview belongs to the
+   * document it was retrieved for, and carrying one into another would be the same
+   * unexamined reuse that confirmations are deliberately not persisted across.
+   */
+  const retrieved = useRef(new Map<string, ReviewDocument[]>());
+  /** The running queue, so the cursor can reorder what it has not reached yet. */
+  const warming = useRef<Prefetcher | null>(null);
+  /**
+   * The citations as currently resolved, for the warming queue to be built from. Read
+   * through a ref so that a confirmation — which changes `citationsByFootnote` — does not
+   * cancel and restart a queue that is halfway through the document. Confirming a citation
+   * retrieves its own source there and then, so nothing is left unwarmed by this.
+   */
+  const currentCitations = useRef<readonly (readonly CitationContext[])[]>([]);
 
   useEffect(() => {
     footnoteTexts.current = footnotes.map((footnote) => footnote.text);
@@ -665,6 +748,60 @@ export default function App() {
     }))),
     [detected, confirmations, footnotes],
   );
+  currentCitations.current = citationsByFootnote;
+
+  /**
+   * Warm the cache for every authority the document cites, starting at open.
+   *
+   * The pane has the whole list before the reviewer clicks anything — detection and
+   * short-form resolution run over the document locally at open — so waiting for a click
+   * before asking EUR-Lex for any of it means every first inspection pays a cold
+   * retrieval while the reviewer watches. This starts that work earlier. It does not make
+   * it faster: the resolver's request spacing is unchanged, the requests go one at a time,
+   * and nothing here is parallelised, because a burst of concurrent fetches is precisely
+   * the fingerprint anti-bot protection reacts to.
+   *
+   * Keyed on `detected`, which is the document as read, so it starts once per document and
+   * is cancelled when the document changes or the pane closes. It is deliberately *not*
+   * keyed on `citationsByFootnote`: that changes on every confirmation, and restarting a
+   * queue halfway through a hundred-footnote brief because the reviewer settled one short
+   * form would undo the work it had just done.
+   *
+   * Only where there is a document. The browser preview shows a fixed sample memo to
+   * demonstrate the pane, and firing a queue of live EUR-Lex retrievals at whoever opens
+   * that page is not what the sample is for — its citations are real, so those would be
+   * real requests to a public service on behalf of someone who is only looking.
+   */
+  useEffect(() => {
+    retrieved.current = new Map();
+    setPrefetching(null);
+    if (!wordReady) return;
+    const targets = prefetchTargets(currentCitations.current);
+    if (!targets.length) return;
+
+    const queue = startPrefetch({
+      targets,
+      retrieve: async (target, signal) => {
+        const documents = await resolveSource(target.citation, signal);
+        retrieved.current.set(JSON.stringify(lookupFor(target.citation)), documents);
+      },
+      onProgress: setPrefetching,
+    });
+    warming.current = queue;
+    return () => {
+      warming.current = null;
+      queue.cancel();
+    };
+  }, [detected, wordReady]);
+
+  /**
+   * The cursor is the best statement of what the reviewer is about to want, so whatever the
+   * footnote under it cites goes to the front of the queue. Reading order is only a guess at
+   * the same question, and it loses the moment there is a better one.
+   */
+  useEffect(() => {
+    if (focused !== null) warming.current?.promote(focused);
+  }, [focused]);
 
   /**
    * The selected passage, shaped like a footnote so everything downstream can treat it as
@@ -860,6 +997,7 @@ export default function App() {
               <SourceLanguageNote document={document} />
               <ExcerptScopeNote document={document} />
               <p>{document.excerpt}</p>
+              <VerificationNote document={document} />
             </article>)}</div>}
           {review.kind === 'empty' && <p>No official source passage was found for this reference. You can open the official record directly.</p>}
           {review.kind === 'unresolved' && <UnresolvedReview
@@ -902,6 +1040,10 @@ export default function App() {
           <div>
             <h2>Document</h2>
             <p className="status">{status}</p>
+            {/* What the background warming has retrieved so far. Stated plainly, including
+                what it could not get: a count that stalls two short of the total with no
+                explanation invites the reader to wait for something that is not coming. */}
+            {prefetching && prefetchStatus(prefetching) && <p className="status">{prefetchStatus(prefetching)}</p>}
             {cursorReport && <p className="status">Word reported the cursor as: {cursorReport}</p>}
           </div>
           <button type="button" onClick={() => void refresh()}>Refresh</button>

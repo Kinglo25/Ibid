@@ -198,3 +198,34 @@ export function needsReview(citations: readonly CitationContext[]): boolean {
 export function autoSelectable(citations: readonly CitationContext[]): CitationContext | undefined {
   return citations.length === 1 ? citations[0] : undefined;
 }
+
+/** English month names, so the note below reads the same wherever the pane is opened. */
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+/**
+ * When this passage was last confirmed to be what EUR-Lex holds.
+ *
+ * Written as a plain statement of fact, and deliberately not as a disclaimer. Ibid caches
+ * retrieved documents and revalidates them on every use: CELLAR answers a conditional
+ * request with `304` and no body, which is the issuing authority saying the text already in
+ * hand is current. What that produces is not a copy with a caveat attached — it is the
+ * official text with a timestamp on it, and the timestamp is the strongest thing this pane
+ * can say about a passage a lawyer is about to rely on. Hedging it would understate what
+ * was actually done.
+ *
+ * The date appears only when the confirmation was not today. That matters: a passage served
+ * from a store written last week, with nothing left to revalidate it against, would
+ * otherwise read as "at 14:32" and be taken for this afternoon.
+ */
+export function verificationNote(verifiedAt: string | undefined, now: Date = new Date()): string | undefined {
+  if (!verifiedAt) return undefined;
+  const at = new Date(verifiedAt);
+  if (Number.isNaN(at.getTime())) return undefined;
+
+  const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+  if (at.toDateString() === now.toDateString()) return `Verified against EUR-Lex at ${time}`;
+
+  const year = at.getFullYear() === now.getFullYear() ? '' : ` ${at.getFullYear()}`;
+  return `Verified against EUR-Lex on ${at.getDate()} ${MONTHS[at.getMonth()]}${year} at ${time}`;
+}

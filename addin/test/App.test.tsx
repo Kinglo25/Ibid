@@ -210,6 +210,109 @@ describe('the pane, rendered', () => {
 });
 
 /**
+ * Warming the sources at document open.
+ *
+ * The pane knows every citation in the document before the reviewer clicks anything, so
+ * waiting for a click before asking EUR-Lex for any of it makes the first inspection of
+ * every authority a cold retrieval. These assert the two halves of doing it earlier: that
+ * the work actually starts and is reported honestly, and that it stays one request at a
+ * time and stops when the document goes away.
+ */
+describe('warming the sources at document open', () => {
+  const gdpr = 'Regulation (EU) 2016/679, Article 15.';
+  const googleSpain = 'Judgment of 13 May 2014, Google Spain SL and Google Inc. v AEPD, C-131/12, ECLI:EU:C:2014:317, paras 80-82.';
+  const again = 'Google Spain, para. 81.';
+
+  let word: ReturnType<typeof installWordStub> | undefined;
+  afterEach(() => { word?.remove(); word = undefined; });
+
+  /** Records every lookup the pane sends, and how many were open at once. */
+  const recordingFetch = (documents: unknown[] = []) => {
+    const lookups: string[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    globalThis.fetch = ((url: string) => {
+      lookups.push(String(url));
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => { inFlight -= 1; return Promise.resolve({ documents }); },
+      } as unknown as Response);
+    }) as typeof fetch;
+    return { lookups, peak: () => peak };
+  };
+
+  test('retrieves each distinct authority once, and says how far it has got', async () => {
+    // Three footnotes, two authorities: the second Google Spain citation is the same
+    // document at a different pinpoint, and the resolver now caches the document itself, so
+    // warming it twice would be retrieving one judgment twice.
+    const recorded = recordingFetch([{ title: 'x', excerpt: 'y', url: 'https://example.test/x', source: 'EUR-Lex' }]);
+    word = installWordStub([gdpr, googleSpain, again]);
+    render(<App />);
+
+    await screen.findByText('Retrieved all 2 sources.');
+    assert.equal(recorded.lookups.length, 2, `expected two lookups, saw ${recorded.lookups.length}`);
+    assert.ok(recorded.lookups.some((url) => url.includes('32016R0679')));
+    assert.ok(recorded.lookups.some((url) => url.includes('62012CJ0131')));
+  });
+
+  test('sends nothing but the citation identifier, exactly as a click does', async () => {
+    // The guarantee in docs/DATA-FLOW.md. Warming happens without the reviewer asking for
+    // it, so it is the path most worth checking never grew a field: the footnote's text and
+    // the prose around the citation are on the object in memory and must not be on the wire.
+    const recorded = recordingFetch();
+    word = installWordStub([googleSpain]);
+    render(<App />);
+
+    await screen.findByText(/Retrieved/);
+    const sent = JSON.parse(decodeURIComponent(recorded.lookups[0].split('lookup=')[1]));
+    assert.deepEqual(Object.keys(sent).sort(), [
+      'caseName', 'caseNumber', 'celex', 'documentType', 'ecli', 'locator', 'paragraphs', 'source', 'value',
+    ]);
+    assert.equal(sent.celex, '62012CJ0131');
+    // The footnote as written, and the prose around the citation, are on the object the
+    // pane holds. Neither may be on the wire.
+    assert.ok(!recorded.lookups[0].includes('Judgment%20of%2013%20May'));
+    assert.equal(sent.context, undefined);
+  });
+
+  test('one request at a time, never a burst', async () => {
+    // A burst of concurrent fetches is the fingerprint anti-bot protection reacts to, and
+    // being a well-behaved identifiable client is part of what this tool claims.
+    const recorded = recordingFetch();
+    word = installWordStub([gdpr, googleSpain, 'Directive 2002/58/EC, Article 15.']);
+    render(<App />);
+
+    await screen.findByText('Retrieved all 3 sources.');
+    assert.equal(recorded.peak(), 1, 'the queue must never have two lookups open together');
+  });
+
+  test('a citation already warmed opens without a retrieval state', async () => {
+    // The point of starting early: by the time the cursor lands on it, the passage is here.
+    recordingFetch([{ title: 'Google Spain', excerpt: 'The passage.', url: 'https://example.test/x', source: 'CURIA' }]);
+    word = installWordStub([googleSpain]);
+    render(<App />);
+    await screen.findByText('Retrieved all 1 sources.');
+
+    word.putCursorOn(0);
+    await screen.findByText('The passage.');
+    assert.equal(screen.queryByText('Retrieving the official source passage…'), null,
+      'nothing already in hand should show a loading state on its way to the screen');
+  });
+
+  test('the browser preview warms nothing, because nobody opened a document', async () => {
+    // The sample memo's citations are real, so warming them would be real requests to a
+    // public service on behalf of someone who is only looking at a demo.
+    const recorded = recordingFetch();
+    render(<App />);
+    await screen.findByRole('button', { name: /Show all/ });
+    assert.deepEqual(recorded.lookups, []);
+  });
+});
+
+/**
  * The pane with a cursor, which is how it is actually used.
  *
  * A reviewer works from the document and asks the pane about the citation in front of them.

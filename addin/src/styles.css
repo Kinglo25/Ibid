@@ -110,3 +110,10 @@ button.candidate-confirm:hover { background: #10357f; }
   font-weight: 700;
 }
 .footnote-index .panel-title { margin-bottom: 12px; }
+
+/* When the passage above was last confirmed against EUR-Lex. Quiet, and deliberately not
+   styled like `.source-note`: that one warns the reader about what they are looking at,
+   and this one tells them the opposite — the text has just been confirmed with the issuing
+   authority. A revalidated cache is the official text with proof, not a copy with a caveat,
+   and it should not be dressed as a caveat. */
+.source-verified { color: #5f6d86; font-size: 11px; margin: 6px 0 0; }

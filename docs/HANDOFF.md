@@ -1,6 +1,6 @@
 # Ibid engineering handoff
 
-Last updated: 2026-08-12
+Last updated: 2026-08-21
 
 ## Goal
 
@@ -11,10 +11,11 @@ Ibid is a Word task-pane add-in for lawyers. It detects EU-law citations in Word
 - `addin/` reads individual Word footnotes with Office.js and renders recognised citations as selectable review items. Outside Word it shows sample footnotes for browser preview.
 - `shared/src/index.ts` resolves citations against the whole document, not one footnote at a time — see "Document-context citation resolution" below for the short-form, ambiguity, and gap-reporting behaviour. It detects ECLI identifiers, CJEU/General Court case numbers, directives, regulations, EU decisions, Commission `C(yyyy)` decisions, and DG Competition's own case numbers (`AT.` antitrust, `SA.` State aid, `M.`/`COMP/M.` merger). Acts are recognised in both the pre-2015 style (`Directive 2002/58/EC`; regulations as `Regulation (EC) No 1049/2001`) and the current style shared by all act types (`Regulation (EU) 2016/679`, or informally without the bracket — `Regulation 2016/679` — as long as the year is unambiguous). It derives CELEX only where the mapping is reliable, resolving each case number's two-digit year against the real clock rather than assuming the 2000s (`C-6/64` → 1964, not 2064), and flags when nearby wording ("Opinion of Advocate General…", "Order of the Court…") means a citation is not the main judgment. Article/point locators are recognised from the full words and their common abbreviations and symbols (`Art.`, `para.`, `pt.`, `§`, `¶`), not only the spelled-out form.
 - `api/src/index.ts` dispatches by source family:
-  - EUR-Lex/CELLAR: fetches a bounded official passage and focuses it on the cited Article or point.
+  - EUR-Lex/CELLAR: fetches a bounded official passage and focuses it on the cited Article or point. It asks by the derived CELEX first and, where CELLAR has never heard of that identifier, by the ECLI the footnote quoted — which is how several recent orders and judgments are held. See "The CELEX is derived; the ECLI is quoted".
   - CURIA: when the citation is confidently the main judgment, fetches the actual judgment text from EUR-Lex/CELLAR (which mirrors CJEU/General Court case law under its own CELEX) and focuses it on the cited point, the same as legislation. Falls back to a direct, official CURIA case-record link — without ever attempting a fetch — when the citation is an Advocate General opinion or an order (the derived CELEX would name the wrong document), when no CELEX could be derived, or when the fetch itself fails (older cases CELLAR does not mirror, network errors, etc).
   - European Commission: returns a direct official Competition Case Register search link.
-- EUR-Lex/CELLAR retrieval (used for both legislation and case law) has an in-memory cache, 12-second timeout, one-second default request spacing shared across both, and exponential retry/backoff for `429` and transient `5xx` responses. Its base URL, credentials, limits, and CORS origin are server-side environment configuration.
+- EUR-Lex/CELLAR retrieval (used for both legislation and case law) caches the *document* — keyed by CELEX, language and Accept header — and derives each excerpt from it locally, so one authority is retrieved once however many pinpoints cite it. That cache persists across restarts and is revalidated on every use with `If-None-Match`/`If-Modified-Since`, which CELLAR answers with `304` and no body; each preview carries the time it was last confirmed. Retrieval also has a 12-second timeout, one-second default spacing between *lookups* (not between the attempts within one), a strictly serial request queue, and exponential retry/backoff for `429` and transient `5xx` responses. Its base URL, credentials, cache location, limits, and CORS origin are server-side environment configuration. See "Retrieval latency — measured against the live service, then fixed".
+- The task pane warms that cache when a document is opened: it deduplicates the document's citations to distinct authorities and retrieves them in reading order in the background, one at a time, promoting whatever the cursor lands near and cancelling when the document changes.
 - `api/server.mjs` reports a clear `EADDRINUSE` error rather than an unhandled Node exception.
 
 ## Important files
@@ -24,16 +25,20 @@ Ibid is a Word task-pane add-in for lawyers. It detects EU-law citations in Word
 | `addin/src/ui/App.tsx` | Word document/footnote integration and review UI |
 | `addin/vite.config.ts` | HTTPS Vite server and API proxy; reads `IBID_API_PORT` |
 | `shared/src/index.ts` | Citation detection and CELEX normalisation |
-| `api/src/index.ts` | Source adapters, retry, throttling, caching, excerpt extraction |
+| `api/src/index.ts` | Source adapters, retry, throttling, revalidation, excerpt extraction |
+| `api/src/document-store.ts` | The retrieved-document cache — bounded, persistent, and the only thing that writes to disk |
 | `api/server.mjs` | HTTP API and environment configuration |
 | `api/README.md` | Production environment variables |
 | `shared/test/detect-citations.test.ts` | Detection, CELEX derivation, locators, known gaps |
 | `shared/test/resolve-citations.test.ts` | Pinpoint grammar, case names, short-form resolution, ambiguity policy, and the collected-pattern acceptance set |
 | `shared/test/citation-formats.test.ts` | The English/French language boundary, pre-1989 case numbers, false positives, case names next to identifiers |
 | `shared/test/real-citations.test.ts` | A realistic memo built from real, live-verified citations; also the browser-preview document |
-| `api/test/resolver.test.ts` | Adapters, excerpt focusing, cache, retry, throttling |
+| `api/test/resolver.test.ts` | Adapters, excerpt focusing, cache, revalidation, the two CELLAR `404`s, retry, throttling |
+| `api/test/document-store.test.ts` | The document cache: persistence, bounds, and degrading safely when the disk will not cooperate |
 | `api/test/lookup-contract.test.ts` | Type-level guard that `api`'s `EuLookup` still accepts a shared `CitationMatch` |
 | `addin/src/ui/citation-view.ts` | The pane's presentation decisions, kept JSX-free so they can be tested directly |
+| `addin/src/ui/prefetch.ts` | Which authorities to warm, in what order, and when to stop — also JSX-free |
+| `addin/test/prefetch.test.ts` | Deduplication, reading order, cursor promotion, cancellation, progress wording |
 | `addin/test/citation-view.test.ts` | Confirmation scope, resolution and gap wording, source URLs |
 | `addin/test/App.test.tsx` | The pane rendered and clicked through, against the browser-preview document |
 | `addin/test/setup-dom.ts` | Registers happy-dom and a non-networked `fetch`; loaded with `--import` |
@@ -54,7 +59,7 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 373 tests (259 detection and resolution, 82 resolver and contract, 32 task pane).
+- `npm run test` passes: 486 tests (273 detection and resolution, 124 resolver, document store and contract, 89 task pane). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
@@ -97,8 +102,11 @@ mocked suite could not have caught, found by actually calling the real
 service. There is no live-network check in `npm run verify` (CI should not
 depend on a third party being up), so re-verify by hand — with
 `createEuSourceResolver()` and no `fetcher` override, so it uses the real
-`fetch` — after touching `fetchEurLex`, `extractLocator`, or
-`extractJudgmentPoint`.
+`fetch` — after touching `fetchEurLex`, `loadCellarDocument`, `extractLocator`,
+or `extractJudgmentPoint`. Pass a `createFileDocumentStore({ directory })` over a
+temporary directory when checking the revalidation paths, and resolve the same
+document twice: the second lookup should be a `304` in a few hundred
+milliseconds, not another download.
 
 ### Verified against the live EUR-Lex/CELLAR endpoint
 
@@ -1064,6 +1072,306 @@ paragraph 65, and `Article 6(5) of Regulation (EU) 2022/1925` returns exactly
 Article 6(5). `Intel, para. 132` returned `unresolved_ambiguous` with both
 candidates and no identifier, which is the pass condition for that case.
 
+### Retrieval latency — measured against the live service, then fixed
+
+The pane felt slow. Every number below was measured against the real CELLAR
+endpoint on 2026-08-21 and re-confirmed after the change; re-verify before
+relying on any of it, the same way every other live claim in this document
+should be.
+
+**What CELLAR actually does.** Documents come back with an `ETag`
+(`"Con-20190721062819000"`) and a `Last-Modified`, under
+`Cache-Control: no-cache` — cache this freely, confirm it before you use it.
+There is no compression: `gzip` is requested and ignored, so a judgment is 149KB
+on the wire every single time and the GDPR is 807KB. A conditional `GET`
+carrying `If-None-Match` against the canonical CELEX URL answers `304` with zero
+bytes in ~270ms, redirect included; `If-Modified-Since` does the same. Both
+survive the `303`, which matters because its target is `http://` rather than
+`https://` and header stripping across that hop would have quietly defeated the
+whole scheme — checked through Node's own `fetch`, not only through `curl`.
+
+Do **not** cache the redirect target. The `303` carries `Cache-Control:
+no-store` and its `Location` embeds a manifestation version
+(`…99d7f858….0006.01/DOC_1`); always go through the CELEX URL.
+
+**1. The cache was keyed by pinpoint, so one authority was fetched once per
+citation of it.** `resolveCellarPreview`'s key included the locator, which meant
+"para. 62" and "para. 65" of one judgment were two full downloads of the same
+149KB document. Now split in two: documents are keyed by CELEX + language +
+Accept header (`documentKey`) and excerpts are cut out of them locally, so an
+authority cited twenty times in a brief is retrieved once. The excerpt cache
+remains, keyed as before — it is now a cache of work rather than of retrieval —
+and is bounded, which closes point 3 of `docs/DATA-FLOW.md` against itself.
+
+**2. That document cache is persistent, and revalidated on every use.**
+`api/src/document-store.ts` holds `{html, etag, lastModified, fetchedAt}` per
+document, in a directory outside the repository
+(`$XDG_CACHE_HOME/ibid/documents` by default; `IBID_CACHE_DIR` to place it,
+`IBID_CACHE_ENTRIES=0` to switch it off). The API server is a plain background
+process with no supervisor — restarting it is how it is deployed and how it is
+fixed — and before this, every restart threw away every document it held.
+
+There is deliberately **no TTL**. A published EU legal text does not change: an
+amended directive is a different instrument with its own CELEX, and a judgment is
+never rewritten. Expiring an entry after an arbitrary interval would discard a
+document that is still correct. Revalidation is the freshness mechanism instead,
+so the cache is never older than the request that just served it.
+
+Two things to keep hold of when touching this. A `304` has **no body**, so
+`looksLikeCellarDocument` must not run on it — it would reject every revalidated
+document as unrecognisable and send the reviewer to a link, having just been told
+by CELLAR that the text in hand is current. And a stored entry with no validator
+at all is served rather than re-downloaded, dated with the time it genuinely was
+last confirmed rather than with now; every real CELLAR response carries an
+`ETag`, so that path is for a store written by something else.
+
+**3. The pane states when each passage was last confirmed.** "Verified against
+EUR-Lex at 14:32", as a plain fact and not as a disclaimer — a revalidated cache
+is the official text with proof, not a copy with a caveat, and it should not be
+dressed as one. `verificationNote` (`addin/src/ui/citation-view.ts`) adds the
+date when the confirmation was not today, which is what keeps it honest for a
+passage served from a store with nothing left to revalidate against: rendered as
+"at 14:32" alone, last week's confirmation reads as this afternoon's.
+
+**4. The politeness interval is charged to lookups, not to attempts.** It was
+costing ~74% of a cold lookup. A wrong-`Accept` `404` costs ~165ms live, and the
+resolver was stacking a contrived 1,000ms in front of the retry that works — so
+most of the wait was the resolver's own format guessing, not CELLAR. Everything
+one lookup does now happens inside a single slot (`onTheWire`), and the next
+lookup waits a full interval after it. The rate of traffic CELLAR sees is
+unchanged; the delay is simply no longer multiplied by however many attempts one
+document needed. The queue is also genuinely serial now, where before it reserved
+the next slot *before* awaiting and so spaced starts while allowing two lookups
+to be in flight together. Requests to CELLAR are never parallelised.
+
+**5. The pane warms the cache at document open.** It already has every citation
+before the reviewer clicks anything — detection and short-form resolution run
+over the whole document locally at open — so `addin/src/ui/prefetch.ts`
+deduplicates to distinct authorities (with `Ibid.`/`supra` chains already
+resolved to what they point at) and retrieves them in reading order, in the
+background, one at a time. When the cursor lands on a footnote, whatever it cites
+goes to the front of the queue. Progress is stated plainly, including what could
+not be retrieved: `Retrieved 21 of 23 sources; 2 are not held by EUR-Lex and will
+open as a link.` Everything is cancelled when the document changes or the pane
+closes.
+
+The win here is starting earlier, not going faster. The request spacing is
+untouched and nothing is parallelised, because a burst of concurrent fetches is
+exactly the fingerprint anti-bot protection reacts to — see bug #3 under
+"Verified against the live EUR-Lex/CELLAR endpoint", which was that protection
+being triggered by a verification pass. The browser preview deliberately warms
+nothing: its sample citations are real, and firing live retrievals at whoever
+opens the demo page is not what the sample is for.
+
+**6. CELLAR answers two different `404`s, and telling them apart is worth more
+than either fallback chain.** This came out of checking the assumption that
+CELLAR `404`s for a language a document was not published in. Both messages
+arrive with an ordinary `404` status and only the body distinguishes them:
+
+```
+Resource [system 'celex' - id '62023CJ0639'] not found.
+None of the requests returned successfully a redirection. … [cellar identifier
+cellar:99d7f858-… does not hold a content datastream of the requested type]
+```
+
+The first means CELLAR has never heard of the identifier — no Accept header and
+no language will ever produce it. The second means the document exists and this
+rendition of it does not, which is exactly what the format and language chains
+are for. A citation CELLAR does not mirror used to cost four requests and three
+full seconds of interval on the way to the CURIA link; it now costs one request.
+Measured live end to end: **59ms**, against roughly four seconds before.
+
+Matched loosely, and an unrecognised `404` body keeps the old
+try-every-rendition behaviour — if the Publications Office rewords this, the cost
+is the four requests that were being paid anyway, never a document wrongly
+declared missing.
+
+**On the language loop, which prompted the check.** The assumption is correct and
+stays: `Accept-Language: gle` returns `404` for both a directive (32002L0058) and
+a judgment (62012CJ0293), because neither was published in Irish. The
+contradicting observation — `Accept-Language: mlt` returning a Maltese judgment
+with `200` — is CELLAR answering correctly rather than ignoring the header: CJEU
+judgments are translated into every official language *except* Irish, so Maltese
+genuinely exists for that document.
+
+What the check did establish is that for **case law** the `en`→`fr` fallback has
+never been observed to fire usefully. English exists for every judgment CELLAR
+mirrors — confirmed across 1962 (Van Gend en Loos), 1964 (Costa v ENEL) and 2014
+(Digital Rights Ireland) — so French was only ever reached for a document CELLAR
+does not hold at all, where it `404`s too and merely doubled the requests before
+the fallback link. Those are precisely the lookups the `NO_SUCH_DOCUMENT` check
+above now ends after one request, so the chain no longer has a case in which it
+costs anything, and it stays for legislation, where a French-only document is
+real. Removing it outright would have traded a real capability for a saving that
+fix 6 already delivers.
+
+Two side findings from the same sweep, neither acted on here. Format availability
+is a property of the document rather than of the language (`32002L0058` `404`s for
+`application/xhtml+xml` in both `eng` and `fra`), so the two dimensions are not
+independent — but the "no datastream" message is identical for a missing format
+and a missing language, so nothing can act on that without guessing. And a
+quality-ranked `Accept-Language: eng, fra;q=0.8` does work in a single request —
+but the response does not say which language it served (`Content-Language` comes
+back empty, and only the older `text/html` rendition names it, in
+`<meta name="DC.title" content="EUR-Lex - 32002L0058 - FR">`). Collapsing the
+chain that way would mean showing a French passage without being able to label it
+as French, which is the one thing the language handling exists to prevent. Item 7
+under "Recommended next implementation work" is the other half of this.
+
+**Also worth knowing:** Van Gend en Loos (`61962CJ0026`) *is* retrievable, as
+`text/html` in English, 21KB. This document previously recorded it as one CELLAR
+does not mirror. That was true when it was written — before the `text/html`
+fallback and the length-based arm of `looksLikeCellarDocument` existed — and is
+no longer.
+
+**Measured end to end after the change**, one judgment, real service:
+
+| | before | after |
+| --- | --- | --- |
+| First pinpoint of a judgment | ~1.5s + interval | 547ms |
+| Another pinpoint of the same judgment | another full fetch | 1,179ms (1,000ms of it the interval between lookups) |
+| The same pinpoint again | full fetch | 0ms |
+| First pinpoint after a restart | full fetch | 211ms |
+| A citation CELLAR does not hold | ~4s to the CURIA link | 59ms |
+
+`api/test/document-store.test.ts` covers the store; the revalidation, the two
+`404`s and the request spacing are in `api/test/resolver.test.ts`; the queue's
+ordering, promotion and cancellation are in `addin/test/prefetch.test.ts`, with
+the component wiring in `addin/test/App.test.tsx` — including an assertion on the
+exact key set a warming request puts on the wire, because warming happens without
+the reviewer asking and is therefore the path most worth pinning against a stray
+field.
+
+### The CELEX is derived; the ECLI is quoted — so ask CELLAR by both
+
+Reported from a real document: footnote 265 of the X/DSA decision cites *Order of the
+President of the General Court of 2 July 2024, Aylo Freesites LTD v Commission,
+ECLI:EU:T:2024:431, paragraph 112*, and the pane showed the CURIA fallback — "Open the
+official CURIA case record and inspect point 112" — instead of the paragraph. Telling a
+lawyer to go and look it up themselves is the work this tool exists to save them, so it is
+worth being exact about why it happened.
+
+Detection was entirely correct: `62024TO0511`, `documentType: 'order'`, the court taken
+from the ECLI rather than from the document's own `C‑511/24` (which is a slip in the
+source — an order of the *General* Court cannot be a `C‑` case), point 112 parsed. The
+fallback was correct too, given what it knew. What was wrong was the assumption underneath
+both: that a document CELLAR holds can be reached by the CELEX Ibid derives for it.
+
+`https://publications.europa.eu/resource/celex/62024TO0511` answers
+`Resource [system 'celex' - id '62024TO0511'] not found` — the identifier-unknown `404`, in
+every format and language. But
+`https://publications.europa.eu/resource/ecli/ECLI%3AEU%3AT%3A2024%3A431` answers `200`
+with 70KB of the actual order, whose paragraph 112 is anchored in the CURIA-native
+`NAME="point112"` convention `extractJudgmentPoint` already handles. CELLAR holds the
+document. It simply does not mint a CELEX for it.
+
+**The asymmetry is the point.** The CELEX is *derived* — sector letter from the document
+type, year from the case number, number from the case number — so it is Ibid's best guess
+at what CELLAR calls the document. The ECLI is quoted verbatim from the footnote and is the
+name the issuing court gave it. Where CELLAR says it has never heard of the derived CELEX,
+asking by the ECLI is not a guess at some other document; it is the same document under its
+own name.
+
+This is not one awkward citation. **Every** identifier the corpus run recorded as
+`unavailable` — all six, being recent orders of the President of the General Court and of
+the Vice-President of the Court, and a 2005 judgment — resolves through the ECLI path,
+confirmed live on 2026-08-21 end to end through the resolver. The `unavailable` column of
+`corpus-report.json` was measuring a gap in how Ibid asked, not a gap in what CELLAR holds.
+
+How it works (`loadCellarDocument`, `cellarTargets`, `probeEveryTarget`):
+
+- The CELEX is tried first and unchanged, so nothing that works today changes.
+- Only a `404` moves on to the ECLI. Any other status still fails immediately — a second
+  identifier does not fix a server failing for an unrelated reason, which is the rule the
+  rendition chain already follows, applied one level up.
+- The `NO_SUCH_DOCUMENT` check added in the pass above is what makes this cheap: an unknown
+  CELEX costs one request, not four, before the ECLI is tried.
+- Each identifier gets its own cache key (`celex:…` / `ecli:…`), so a document that resolved
+  by ECLI is revalidated by ECLI next time and never re-probes the CELEX that does not
+  exist.
+- `ecliUrl` builds the URL the same way `cellarUrl` does — fixed configured base plus
+  `encodeURIComponent` — and returns nothing, attempting no request, if the configured base
+  has no `/celex` segment to swap for `/ecli`. See the SSRF note in `docs/DATA-FLOW.md`.
+
+One thing this also fixed, which was a live bug in its own right: the preview's `url` was
+always built from the CELEX, so an ECLI-resolved document would have linked the reader to a
+URL that `404`s. `LoadedDocument` now carries the address that actually answered, and the
+preview links that.
+
+Live, through the full pipeline, on the reported footnote: point 112 in **824ms**, reading
+"Furthermore, the mere fact of being listed in the advertisement repository as a natural
+person does not necessarily make it possible to identify the nature of the activities…" —
+where it previously showed a link and no text at all.
+
+**Worth knowing for whatever comes next:** CURIA's own `liste.jsf` case-record page, which
+is what the fallback link points at, is now an Angular single-page application. Fetching it
+returns 130KB of shell with two `<noscript>` tags and no case data whatsoever — no case
+name, no case number, nothing. The link still works for a person in a browser, but the
+long-standing decision not to fetch from CURIA (see the Commission adapter's reasoning) has
+gone from "scraping search pages is unreliable" to "there is nothing there to scrape
+without running JavaScript". Anything that tries to widen retrieval should go through
+CELLAR, by whichever identifier, rather than at CURIA.
+
+### Known issue: `addin/test/App.test.tsx` intermittently hangs
+
+Found while running `npm run verify` for the retrieval work above, and **not caused by
+it** — reproduced on an unmodified checkout of `080791e` in a separate worktree, failing
+1 run in 6 with the identical signature. Recorded here because it makes `npm run verify`
+unreliable and the next person to hit it should not have to re-establish that it is old.
+
+What it looks like: the file stops after `following the cursor` completes and before
+`finding the footnote the cursor is actually in` starts, then sits there until the runner
+gives up, reporting `✖ test/App.test.tsx … 'test failed'` with no individual test having
+failed and no assertion error. Roughly one run in three on this machine at the time of
+writing, in that region of the file every time.
+
+What has been ruled out:
+
+- **Not caused by the cache warming or anything else in this pass** — it reproduces at
+  `080791e`, before any of it existed.
+- **Not parallel test files.** It happens with the two original test files, with three, and
+  when `App.test.tsx` is run entirely on its own.
+- **Not fixed by `--test-concurrency=1`.** That was tried and reverted rather than left in,
+  because a run still hung with it set and shipping it would have claimed a fix that is not
+  one.
+- **Not a `findBy*` timeout.** Those reject after a second with a readable error; this
+  produces neither.
+- **Not the main thread spinning, in either process.** Diagnostic reports were taken from
+  both (`--report-on-signal`, then SIGUSR2). The parent runner shows an empty JavaScript
+  stack and an active child `process` handle — it is idle, waiting on the worker. The
+  worker (`--test-isolation=process` gives each file its own) shows an empty JavaScript
+  stack too, with two live `timer` handles and libuv's `idle`/`prepare`/`check` set
+  active. Nothing is executing; the loop is alive and nothing is progressing.
+
+So: the worker is awaiting something that never settles, while timers keep its loop from
+exiting. The teardown between those two suites is where to look — `cleanup` unmounting the
+pane, against the Word stub's `remove()` deleting the `Office`/`Word` globals and handlers
+registered through `queueMicrotask`. Note that node:test runs the innermost `afterEach`
+first, so the stub's globals are removed *before* React unmounts the component that is
+still using them.
+
+One detail worth knowing before starting: the runner is invoked with `--test-timeout=0`,
+so a stuck `await` hangs indefinitely instead of failing. Passing a real `--test-timeout`
+would not fix anything, but it would turn this from a silent stall into a named failing
+test with a stack — which is most of the diagnosis. It is deliberately not set here,
+because that is a change to how every test in the repository fails and is the next
+person's call rather than a side effect of a retrieval-performance pass.
+
+Capture the report from the **child**, not the parent. Working that out took the longest:
+
+```bash
+cd addin
+NODE_OPTIONS="--report-on-signal --report-directory=/tmp/ibid-reports" \
+  TSX_TSCONFIG_PATH=./tsconfig.test.json \
+  node --import tsx --import ./test/setup-dom.ts --test test/App.test.tsx &
+# once it stalls, signal the worker rather than the runner:
+pkill -USR2 -P $!
+```
+
+Until it is fixed: re-run `npm run verify`. A run that completes is a real pass — the
+failure mode is a hang, never a wrong assertion, so it cannot turn a broken change into a
+green one.
+
 ### Previously blocked tooling — now fixed
 
 `npm run lint` used to fail before linting because every shim in
@@ -1099,11 +1407,11 @@ Then sideload `addin/manifest.xml` in Word and open the sample document. Select 
 
 1. Run the Word end-to-end validation above and fix Office.js compatibility/UI issues that appear.
 2. Add explicit Commission-family classification (competition, state aid, merger, infringement) from citation context, then route each family to the appropriate official register. The current generic Commission adapter is intentionally conservative.
-3. Extend the task-pane tests. The runner covers the presentation logic, the confirmation flow, and — since the `import.meta.env` fix below — the success state with each language outcome. The **loading** and **retrieval-error** states are still unexercised, as is the cursor-following code, which needs Word and has never been executed anywhere.
-4. Replace in-memory cache/rate limiting with shared, observable infrastructure before horizontal scaling.
+3. Extend the task-pane tests. The runner covers the presentation logic, the confirmation flow, the success state with each language outcome, the cursor-following code (through the Word stub), and the cache warming. The **retrieval-error** state is still unexercised.
+4. Replace the per-process document cache and rate limiting with shared, observable infrastructure before horizontal scaling. The store is behind a four-method `DocumentStore` interface (`api/src/document-store.ts`), so a shared backend is a third implementation of it rather than a change to the resolver.
 5. Broaden `documentTypeNear` in `shared/src/index.ts` if real documents surface more opinion/order phrasings than the current signal set (English "Opinion of [the] Advocate General" / "Order of the [General] Court", French "conclusions de l'avocat général" / "ordonnance"). Missing a signal is safe — it only causes an unnecessary fetch attempt that 404s and falls back to the link — but it is worth tightening once real client documents are seen.
 6. Fix the joined-case CELEX gap. Where an opinion or judgment covers joined cases, CELLAR can file the English under the **lead** case number only: `62013CC0613` 404s for English while `62013CC0609` serves it. Ibid derives one CELEX from the number it read, so it falls back to French for a document whose authentic English is one CELEX away. Rare (1 of 210 sampled) but the resolver already carries joined-case machinery, so this is a known pattern rather than a freak.
-7. Verify the served language rather than assuming it. `fetchCellarDocument` returns the language it *requested*, not the one it received. CELLAR honoured `Accept-Language` in all 207 documents tested — it 404s cleanly for an absent language — so nothing is mislabelled today, but the guarantee is CELLAR's behaviour and not a check Ibid performs. The documents carry fixed headers (`ARRÊT DE LA COUR` / `JUDGMENT OF THE COURT`, `CONCLUSIONS DE L'AVOCAT GÉNÉRAL` / `OPINION OF ADVOCATE GENERAL`) that make this cheap to assert.
+7. Verify the served language rather than assuming it. `loadCellarDocument` returns the language it *requested*, not the one it received. CELLAR honoured `Accept-Language` in all 207 documents tested — it 404s cleanly for an absent language — so nothing is mislabelled today, but the guarantee is CELLAR's behaviour and not a check Ibid performs. The documents carry fixed headers (`ARRÊT DE LA COUR` / `JUDGMENT OF THE COURT`, `CONCLUSIONS DE L'AVOCAT GÉNÉRAL` / `OPINION OF ADVOCATE GENERAL`) that make this cheap to assert.
 8. Clean up the legislation title heuristic in `resolveCellarPreview` (`api/src/index.ts`) — it currently surfaces the document's internal filename for at least the GDPR instead of a human title. Cosmetic; the excerpt text is unaffected, and `describeDocument` now supplies a usable name whenever extraction returns nothing at all.
 
 ### Resolved: post-2015 legislation citations
