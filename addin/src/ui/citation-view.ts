@@ -67,9 +67,9 @@ export function toReviewFootnotes(texts: readonly string[]): ReviewFootnote[] {
 /**
  * Footnotes a PDF conversion left behind in the body text.
  *
- * Converting a decision from PDF does not always produce a Word footnote. In the X/DSA
- * decision it produces 549 of them and leaves nine more as ordinary body paragraphs, each
- * opening with the number it had in the PDF, typed as superscript. Word has no footnote
+ * Converting a decision from PDF does not always produce a Word footnote. On the large real
+ * decision this was built against it produces 549 of them and leaves nine more as ordinary
+ * body paragraphs, each opening with the number it had in the PDF, typed as superscript. Word has no footnote
  * there to report and `Body.footnotes` has none to return, so the pane's list cannot hold
  * them and nothing that matches text against that list can ever name one — while on the page
  * they look exactly like every other footnote, and hold exactly the citations a reviewer is

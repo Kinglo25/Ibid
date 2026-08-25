@@ -15,14 +15,19 @@ corpus-report.json
 .ibid-cache/
 
 
-# The one sample that is real material rather than constructed: the Commission's published
-# DSA decision, 2.8MB of PDF and the .docx built from it. Kept locally — the corpus harness
-# and the manual Word checks both use it, and it is what the add-in actually meets at full
-# length — but not published here. It is public and yet names real parties, so it is not the
-# file to hand someone along with the source, and the three constructed samples beside it
-# cover every recognition path without naming anyone. See samples/ibid-demo-docx/README.md.
-samples/ibid-demo-docx/Commission_decision_X_DSA.pdf
-samples/ibid-demo-docx/Commission_decision_X_DSA.docx
+# The sample folder is an allow-list, not a deny-list. The constructed documents are named
+# here and everything else in it is local to the machine that put it there.
+#
+# That direction is the point. This is the folder a real document gets dropped into while
+# something is being checked against it, and a deny-list only ever excludes the files someone
+# thought to name. Whatever is tested here next is unpublished by default, and adding a
+# constructed sample is one deliberate line.
+samples/ibid-demo-docx/*
+!samples/ibid-demo-docx/README.md
+!samples/ibid-demo-docx/*.py
+!samples/ibid-demo-docx/EU_Data_Retention_Memo.docx
+!samples/ibid-demo-docx/eu-case-law-citation-test.docx
+!samples/ibid-demo-docx/back-reference-test.docx
 
 # Word lock files, written beside a document while it is open.
 ~$*

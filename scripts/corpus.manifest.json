@@ -1,7 +1,5 @@
 {
   "documents": [
-    { "id": "x-dsa-decision", "kind": "docx", "path": "samples/ibid-demo-docx/Commission_decision_X_DSA.docx",
-      "note": "A Commission decision converted from PDF. The reason this harness reads .docx at all: its footnotes arrive in three different shapes. Not in the repository - public but names real parties - so this entry is skipped unless the file has been rebuilt locally. See samples/ibid-demo-docx/README.md." },
     { "id": "data-retention-memo", "kind": "docx", "path": "samples/ibid-demo-docx/EU_Data_Retention_Memo.docx" },
 
     { "id": "ag-achmea", "kind": "cellar", "celex": "62016CC0284", "note": "Footnote-dense, modern bare-ECLI style." },

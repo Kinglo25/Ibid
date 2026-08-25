@@ -670,7 +670,7 @@ describe('finding the footnote the cursor is actually in', () => {
   });
 
   test('a citation Word has no footnote for is answered from the text selected', async () => {
-    // The X/DSA decision, converted from PDF: some footnote text is left inline in the body,
+    // A real decision converted from PDF: some footnote text is left inline in the body,
     // so Word reports the section, reports no reference mark, and the pane's list — 549
     // footnotes, none of them empty — holds no entry matching what is on screen. There is no
     // footnote here to find. The reviewer is still looking straight at a citation.
@@ -743,7 +743,7 @@ describe('finding the footnote the cursor is actually in', () => {
 /**
  * Footnotes a conversion rebuilt as an auto-numbered list.
  *
- * The third shape the X/DSA decision's footnotes arrive in. Fifty-three of them are body
+ * The third shape that decision's footnotes arrive in. Fifty-three of them are body
  * paragraphs whose number Word draws itself, so the paragraph's own text opens at "Judgment
  * of 31 May 2018, Groningen Seaports v. Commission…" and no reading of the body text can
  * find a number in it. It is also why the same decision shows two footnotes numbered 275:

@@ -118,7 +118,7 @@ function readZip(buffer, wanted) {
 const textOf = (xml) => [...xml.matchAll(/<w:t(?: [^>]*)?>([\s\S]*?)<\/w:t>/g)].map((m) => decodeEntities(m[1])).join('');
 
 /**
- * Every note a .docx holds, in all three shapes the X/DSA decision arrives in: Word's own
+ * Every note a .docx holds, in all three shapes a PDF-converted decision arrives in: Word's own
  * footnotes, body paragraphs opening with a typed superscript number, and body paragraphs
  * whose number Word draws from a list definition. The pane reads exactly these three, so
  * the corpus must too — measuring only the first would report a document as clean while

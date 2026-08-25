@@ -1697,7 +1697,7 @@ function resolveBackReferences(
  * "Reply to the Preliminary Findings, paragraph 47." is a capitalised name in front of a
  * pinpoint, which is exactly what a short-form citation looks like, and it is not one. It
  * points at a document in the case file. A Commission decision refers to its own file
- * constantly, so on a real one this shape does not merely appear, it dominates: on the DSA
+ * constantly, so on a real one this shape does not merely appear, it dominates: on the large
  * decision against X it accounted for 173 of 266 detections, 171 of them this same phrase,
  * each offered to the reviewer as an authority to go and identify.
  *

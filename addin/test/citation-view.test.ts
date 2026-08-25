@@ -185,7 +185,7 @@ describe('what the list shows, and what opens by itself', () => {
 /**
  * Footnotes the conversion did not convert.
  *
- * The decision this was built against holds 549 Word footnotes and nine more that a PDF
+ * The real decision this was built against holds 549 Word footnotes and nine more that a PDF
  * conversion left as body paragraphs, each opening with its PDF number typed as superscript.
  * Word has no footnote to report for those and the pane's list has none to match, so on the
  * page they look like every other footnote and to Ibid they did not exist at all.
@@ -224,7 +224,7 @@ describe('footnotes a PDF conversion left in the body text', () => {
   test('two notes carrying the same text are still two entries', () => {
     // Two of the nine repeat a source verbatim under different numbers. Keying them by text
     // would collapse them into one, and the second would vanish from the review.
-    const source = 'The Verge, https://www.theverge.com/2022/11/9/23450289/twitter-impersonators.';
+    const source = 'The Verge, https://www.theverge.com/2022/11/9/23450289/platform-impersonators.';
     const notes = inlineFootnotesInBody(`92 ${source}\r131 ${source}`);
     assert.deepEqual(notes.map((note) => note.number), [92, 131]);
     assert.equal(new Set(notes.map((note) => note.id)).size, 2, 'and they are told apart');

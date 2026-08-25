@@ -1072,7 +1072,7 @@ describe('regression — samples/ibid-demo-docx/back-reference-test.docx', () =>
  * References to documents, which wear the shape of a citation without being one.
  *
  * A capitalised name in front of a pinpoint is how a short-form citation looks, and it is
- * also how a Commission decision refers to its own case file. On the DSA decision against X
+ * also how a Commission decision refers to its own case file. On the real decision behind this
  * the second outnumbered the first: 173 of 266 detections, 171 of them the same phrase, each
  * one offered to the reviewer as an authority to go and identify.
  *
