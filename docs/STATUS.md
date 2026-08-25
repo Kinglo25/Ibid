@@ -28,7 +28,7 @@ Ibid is an EU-law Word add-in for lawyers. It identifies references in footnotes
 ## Development
 Run `npm run dev` from the repository root. This builds and starts the local resolver and Vite task-pane server. If port 4000 is occupied, use `IBID_API_PORT=4001 npm run dev` so both the API and Vite proxy use the same alternate port.
 
-Run `npm run verify` to lint, type-check the tests, run the 538 tests, and build.
+Run `npm run verify` to lint, type-check the tests, run the 542 tests, and build.
 
 The API server keeps the EU documents it retrieves in a cache directory outside the repository (`~/.cache/ibid/documents` by default) and prints the path it is using at startup. `IBID_CACHE_DIR` moves it; `IBID_CACHE_ENTRIES=0` switches it off. It holds public EU legal text only — nothing from the user's document ever reaches the server. See [DATA-FLOW.md](DATA-FLOW.md).
 

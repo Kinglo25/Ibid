@@ -65,12 +65,17 @@ export type SourcePreview = {
    * its place because that passage could not be found in the retrieved text. Absent where
    * the citation pinpointed nothing, so there was never a passage to find.
    *
+   * `'unpublished'` is the same fallback with the cause established: the Court published
+   * only part of this judgment, and the cited paragraph is one of the parts it withheld —
+   * which is a fact about the document rather than a failure of retrieval, and the reader
+   * should not be sent looking for a fault that is not there.
+   *
    * Every point-anchor convention this resolver knows was added after meeting a document
    * that used none of the ones already catalogued, so `'opening'` is a state it can go on
    * arriving in rather than a bug on its way to being finished. What must not happen is a
    * lawyer reading a judgment's catchwords under a heading naming paragraph 46.
    */
-  passage?: 'cited' | 'opening';
+  passage?: 'cited' | 'opening' | 'unpublished';
   /** The language `excerpt` is actually in. Absent where no document was retrieved. */
   language?: SourceLanguage;
   /**
@@ -482,7 +487,7 @@ function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly nu
  * `passage` is absent where the citation pinpointed nothing at all. Then the opening is
  * simply what there is to show, and there is nothing to admit.
  */
-type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' };
+type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' | 'unpublished' };
 
 /** The opening of the document, marked as the fallback it is. */
 function documentOpening(html: string, cited: boolean): Excerpt {
@@ -513,6 +518,36 @@ function extractLegislativeLocator(html: string, locator?: EuLookup['locator'], 
   return { excerpt: decodeHtml(articleHtml).slice(0, 6_000).trim(), passage: 'cited' };
 }
 
+/**
+ * Whether the Court published only part of this judgment.
+ *
+ * The General Court in particular publishes many judgments in extract, reproducing the
+ * paragraphs it "considers it appropriate to publish" and no others. The cited paragraph can
+ * then be entirely absent from a document that is complete, correct and the official text —
+ * Canon v Commission (T-609/19) carries 175 paragraphs numbered up to 339, and a decision
+ * citing its paragraph 435 is citing something EUR-Lex has never held.
+ *
+ * Worth telling apart from an ordinary miss because the two ask opposite things of the
+ * reader. "Could not be located" invites them to suspect the tool and go looking again;
+ * this is the Court's own editorial decision, and no amount of looking will turn it up.
+ *
+ * Two signals, either sufficient. The document usually says so outright in a closing note,
+ * in English or French. And the numbering says so structurally: where the highest paragraph
+ * number exceeds the count of paragraphs present, paragraphs are missing between them —
+ * true of Canon (175 of 339) and of Intel (619 of 1,647), false for a complete judgment,
+ * whose count and maximum agree.
+ *
+ * This only ever chooses the wording of an explanation for a passage already not found, so a
+ * wrong answer here costs a sentence and never a wrong passage.
+ */
+const EXTRACT_NOTE = /appropriate to publish are reproduced here|qu(?:'|\u2019)il estime opportun de publier/i;
+
+function isExtractJudgment(html: string): boolean {
+  if (EXTRACT_NOTE.test(html.replace(/<[^>]+>/g, ' '))) return true;
+  const numbered = [...html.matchAll(/id="point(\d+)"/g)].map((match) => Number(match[1]));
+  return numbered.length > 0 && Math.max(...numbered) > numbered.length;
+}
+
 function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
   const locator = lookup.locator;
   if (!locator || locator.kind !== 'point') return documentOpening(html, false);
@@ -523,7 +558,8 @@ function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
     const result = extractCitedRuns(html, pattern, cited);
     if (result) return { excerpt: result, passage: 'cited' };
   }
-  return documentOpening(html, true);
+  const opening = documentOpening(html, true);
+  return isExtractJudgment(html) ? { ...opening, passage: 'unpublished' } : opening;
 }
 
 /**

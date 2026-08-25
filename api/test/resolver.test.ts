@@ -1707,3 +1707,60 @@ describe('where an excerpt starts', () => {
     assert.match(preview.title, /^DIRECTIVE 2005\/29\/EC OF THE EUROPEAN PARLIAMENT/);
   });
 });
+
+/**
+ * The General Court publishes many judgments in extract, reproducing the paragraphs it
+ * "considers it appropriate to publish" and no others. Canon v Commission (T-609/19) carries
+ * 175 paragraphs numbered up to 339, so a real decision's footnote citing its
+ * paragraph 435 — points at something EUR-Lex has never held.
+ *
+ * The document is complete, correct and official. Telling that apart from an ordinary miss
+ * matters because the two ask opposite things of the reader: "could not be located" sends
+ * them looking again, and here there is nothing to find.
+ */
+describe('a judgment the Court published only in part', () => {
+  const extract = (body: string) => html(`<p class="coj-count" id="point1">1</p><p>First.</p>${body}`);
+
+  test('says the paragraph was never published, rather than blaming retrieval', async () => {
+    const { fetcher } = stubFetcher([extract(
+      '<p class="coj-count" id="point339">339</p><p>Last published paragraph.</p>'
+      + '<p>( 1 ) Only the paragraphs of the present judgment which the Court considers it appropriate to publish are reproduced here.</p>',
+    )]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 435 }, paragraphs: [435] }));
+    assert.equal(preview.passage, 'unpublished');
+  });
+
+  test('reads the gap in the numbering, for a document that does not say so outright', async () => {
+    // Intel (T-286/09) carries 619 paragraphs numbered up to 1,647. Where the highest number
+    // exceeds the count present, paragraphs are missing between them.
+    const { fetcher } = stubFetcher([extract('<p class="coj-count" id="point1647">1647</p><p>Last published paragraph.</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 900 }, paragraphs: [900] }));
+    assert.equal(preview.passage, 'unpublished');
+  });
+
+  test('does not claim it of a complete judgment whose paragraph simply was not found', async () => {
+    // Count and maximum agree, and there is no note: every paragraph the judgment has is
+    // here. A pinpoint that misses one of those is an ordinary miss, and must keep saying so.
+    const { fetcher } = stubFetcher([html(
+      '<p class="coj-count" id="point1">1</p><p>First.</p><p class="coj-count" id="point2">2</p><p>Second.</p>',
+    )]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 99 }, paragraphs: [99] }));
+    assert.equal(preview.passage, 'opening');
+  });
+
+  test('never overrides a passage that was found', async () => {
+    // The wording of an explanation is all this decides. A cited paragraph that is present is
+    // returned as cited, extract or not.
+    const { fetcher } = stubFetcher([extract(
+      '<p class="coj-count" id="point339">339</p><p>The cited paragraph, present after all.</p>'
+      + '<p>Only the paragraphs of the present judgment which the Court considers it appropriate to publish are reproduced here.</p>',
+    )]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 339 }, paragraphs: [339] }));
+    assert.equal(preview.passage, 'cited');
+    assert.match(preview.excerpt, /present after all/);
+  });
+});

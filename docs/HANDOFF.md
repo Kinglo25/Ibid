@@ -49,7 +49,6 @@ Ibid is a Word task-pane add-in for lawyers. It detects EU-law citations in Word
 | `samples/ibid-demo-docx/eu-case-law-citation-test.docx` | The 20 collected citation patterns; the document-context test case. Its footnotes are pinned as a fixture in `resolve-citations.test.ts` |
 | `samples/ibid-demo-docx/back-reference-test.docx` | Manual Word check for back-references; 22 footnotes, also pinned in `resolve-citations.test.ts`. Expected results per footnote are in that folder's README.md |
 | `samples/ibid-demo-docx/build-back-reference-test.py` | Regenerates that document. Not part of any build — python-docx cannot write real footnotes, so the OOXML is assembled by hand |
-| `samples/ibid-demo-docx/Commission_decision_X_DSA.docx` | **Not in the repository** — public but names real parties, so it is not distributed with the source. Rebuilt from the Commission's published PDF by `build-commission-decision.py`. The corpus harness skips it when absent, which costs that run its largest document (645 notes, 93 citations) |
 
 ## Current verification
 
@@ -814,7 +813,7 @@ One class that did have to go, found later against a real Commission decision: a
 to a document in the case file. `Reply to the Preliminary Findings, paragraph 47.` is a
 capitalised name in front of a pinpoint, which is the shape a short-form citation has, and
 the corpus of academic opinions above contains almost none of it — a decision refers to its
-own file in nearly every footnote, and on the DSA decision against X this produced 173 of
+own file in nearly every footnote, and on the large real decision behind this it produced 173 of
 266 detections, 171 of them that one phrase. `readsAsDocumentReference` excludes them on
 shape rather than by title: a definite article in front of the name, or a document noun at
 the end of it. It runs only in the unresolved scan, so it cannot turn a resolved citation
@@ -1274,7 +1273,7 @@ field.
 
 ### The CELEX is derived; the ECLI is quoted — so ask CELLAR by both
 
-Reported from a real document: footnote 265 of the X/DSA decision cites *Order of the
+Reported from a real document, whose footnote 265 cites *Order of the
 President of the General Court of 2 July 2024, Aylo Freesites LTD v Commission,
 ECLI:EU:T:2024:431, paragraph 112*, and the pane showed the CURIA fallback — "Open the
 official CURIA case record and inspect point 112" — instead of the paragraph. Telling a
@@ -1513,7 +1512,7 @@ which act is on screen; one lifted from a *reference* to another act would be th
 wrongly. Failing the check falls back to the name derived from the citation, which is what
 the reader wrote and always names the right act.
 
-**The excerpt started in the same place.** Confirmed in the pane, on the DSA decision: a
+**The excerpt started in the same place.** Confirmed in the pane, on a real decision: a
 regulation cited without a pinpoint showed `L_2004364EN.01000101.xml 9.12.2004 EN Official
 Journal of the European Union L 364/1 REGULATION (EC) No 2006/2004 …`, and a judgment showed
 its bare CELEX before its heading. `documentOpening` now starts at the document's own content
@@ -1544,8 +1543,7 @@ to rely on is not.
 
 ### Why a competition decision is a link and not a passage
 
-Asked of a real footnote in the DSA decision, which cites five Commission cases by number and
-paragraph:
+Asked of a real footnote citing five Commission cases by number and paragraph:
 
     See e.g., Case AT.40178 – CAR EMISSIONS, paragraph 223; Case M.8181 MERCK / SIGMA-ALDRICH,
     paragraph 473; Case M.7993 - ALTICE / PT PORTUGAL, paragraph 573; Case M.8228 -
@@ -1589,6 +1587,45 @@ link was a convenience being replaced, and for Commission decisions it is the on
 answer available. What could still be worth doing is making the link land on the case rather
 than on a search for it — but the register's URL shape cannot be confirmed from outside a
 browser, and a link that 404s is worse than one that searches.
+
+### A paragraph that was never published is not a retrieval failure
+
+A footnote of a real decision cites two judgments, and neither produced a passage. Both
+turned out to be right, and the pane was blaming itself for both.
+
+    See judgements of 18 May 2022, Canon v. Commission, T-609/19, EU:T:2022:299, paragraph 435
+    and the case-law cited; and of 17 December 2014, Pilkington Group and Others v Commission
+    (T-72/09, not published, EU:T:2014:1094, paragraphs 247 and 248 and the case-law cited).
+
+**Canon.** The document retrieves, and paragraph 435 is not in it. The General Court
+publishes many judgments in *extract*: 62019TJ0609 carries 175 paragraphs numbered up to 339,
+and closes by saying so — "Only the paragraphs of the present judgment which the Court
+considers it appropriate to publish are reproduced here." The Commission is citing a
+paragraph of the full judgment that EUR-Lex has never held. Intel is the same shape at
+another scale: 62009TJ0286 holds 619 paragraphs numbered up to 1,647.
+
+The pane said "could not be located in the retrieved text", which invites the reader to
+suspect the tool and look again when there is nothing to find. It now distinguishes the case
+— `passage: 'unpublished'` — and says the Court published only part of this judgment. The
+document in hand is complete, correct and official; it is simply not all of the judgment, and
+only the Court decides that.
+
+Detected two ways, either sufficient: the closing note, in English or French; and the
+numbering, where the highest paragraph number exceeding the count of paragraphs present means
+paragraphs are missing between them. The second is language-independent and catches Intel,
+which carries the note but not the `_EXT_` marker some extracts put in their anchor ids.
+This only ever chooses the wording of an explanation for a passage already not found, so a
+wrong answer costs a sentence and never a wrong passage.
+
+**Pilkington.** The footnote says "not published" itself, and CELLAR agrees: `62009TJ0072`
+and `ECLI:EU:T:2014:1094` both answer `404` with "does not hold a content datastream" rather
+than "Resource not found" — the record exists, no text rendition does, in either format. The
+CURIA link is the floor and is the correct answer.
+
+Worth keeping in mind when a citation shows no passage: three distinct causes now, and they
+are told apart. The identifier names nothing CELLAR holds (`NO_SUCH_DOCUMENT`, one request);
+the document exists but no text rendition does, as here; or the text exists and the cited
+paragraph was never published in it.
 
 ### Known issue: `addin/test/App.test.tsx` intermittently hangs
 

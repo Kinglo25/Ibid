@@ -12,8 +12,8 @@ type ReviewDocument = {
   title: string; excerpt: string; url: string; source: string;
   /** What the citation pinpointed, as the resolver labelled it: "Point 46", "Article 17(1)". */
   locator?: string;
-  /** Whether the excerpt is that passage, or the document's opening standing in for it. */
-  passage?: 'cited' | 'opening';
+  /** Whether the excerpt is that passage, the document's opening standing in for it, or the opening of a judgment the Court published only in part. */
+  passage?: 'cited' | 'opening' | 'unpublished';
   language?: 'en' | 'fr';
   translation?: { from: 'en' | 'fr'; officialUrl: string };
   /** When the resolver last confirmed this text against EUR-Lex, as an ISO timestamp. */
@@ -444,9 +444,19 @@ function VerificationNote({ document }: { document: ReviewDocument }) {
  * paragraph itself.
  */
 function ExcerptScopeNote({ document }: { document: ReviewDocument }) {
+  const what = document.locator ?? 'The cited passage';
+  // The Court published this judgment in extract, and the cited paragraph is one it kept
+  // back. Said differently from an ordinary miss on purpose: "could not be located" invites
+  // the reader to suspect the tool and look again, and here there is nothing to find. The
+  // document in hand is complete, correct, and the official text — it is simply not all of
+  // the judgment, and only the Court decides that.
+  if (document.passage === 'unpublished') return <p className="source-note">
+    {what} is not in the published text: the Court published only part of this judgment.
+    Below is the opening of what it did publish.
+  </p>;
   if (document.passage !== 'opening') return null;
   return <p className="source-note">
-    {document.locator ?? 'The cited passage'} could not be located in the retrieved text — this is
+    {what} could not be located in the retrieved text — this is
     the opening of the document, not the passage cited.
   </p>;
 }
@@ -501,7 +511,7 @@ export default function App() {
   /**
    * Text the reviewer selected that belongs to no footnote the pane holds.
    *
-   * On a decision converted from PDF this is not a rare corner. The conversion of the X/DSA
+   * On a decision converted from PDF this is not a rare corner. The conversion of the real
    * decision leaves some footnotes inline in the body: Word reports the parent body as the
    * section, reports no reference mark, and the pane's list — 549 footnotes, none empty —
    * simply has no entry whose text is the passage on screen, because Word does not consider
