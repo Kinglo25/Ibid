@@ -7,7 +7,7 @@ Manual Word checks. Sideload `addin/manifest.xml`, open a document, and use Refr
 | `EU_Data_Retention_Memo.docx` | All full citations, in French. Exercises detection, not resolution |
 | `eu-case-law-citation-test.docx` | The 20 collected citation patterns. Its footnotes are pinned as a fixture in `shared/test/resolve-citations.test.ts` |
 | `back-reference-test.docx` | `Ibid.`, `Id.`, `supra note n`, and the refusals around them |
-| `Commission_decision_X_DSA.docx` | Real published material at full length: 645 footnotes, 266 citations |
+| `Commission_decision_X_DSA.docx` | Real published material at full length: 645 footnotes, 266 citations. **Not in the repository** — see below |
 
 The first three are constructed: every identity in them is fictional, every authority
 public, so they can be used anywhere a client document could not. The fourth is different
@@ -20,6 +20,12 @@ share with an unrelated client.
 The Commission's DSA decision in cases DSA.100101–3, X (formerly Twitter), C(2025) 8630
 final of 5 December 2025. 181 pages, 645 footnotes. It exists here because the constructed
 samples are all short and tidy, and this is neither: it is what the add-in actually meets.
+
+**Not distributed with the source.** It is public, but it names real parties, and the three
+constructed samples beside it cover every recognition path without naming anyone — so this
+is the one file the repository leaves out rather than the one it leads with. Both it and the
+PDF it is built from are in `.gitignore`. Anyone who wants it downloads the Commission's
+published PDF and runs the script below; everything that depends on it degrades to a skip.
 
 **Built by `build-commission-decision.py` from `Commission_decision_X_DSA.pdf` — edit the
 script, not the .docx.**

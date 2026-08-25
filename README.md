@@ -68,7 +68,9 @@ folder and restart Word before looking anywhere else.
 
 Run `npm run verify` to lint, type-check the tests, run the full test suite, and build. It is the single command that establishes the tree is sound.
 
-Four sample documents sit in [samples/ibid-demo-docx/](samples/ibid-demo-docx/); their own README says what each is for. Three are constructed, covering detection, the collected citation patterns, and back-references — every identity in them is fictional and every authority public, so they can be used anywhere a client document could not. The fourth is a published Commission decision at full length, 645 footnotes, which is what the add-in actually meets; it is public but names real parties, so it is not a substitute for the fictional three.
+Three sample documents sit in [samples/ibid-demo-docx/](samples/ibid-demo-docx/); their own README says what each is for. All three are constructed, covering detection, the collected citation patterns, and back-references — every identity in them is fictional and every authority public, so they can be used anywhere a client document could not.
+
+A fourth is described in that README and is deliberately **not** in this repository: a published Commission decision at full length, 645 footnotes, which is what the add-in actually meets. It is public but names real parties, so it is not distributed with the source. The corpus harness and the manual Word checks skip it cleanly when it is absent; `build-commission-decision.py` rebuilds the `.docx` from the Commission's published PDF for anyone who wants it.
 
 The API defaults to port 4000. If it is already in use, start both the API and Vite proxy on another port with `IBID_API_PORT=4001 npm run dev`.
 
