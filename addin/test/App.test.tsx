@@ -288,6 +288,25 @@ describe('warming the sources at document open', () => {
     assert.equal(sent.context, undefined);
   });
 
+  test('and nothing but the identifiers where a joined case sends more than one', async () => {
+    // The key set above is the one an ordinary citation produces. A joined case carries the
+    // group's other CELEX identifiers as well, and that field is the whole of what it adds:
+    // a tenth identifier, not a tenth kind of thing. Asserted separately because
+    // `JSON.stringify` drops an absent field — the test above would go on passing whatever a
+    // joined-case lookup put on the wire.
+    const recorded = recordingFetch();
+    word = installWordStub(['Joined Cases C-293/12 Digital Rights Ireland and C-594/12 Seitlinger and Others, para. 65.']);
+    render(<App />);
+
+    await screen.findByText(/Retrieved/);
+    const sent = JSON.parse(decodeURIComponent(recorded.lookups[0].split('lookup=')[1]));
+    assert.deepEqual(Object.keys(sent).sort(), [
+      'alternativeCelexes', 'caseName', 'caseNumber', 'celex', 'documentType', 'locator', 'paragraphs', 'source', 'value',
+    ]);
+    assert.deepEqual(sent.alternativeCelexes, ['62012CJ0594']);
+    assert.equal(sent.context, undefined);
+  });
+
   test('one request at a time, never a burst', async () => {
     // A burst of concurrent fetches is the fingerprint anti-bot protection reacts to, and
     // being a well-behaved identifiable client is part of what this tool claims.

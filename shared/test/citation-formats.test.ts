@@ -220,3 +220,80 @@ describe('citation formats — messy footnotes', () => {
     assert.deepEqual(citation.pinpoint, { paragraphs: [40] });
   });
 });
+
+/**
+ * A joined judgment or opinion is one document, and CELLAR files it under one of its case
+ * numbers only. Measured live on 2026-08-25: `62012CJ0293` serves Digital Rights Ireland
+ * while `62012CJ0594` — the same judgment's second number — answers `Resource … not found`
+ * in both languages and both formats, and the same holds for Google France
+ * (`62008CJ0237`, `62008CJ0238`) and Verholen (`61990CJ0088`, `61990CJ0089`).
+ *
+ * So a group read as several authorities is not just several chips for one judgment. Every
+ * chip after the first derives an identifier naming no document at all, and the reviewer is
+ * shown a link instead of the passage they cited.
+ */
+describe('citation formats — a joined group whose members carry their own parties', () => {
+  test('is one authority, not one per member', () => {
+    const citation = one('Joined Cases C-293/12 Digital Rights Ireland and C-594/12 Seitlinger and Others, para. 65.');
+    assert.equal(citation.caseNumber, 'C-293/12');
+    assert.equal(citation.celex, '62012CJ0293');
+  });
+
+  test('reads the name of the member it takes its number from', () => {
+    // Not "Digital Rights Ireland and C-594/12 Seitlinger and Others": a name holding an
+    // identifier is a name no short form in the document can ever match, so the judgment
+    // stops resolving everywhere it is later referred to by name.
+    assert.equal(one('Joined Cases C-293/12 Digital Rights Ireland and C-594/12 Seitlinger and Others, para. 65.').caseName, 'Digital Rights Ireland');
+  });
+
+  test('carries the group\'s other numbers, so the document is reachable under any of them', () => {
+    assert.deepEqual(one('Joined Cases C-293/12 Digital Rights Ireland and C-594/12 Seitlinger, para. 65.').alternativeCelexes, ['62012CJ0594']);
+    // Stated in the other order, the number CELLAR does hold is the alternative rather than
+    // the derived one — which is the whole reason both are carried.
+    const reversed = one('Joined Cases C-594/12 Seitlinger and C-293/12 Digital Rights Ireland, para. 65.');
+    assert.equal(reversed.celex, '62012CJ0594');
+    assert.deepEqual(reversed.alternativeCelexes, ['62012CJ0293']);
+  });
+
+  test('derives the alternatives as the document type actually cited', () => {
+    // An opinion's alternatives are opinions. Deriving the judgment sector here would put a
+    // different document behind the same citation the moment the first identifier failed.
+    const citation = one('Opinion of Advocate General Wathelet in Joined Cases C-609/13 P and C-613/13 P Commission v Keramag, point 40.');
+    assert.equal(citation.celex, '62013CC0609');
+    assert.deepEqual(citation.alternativeCelexes, ['62013CC0613']);
+  });
+
+  test('reads the French form the same way', () => {
+    const citation = one('Affaires jointes C-293/12 Digital Rights Ireland et C-594/12 Seitlinger, point 65.');
+    assert.equal(citation.caseNumber, 'C-293/12');
+    assert.equal(citation.caseName, 'Digital Rights Ireland');
+  });
+
+  test('ends where the group ends, and never swallows the citation after it', () => {
+    const citations = detectCitations('Joined Cases C-293/12 and C-594/12 Digital Rights Ireland, para. 65; Case C-362/14 Schrems, para. 90.');
+    assert.deepEqual(citations.map((citation) => citation.caseNumber), ['C-293/12', 'C-362/14']);
+    assert.equal(citations[1].alternativeCelexes, undefined, 'an unrelated authority is not a member of the group before it');
+  });
+
+  test('a group that restates "Case" in front of a later member is still one group', () => {
+    // Verbatim from AG Poiares Maduro's opinion in the corpus (`ag-digital-rights`), and a
+    // real defect until now: it split into two, and the second derived `62006CJ0121`, which
+    // CELLAR has never heard of — while the group's lead serves the judgment.
+    const citation = one('Joined Cases C\u2011120/06 P and Case C-121/06 P FIAMM and Others v Council and Commission [2008] ECR I-6513, paragraph 123.');
+    assert.equal(citation.caseNumber, 'C-120/06 P');
+    assert.deepEqual(citation.alternativeCelexes, ['62006CJ0121']);
+  });
+
+  test('but a restated "Case" does not reach past the group into the next citation', () => {
+    // The keyword is only read where a connector has just been crossed. A pinpoint and a
+    // semicolon are neither, so the authority after them stays its own.
+    const citations = detectCitations('Joined Cases C-293/12 and C-594/12 Digital Rights Ireland, para. 65; Case C-362/14 Schrems, para. 90.');
+    assert.deepEqual(citations.map((citation) => citation.caseNumber), ['C-293/12', 'C-362/14']);
+  });
+
+  test('a case cited alone carries no alternatives to try', () => {
+    // Nothing in "Case C-594/12" says it is one of a group, and inventing a sibling would be
+    // inventing a document. It reaches the CURIA link, which is the honest floor.
+    assert.equal(one('Case C-594/12 Seitlinger and Others, para. 65.').alternativeCelexes, undefined);
+  });
+});

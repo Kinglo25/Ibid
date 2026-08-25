@@ -49,6 +49,7 @@ Ibid is a Word task-pane add-in for lawyers. It detects EU-law citations in Word
 | `samples/ibid-demo-docx/eu-case-law-citation-test.docx` | The 20 collected citation patterns; the document-context test case. Its footnotes are pinned as a fixture in `resolve-citations.test.ts` |
 | `samples/ibid-demo-docx/back-reference-test.docx` | Manual Word check for back-references; 22 footnotes, also pinned in `resolve-citations.test.ts`. Expected results per footnote are in that folder's README.md |
 | `samples/ibid-demo-docx/build-back-reference-test.py` | Regenerates that document. Not part of any build — python-docx cannot write real footnotes, so the OOXML is assembled by hand |
+| `samples/ibid-demo-docx/Commission_decision_X_DSA.docx` | **Not in the repository** — public but names real parties, so it is not distributed with the source. Rebuilt from the Commission's published PDF by `build-commission-decision.py`. The corpus harness skips it when absent, which costs that run its largest document (645 notes, 93 citations) |
 
 ## Current verification
 
@@ -657,6 +658,35 @@ French-only work alongside a 23-language one. The correct method is a set
 difference on `cdm:resource_legal_id_celex` at CELEX level, then verification
 against live CELLAR — which still leaves two false-positive classes, English
 simply being present, and English filed under a joined-case sibling.
+
+**Re-derived on 2026-08-25, after a reader said 207 sounded far too low. They were right
+about the corpus and the 207 is right about Ibid — the two count different things.** Three
+tiers, each measured by CELEX-level set difference on the SPARQL endpoint and then verified
+against live CELLAR on a spread sample, trying *both* Accept headers before believing a 404:
+
+| Scope | Count | What it is |
+| --- | --- | --- |
+| Base case-law documents Ibid can derive (`6yyyy(CJ\|CC\|CO\|TJ\|TO)nnnn`) | **209**, ~201 after live check | The figure this section records. Breakdown reproduced almost exactly: CO 114, TJ 37, TO 32, CJ 18, CC 8. |
+| All of sector 6 | 1,531 | Adds ~1,300 `_SUM` and `_INF` documents — the Official Journal's summary of a judgment and the notice announcing a case. |
+| Legislation Ibid can derive (`3yyyy[LRDH]nnnn`) | 15,303 | Effectively all pre-1973: 32 from the 1950s, 7,354 from the 1960s, 7,916 from the 1970s, one later. Mostly short agricultural and customs regulations (13,324 are `R`). |
+| Every sector, no shape filter | 65,773 | The number a reader is imagining when they say "way more". |
+
+The 207 survives because of what Ibid actually asks for. It derives base-document CELEXes
+only, so the `_SUM`/`_INF` mass is unreachable by construction and nobody pinpoint-cites a
+case notice. And the pre-1973 mass is untranslated because English was not an official
+language until the UK and Ireland acceded on 1 January 1973 — the instruments from that era
+that are still cited got English Special Edition translations, confirmed live for Regulation
+17/62, Regulation 1612/68, Regulation 1408/71, Directive 64/221 and Regulation 1251/70, all
+five of which serve English.
+
+What that leaves as a real, if narrow, gap: a practice touching 1960s–70s agricultural or
+customs law would meet French-only acts that Ibid shows in French with a label. That is the
+designed behaviour rather than a failure, and it is not the case-law translation question
+this section is about.
+
+The sample also re-found the joined-case false positive named above: `62013CC0613` appears
+French-only in the metadata and serves English on request, because CELLAR files it under the
+group's lead. One in 25 sampled, which is about the rate this section predicted.
 
 If translation is taken up: pre-translate the stable pre-2024 set, ship it as
 data, and drop the runtime dependency entirely. The refresh job must **re-check
@@ -1312,6 +1342,254 @@ gone from "scraping search pages is unreliable" to "there is nothing there to sc
 without running JavaScript". Anything that tries to widen retrieval should go through
 CELLAR, by whichever identifier, rather than at CURIA.
 
+### The joined-case gap is not a language gap
+
+This document used to say that CELLAR files the English of a joined case under the lead
+case number only, citing `62013CC0613` as 404ing for English while `62013CC0609` served it.
+**That is not what happens, and the real fault is larger.** Re-measured live on 2026-08-25:
+
+    62013CC0613  eng  application/xhtml+xml   200, 438,018 bytes
+    62013CC0613  eng  text/html               404  "does not hold a content datastream"
+
+Both are the same document. The earlier finding was one Accept header mistaken for the
+whole answer — and the resolver tries both formats within a language, so it was never
+affected. Asked for English, CELLAR serves the non-lead CELEX the *lead's* English file
+(the returned document's own internal name is `62013CC0609`).
+
+What is actually wrong is that for most joined groups CELLAR mints **no CELEX at all** for
+the members after the lead — not a missing language, a missing document, in every language
+and both formats:
+
+| Group | Lead | The rest |
+| --- | --- | --- |
+| Digital Rights Ireland, C-293/12 + C-594/12 | `62012CJ0293` serves | `62012CJ0594` — *Resource not found* |
+| Google France, C-236/08 to C-238/08 | `62008CJ0236` serves | `62008CJ0237`, `62008CJ0238` — *not found* |
+| Verholen, C-87/90 to C-89/90 | `61990CJ0087` serves | `61990CJ0088`, `61990CJ0089` — *not found* |
+| AG Keramag, C-609/13 P + C-613/13 P | `62013CC0609` serves | `62013CC0613` also serves — the exception |
+
+So the citation that reaches a dead identifier is one naming a non-lead member, and
+detection was generating those itself. `JOINED_GROUP` accepted only members separated by a
+bare connector, so the moment a group gave each member its own parties — an entirely
+ordinary shape —
+
+    Joined Cases C-293/12 Digital Rights Ireland and C-594/12 Seitlinger and Others
+
+the group ended at its first number and the rest became citations of their own. One judgment
+was reported as two authorities, the second deriving `62012CJ0594`, and both were named
+"Digital Rights Ireland and C-594/12 Seitlinger and Others" — a case name with an identifier
+inside it, which no short form later in the document can ever match.
+
+Three changes, in `shared/src/index.ts` and `api/src/index.ts`:
+
+- **A group member may carry its own party name.** The run between two numbers is now a
+  connector optionally preceded by a name, bounded to letters (so it can never contain
+  another case number or a pinpoint), at most six words, and excluding any word that starts
+  a citation of its own — so a group still ends where it really ends, and
+  `…, para. 65; Case C-362/14 Schrems` is untouched.
+- **The word connectors and the range dash are kept apart.** Allowed together, a name could
+  run on into the hyphen of the number after it: `C-293/12 and C-594/12` then read its second
+  member as the name "C" plus the connector "-", and the group ended mid-identifier. A dash
+  joins two numbers directly and never follows a name.
+- **Every member is carried as an alternative identifier.** A citation now reports
+  `alternativeCelexes`, and the resolver tries them as CELLAR targets *after* the CELEX and
+  the ECLI — so a footnote stating the group's numbers in the other order still reaches the
+  document. They are derived from the same document type as the citation itself, so an
+  opinion's alternatives are opinions; the resolver checks each against the CELEX shape
+  before spending a request on it.
+
+Live, through the full pipeline, on a group written in the order CELLAR does not file under:
+
+    Joined Cases C-594/12 Seitlinger and Others and C-293/12 Digital Rights Ireland, para. 65.
+      -> 909ms, paragraph 65 of the judgment, linked to 62012CJ0293
+
+Before this it derived `62012CJ0594`, was told no such resource exists, and showed a CURIA
+link with no text.
+
+**Found by asking what the corpus actually contains**, after the above was already written.
+The corpus holds 22 joined-group mentions across its 1,502 notes, and the shape the fix was
+built for — each member carrying its own parties — occurs in **none** of them. What it does
+contain is a group that restates the keyword: AG Poiares Maduro's "Joined Cases C‑120/06 P
+and Case C-121/06 P FIAMM and Others v Council and Commission". That split into two
+citations, and the second derived `62006CJ0121` — live, an identifier CELLAR has never heard
+of, while the lead `62006CJ0120` serves the judgment. A restated `Case` is now read as part
+of the group, but only where a connector has just been crossed, so it cannot reach past a
+pinpoint and a semicolon into the citation after it.
+
+Three more groups in the corpus turn out to sit on the same CELLAR behaviour, all confirmed
+live: `62011CJ0014`, `62001CJ0138` and `62001CJ0139` do not exist, while their leads
+`62010CJ0628` and `62000CJ0465` serve. Those groups already collapsed correctly, so nothing
+was broken for them — they now carry the alternatives as insurance rather than as a fix.
+
+**The corpus did not find any of this, and could not have.** Its three outcomes are `missed`
+(a citation in the text that detection did not report), `wrong-source` (an identifier
+belonging to a different document) and `unavailable`. A split group produces an *extra*
+citation, not a missing one; its dead identifier names no document rather than the wrong one.
+The defect fell between all three categories. Worth remembering before treating a clean
+corpus run as coverage: it is a strong check on the things it measures and silent on the
+rest.
+
+Fixing it did surface one harness bug, now fixed. `missedIn` in `scripts/corpus.mjs` read
+`citation.caseNumbers` to account for the members of a collapsed group — a field that has
+never existed on `CitationMatch`, so it silently did nothing. It went unnoticed because the
+loose net only sees a number the word "Case" precedes, which no ordinary group continuation
+has. The moment a group with a restated keyword collapsed correctly, the harness called it a
+missed citation. Citations now carry `joinedCaseNumbers` — the numbers read from the text, as
+against the identifiers derived from them — and the harness reads that.
+
+**What is still not reachable**, deliberately: a non-lead number cited entirely alone, with
+no group anywhere in the footnote and no ECLI — `Case C-594/12 Seitlinger and Others, para.
+65`. Nothing in that text says it is one of a group, and inventing a sibling would be
+inventing a document. It falls to the CURIA link, which is the honest floor. Resolving it
+would mean asking CELLAR which CELEX carries that case number, which is a SPARQL query and a
+different piece of work.
+
+### Reading the language off the document
+
+`loadCellarDocument` used to report the language it *asked* for. CELLAR has honoured
+`Accept-Language` in every document tested, so nothing was mislabelled — but that is
+CELLAR's behaviour, not a property of this service, and the label under an excerpt is a
+statement to a lawyer about which text they are reading. It is also what decides whether a
+passage is offered to the translator at all: a French passage recorded as English is shown
+unlabelled, untranslated, and as though the Court had written it that way.
+
+`languageOf` in `api/src/index.ts` now reads it off the document, and every path that
+produces a retrieved document goes through it — including the two that serve a stored copy,
+since the store is keyed by the language *requested* and would otherwise label a cache hit
+differently from the identical fresh bytes.
+
+What the two CELLAR eras give you, all confirmed live on 2026-08-25:
+
+- **Classic `text/html`** declares it outright: `<meta name="DC.language" content="FR">` and
+  `<html lang="FR">`. Definitive, and checked first.
+- **Modern `application/xhtml+xml`** declares nothing whatsoever. No language attribute
+  anywhere in the markup, and a `Content-Language` response header that is *present and
+  empty*. Its language comes from the heading every such document opens with — `JUDGMENT OF
+  THE COURT` against `ARRÊT DE LA COUR`, `OPINION OF ADVOCATE GENERAL` against `CONCLUSIONS
+  DE L'AVOCAT GÉNÉRAL`, the order forms of both — and for legislation from the Official
+  Journal line plus the language code in the internal filename (`L_2016119EN.01000101.xml`).
+
+Accented characters are matched as the character or either entity spelling; only the opening
+20,000 characters are read, so a heading quoted inside a judgment cannot outvote the one at
+its head; and nothing recognised — *or both recognised* — returns `undefined`, leaving the
+requested language standing. This can correct a label; it cannot invent one.
+
+Validated live across both eras, both languages and every document type Ibid retrieves —
+judgment (2014 and 2002), AG opinion, regulation, directive. **Ten of ten agreed with what
+was requested**, which is the result that matters: the guard is silent on real traffic, so a
+correction is evidence of something genuinely wrong rather than noise.
+
+### The title line, and the letters underneath it
+
+Both found by asking a plain question — *is this fit to put in front of a client?* — and
+looking at what the pane would actually display, rather than at whether the tests pass.
+
+**The title was the document's internal filename.** This list called it cosmetic. It is the
+first line a lawyer reads, and on the most cited instrument in EU law it read:
+
+    L_2016119EN.01000101.xml 4.5.2016 EN
+
+The old rule took the opening 260 characters and cut at "Official Journal". That assumed the
+title precedes the Journal reference — true of the classic rendition, and exactly backwards
+for the modern one, where the act's title *follows* it. The ePrivacy directive fared no
+better, running 200 characters of `EUR-Lex - 32002L0058 - EN Avis juridique important |
+32002L0058 Directive 2002/58/EC of…` into one line.
+
+`actTitle` now anchors on the title itself — the act word and its number, which is where
+every such title begins — and cuts at whatever ends it: the Journal reference, the EEA
+relevance note, or the enacting formula. Two things had to be got right and neither was
+guessable:
+
+- **The enacting formula must be matched in full.** An act's own title reads "OF THE EUROPEAN
+  PARLIAMENT AND OF THE COUNCIL"; the recitals begin with the same institutions in the other
+  order. Cutting at a bare "THE EUROPEAN PARLIAMENT" truncated every co-decided act to
+  `REGULATION (EU) 2016/679 OF`.
+- **The year is matched at two digits or four.** An act from before 2000 states it short —
+  `Directive 95/46/EC` against CELEX `31995L0046` — and comparing against the four-digit
+  CELEX year silently rejected every one of them.
+
+The number it finds is then checked against the CELEX actually fetched, in both conventions
+(a directive is year/number, a pre-2015 regulation number/year). A title is a claim about
+which act is on screen; one lifted from a *reference* to another act would be that claim made
+wrongly. Failing the check falls back to the name derived from the citation, which is what
+the reader wrote and always names the right act.
+
+**The excerpt started in the same place.** Confirmed in the pane, on the DSA decision: a
+regulation cited without a pinpoint showed `L_2004364EN.01000101.xml 9.12.2004 EN Official
+Journal of the European Union L 364/1 REGULATION (EC) No 2006/2004 …`, and a judgment showed
+its bare CELEX before its heading. `documentOpening` now starts at the document's own content
+— the heading of a judgment, opinion or order, or an act's designation and number — anchored
+on what the content begins with rather than on a list of preambles to strip, because the
+preambles differ by era and language and the content does not. Bounded to the first 1,200
+characters: failing to recognise an opening costs nothing, and must never skip past a passage.
+
+**And the title had to be capped.** The pane renders it as the card's link, unwrapped, and an
+act's real title names every act it amends — Directive 2005/29/EC states its own in 400
+characters. Cut at 200 on a word boundary with an ellipsis; the whole of it is one click away
+in the source.
+
+**And the accented letters were not being decoded.** `NAMED_ENTITIES` held six entries —
+`nbsp`, `amp`, `quot`, `apos`, `lt`, `gt` — so the classic rendition's accents reached the
+pane as source text: `du Parlement europ&eacute;en et du Conseil`. French is precisely the
+case where the reader has no English to fall back on, and a French client memo is already in
+`samples/`. The table now carries the Latin-1 letters and the common marks.
+
+Matched **case-sensitively**, which was a live bug in the old lookup rather than a
+precaution: it folded the entity name to lower case first, and the cached corpus contains
+`&Ouml;`/`&ouml;`, `&Uuml;`/`&uuml;` and `&Oacute;`/`&oacute;`. Had the accented letters been
+in the table under the old lookup, `ARR&Ecirc;T DE LA COUR` would have rendered as
+`ARRêT DE LA COUR` — and that heading is also what `languageOf` reads a document's language
+from. An unrecognised name is still left exactly as written, for the reason already recorded:
+a visible `&sect;` is a blemish, a silently dropped character in a passage a lawyer is about
+to rely on is not.
+
+### Why a competition decision is a link and not a passage
+
+Asked of a real footnote in the DSA decision, which cites five Commission cases by number and
+paragraph:
+
+    See e.g., Case AT.40178 – CAR EMISSIONS, paragraph 223; Case M.8181 MERCK / SIGMA-ALDRICH,
+    paragraph 473; Case M.7993 - ALTICE / PT PORTUGAL, paragraph 573; Case M.8228 -
+    FACEBOOK / WHATSAPP, paragraph 97…
+
+Every one of them resolves to a case-register link and no text. The resolver's comment said
+there is "no equivalent machine-fetchable mirror". Measured on 2026-08-25, that is right, and
+the detail matters more than the conclusion.
+
+**They do have CELEX identifiers.** Found through CELLAR's public SPARQL endpoint
+(`https://publications.europa.eu/webapi/rdf/sparql`, no registration), which is worth knowing
+about on its own:
+
+| Cited | CELEX | What CELLAR actually serves |
+| --- | --- | --- |
+| AT.40178 | `52021AT40178` | Opinion of the Advisory Committee on a *draft* decision, 6.3KB |
+| M.8181 | `52022M8181` | Opinion of the Advisory Committee on mergers, 5.9KB |
+| M.8228 | `52017M8228` | Opinion of the Advisory Committee, 4.8KB |
+| M.4994 | `32008M4994` | An OJ non-opposition notice, 2.8KB — **for a different case** |
+
+None is the decision. They are the procedural documents the Official Journal prints *about*
+the decision, and their highest numbered marker is 2, against footnote 529's paragraphs 223,
+473, 573 and 97. The Journal notice says so itself: "The full text of the decision … will be
+available from the Europa competition website."
+
+**And the last row is the reason not to reach for these.** The document CELLAR serves under
+`32008M4994` never mentions M.4994. It is a 980-character notice about Case COMP/M.5050 —
+Eaton/Moeller, and it states its own document number as `32008M5050`. A resolver that derived
+a CELEX from a merger number and fetched it would have put an unrelated merger on screen under
+the citation the reviewer wrote — a wrong source, presented with every appearance of being
+right, which is the one outcome this project holds must stay at zero.
+
+**The full text is not addressable.** The decision PDF's filename carries an internal document
+id (`m8181_2986_3.pdf`) that no rule derives from the case number, and
+`competition-cases.ec.europa.eu` serves the same 57KB Angular shell for every path — case
+pages, invented paths and API-shaped paths alike — so there is nothing to read the id from
+without running JavaScript. This is the same wall CURIA's `liste.jsf` turned into.
+
+So the link is the floor here in a stronger sense than for case law: for CJEU citations the
+link was a convenience being replaced, and for Commission decisions it is the only honest
+answer available. What could still be worth doing is making the link land on the case rather
+than on a search for it — but the register's URL shape cannot be confirmed from outside a
+browser, and a link that 404s is worse than one that searches.
+
 ### Known issue: `addin/test/App.test.tsx` intermittently hangs
 
 Found while running `npm run verify` for the retrieval work above, and **not caused by
@@ -1434,13 +1712,13 @@ Then sideload `addin/manifest.xml` in Word and open the sample document. Select 
 ## Recommended next implementation work
 
 1. Run the Word end-to-end validation above and fix Office.js compatibility/UI issues that appear.
-2. Add explicit Commission-family classification (competition, state aid, merger, infringement) from citation context, then route each family to the appropriate official register. The current generic Commission adapter is intentionally conservative.
+2. Add explicit Commission-family classification (competition, state aid, merger, infringement) from citation context, then route each family to the appropriate official register. The current generic Commission adapter is intentionally conservative. **Note before starting: routing will not get you the decision text.** See "Why a competition decision is a link and not a passage" below — that was measured, and the answer changes what this item is worth.
 3. Extend the task-pane tests. The runner covers the presentation logic, the confirmation flow, the success state with each language outcome, the cursor-following code (through the Word stub), and the cache warming. The **retrieval-error** state is still unexercised.
 4. Replace the per-process document cache and rate limiting with shared, observable infrastructure before horizontal scaling. The store is behind a four-method `DocumentStore` interface (`api/src/document-store.ts`), so a shared backend is a third implementation of it rather than a change to the resolver.
 5. Broaden `documentTypeNear` in `shared/src/index.ts` if real documents surface more opinion/order phrasings than the current signal set (English "Opinion of [the] Advocate General" / "Order of the [General] Court", French "conclusions de l'avocat général" / "ordonnance"). Missing a signal is safe — it only causes an unnecessary fetch attempt that 404s and falls back to the link — but it is worth tightening once real client documents are seen.
-6. Fix the joined-case CELEX gap. Where an opinion or judgment covers joined cases, CELLAR can file the English under the **lead** case number only: `62013CC0613` 404s for English while `62013CC0609` serves it. Ibid derives one CELEX from the number it read, so it falls back to French for a document whose authentic English is one CELEX away. Rare (1 of 210 sampled) but the resolver already carries joined-case machinery, so this is a known pattern rather than a freak.
-7. Verify the served language rather than assuming it. `loadCellarDocument` returns the language it *requested*, not the one it received. CELLAR honoured `Accept-Language` in all 207 documents tested — it 404s cleanly for an absent language — so nothing is mislabelled today, but the guarantee is CELLAR's behaviour and not a check Ibid performs. The documents carry fixed headers (`ARRÊT DE LA COUR` / `JUDGMENT OF THE COURT`, `CONCLUSIONS DE L'AVOCAT GÉNÉRAL` / `OPINION OF ADVOCATE GENERAL`) that make this cheap to assert.
-8. Clean up the legislation title heuristic in `resolveCellarPreview` (`api/src/index.ts`) — it currently surfaces the document's internal filename for at least the GDPR instead of a human title. Cosmetic; the excerpt text is unaffected, and `describeDocument` now supplies a usable name whenever extraction returns nothing at all.
+6. ~~Fix the joined-case CELEX gap.~~ **Done, and the diagnosis in this list was wrong** — see "The joined-case gap is not a language gap" below.
+7. ~~Verify the served language rather than assuming it.~~ **Done** — see "Reading the language off the document" below.
+8. ~~Clean up the legislation title heuristic.~~ **Done, and it was not cosmetic** — see "The title line, and the letters underneath it" below.
 
 ### Resolved: post-2015 legislation citations
 

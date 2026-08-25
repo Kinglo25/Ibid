@@ -117,7 +117,9 @@ function missedIn(notes, detected) {
       for (const value of [citation.value, citation.ecli, citation.caseNumber]) {
         if (value) accounted.add(identifier(value));
       }
-      for (const value of citation.caseNumbers ?? []) accounted.add(identifier(value));
+      // A collapsed joined group is one citation covering several numbers; every one of them
+      // is accounted for, or the loose net calls the group's own members missed citations.
+      for (const value of citation.joinedCaseNumbers ?? []) accounted.add(identifier(value));
     }
     for (const pattern of LOOSE) {
       for (const hit of text.matchAll(pattern)) {

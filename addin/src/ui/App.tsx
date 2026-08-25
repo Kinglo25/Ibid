@@ -355,6 +355,9 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
 function lookupFor(citation: CitationContext) {
   return {
     source: citation.source, value: citation.value, celex: citation.celex, ecli: citation.ecli,
+    // The other numbers a joined judgment may be filed under. Identifiers the document
+    // itself stated, never anything read out of it — see `docs/DATA-FLOW.md`.
+    alternativeCelexes: citation.alternativeCelexes,
     caseNumber: citation.caseNumber, caseName: citation.caseName,
     documentType: citation.documentType, locator: citation.locator,
     // Every paragraph the footnote names, not just the one retrieval anchors on: a citation

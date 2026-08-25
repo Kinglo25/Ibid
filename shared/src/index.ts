@@ -80,6 +80,28 @@ export type CitationMatch = {
   source: EuSource;
   status: CitationStatus;
   celex?: string;
+  /**
+   * Other CELEX identifiers naming the same document, to be tried where `celex` turns out
+   * to name nothing CELLAR holds.
+   *
+   * A joined judgment or opinion is one document filed under one of its case numbers, and
+   * which one is not derivable — CELLAR holds `62012CJ0293` and has never heard of
+   * `62012CJ0594`, though the judgment covers both cases. So where a footnote states the
+   * group, every member's CELEX is carried, and the reviewer reads the passage whichever
+   * number the drafter happened to put first. These name the *same* document, not a related
+   * one: nothing here can substitute another authority for the one cited.
+   */
+  alternativeCelexes?: string[];
+  /**
+   * The group's other case numbers, where this citation is a joined case — the fact read
+   * from the text, as against the identifiers derived from it in `alternativeCelexes`.
+   *
+   * A collapsed group reports one citation covering several numbers, so anything counting
+   * what a document cites needs to know which numbers this one accounts for. Without it the
+   * corpus harness reads `C-121/06 P` in the text, finds no citation carrying it, and calls
+   * a correctly collapsed group a missed citation.
+   */
+  joinedCaseNumbers?: string[];
   ecli?: string;
   caseNumber?: string;
   caseName?: string;
@@ -301,8 +323,54 @@ const CASE_NUMBER_INLINE = String.raw`\b[CT]${CASE_HYPHENS}?\d{1,4}\/\d{2}(?!\d)
 // authorities, leaving any `Ibid.` after them ambiguous between a case and its own
 // sibling. Found in real Advocate General opinions; the same defect as the parenthetical
 // form, in the spelling that carries no shared ECLI to fall back on.
+/**
+ * The two ways a group joins one member to the next, kept apart because only one of them
+ * can follow a party name. A range written as a bare dash — "C-236/08–C-238/08" — joins two
+ * numbers directly and nothing else, whereas a word connector is what a name is followed by.
+ * Allowed together, the dash lets a name run on into the hyphen of the number after it: the
+ * group "C-293/12 and C-594/12" then reads its second member as the name "C" plus the
+ * connector "-", and ends mid-identifier.
+ */
+const GROUP_WORD_CONNECTOR = String.raw`\s*(?:,|and|et|to|à)\s*`;
+const GROUP_RANGE_CONNECTOR = String.raw`\s*[-–]\s*`;
+
+/**
+ * The party name a member of a joined-cases group may carry before the connector to the
+ * next one: "Joined Cases C-293/12 Digital Rights Ireland and C-594/12 Seitlinger and
+ * Others" is one judgment, written the way the Court and its Advocates General routinely
+ * write it when the members have different parties.
+ *
+ * Without this the group ends at its first number and every later member is reported as its
+ * own authority — and each one then derives a CELEX naming no document at all, because
+ * CELLAR files a joined judgment under its lead case number alone. Measured live on
+ * 2026-08-25: `62012CJ0594` (Digital Rights Ireland's second number), `62008CJ0237` and
+ * `62008CJ0238` (Google France), and `61990CJ0088` and `61990CJ0089` (Verholen) each answer
+ * `Resource [system 'celex' - id '…'] not found` in both languages and both formats, while
+ * their groups' lead numbers serve the judgment normally.
+ *
+ * Bounded on every side that could let a group swallow the citation after it: letters only,
+ * so it can never contain another case number or a pinpoint; at most six words; and no word
+ * that starts a citation of its own. "…C-594/12 Seitlinger and Others, para. 65; Case
+ * C-362/14 Schrems" therefore ends where the group really ends.
+ */
+const GROUP_MEMBER_NAME = String.raw`(?:\s+(?!(?:cases?|affaires?|jointes?|see|voir|cf|judgments?|orders?|opinions?|arr[êe]ts?|ordonnances?|conclusions|paras?|paragraphs?|points?|recitals?)\b)[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’&.-]*){1,6}`;
+const GROUP_SEPARATOR = String.raw`(?:(?:${GROUP_MEMBER_NAME})?${GROUP_WORD_CONNECTOR}|${GROUP_RANGE_CONNECTOR})`;
+
+/**
+ * The "Case" a group sometimes restates in front of its own later members: AG Poiares
+ * Maduro's opinion in Digital Rights writes "Joined Cases C‑120/06 P and Case C-121/06 P
+ * FIAMM and Others v Council and Commission", which is one judgment saying the word twice.
+ *
+ * Read only where a connector has just been crossed, which is what keeps it from reaching
+ * into the citation *after* a group: "…, para. 65; Case C-362/14 Schrems" puts a pinpoint
+ * and a semicolon in the way, and neither is a connector. Without this the group ends at its
+ * first member and the second derives `62006CJ0121` — confirmed live on 2026-08-25 to be an
+ * identifier CELLAR has never heard of, while the group's lead `62006CJ0120` serves the
+ * judgment.
+ */
+const GROUP_RESTATED_KEYWORD = String.raw`(?:(?:joined\s+)?(?:cases?|affaires?(?:\s+jointes?)?)\s+)?`;
 const JOINED_GROUP = new RegExp(
-  String.raw`\b(?:joined\s+cases?|affaires?\s+jointes?)\s+((?:${CASE_NUMBER_INLINE}(?:\s*(?:,|and|et|to|à|-|–)\s*)?)+)`,
+  String.raw`\b(?:joined\s+cases?|affaires?\s+jointes?)\s+((?:${CASE_NUMBER_INLINE}(?:${GROUP_SEPARATOR}${GROUP_RESTATED_KEYWORD})?)+)`,
   'gi',
 );
 
@@ -562,7 +630,17 @@ function caseNameAfter(text: string, endIndex: number, segmentEnd: number): stri
   // Court Reports reference immediately after the name ("Portakabin [2010] ECR I-6963"),
   // and swallowing it into the name registers the case under a key no later short form can
   // match. Every case name in a pre-2012 document was affected.
-  const candidate = tidyCaseName(after.split(/[,;([]/)[0] ?? '');
+  //
+  // A case number ends the name for the same reason, and the trailing connector left in
+  // front of it goes with it: in a group whose members each carry their own parties —
+  // "C-293/12 Digital Rights Ireland and C-594/12 Seitlinger and Others" — the text after
+  // the first number runs straight into the next one with no punctuation between them, and
+  // taking it whole registered the judgment as "Digital Rights Ireland and C-594/12
+  // Seitlinger and Others". A name holding an identifier is a name no short form in the
+  // document can ever match, so the case goes unresolvable everywhere it is referred to
+  // again.
+  const untilNextNumber = after.split(new RegExp(CASE_NUMBER_INLINE, 'i'))[0] ?? '';
+  const candidate = tidyCaseName(untilNextNumber.split(/[,;([]/)[0]?.replace(/\s+(?:and|et|&|to|à)\s*$/i, '') ?? '');
   return looksLikeCaseName(candidate) ? candidate : undefined;
 }
 
@@ -652,6 +730,44 @@ export function detectCitations(text: string): CitationMatch[] {
   const representedCaseNumbers = new Set<string>();
   const caseNumberPattern = new RegExp(CASE_NUMBER_SOURCE, 'gi');
 
+  // "Joined Cases C-293/12 and C-594/12" is one judgment cited under several numbers, not
+  // several authorities. The ECLI scan below already collapses the group whenever an ECLI
+  // follows it, which hid this: with no ECLI, every number in the group became its own
+  // citation, so the reviewer saw several chips for one judgment and each derived a CELEX
+  // that need not name any document.
+  //
+  // Read before anything else because two later scans need what it finds. The numbers after
+  // the first are suppressed as citations of their own, and — since CELLAR files the
+  // document under exactly one of them and no rule says which — each is kept against the
+  // group's lead as another name the same document may answer to.
+  const joinedSiblings = new Map<string, string[]>();
+  for (const group of text.matchAll(JOINED_GROUP)) {
+    const numbers = [...group[1].matchAll(caseNumberPattern)].map((number) => normaliseCaseNumber(number[0]));
+    if (numbers.length < 2) continue;
+    for (const caseNumber of numbers.slice(1)) representedCaseNumbers.add(caseNumber);
+    // Every member is recorded against every member, so the fallback works whichever one the
+    // drafter stated first: a footnote writing the group in reverse still reaches the
+    // document, and a member cited alone later in the same document is not left stranded.
+    for (const caseNumber of numbers) joinedSiblings.set(caseNumber, numbers.filter((other) => other !== caseNumber));
+  }
+
+  /**
+   * The other CELEX identifiers this citation's document may be filed under, derived the
+   * same way and from the same document type as its own — so an opinion's alternatives are
+   * opinions, never the judgment in the same case.
+   */
+  const siblingsOf = (caseNumber: string | undefined): string[] | undefined => {
+    const siblings = caseNumber ? joinedSiblings.get(caseNumber) : undefined;
+    return siblings?.length ? siblings : undefined;
+  };
+
+  const alternativesFor = (caseNumber: string | undefined, options: { documentType?: CuriaDocumentType; court?: string }): string[] | undefined => {
+    const siblings = siblingsOf(caseNumber);
+    if (!siblings) return undefined;
+    const celexes = siblings.map((sibling) => celexForCase(sibling, options)).filter((celex): celex is string => celex !== undefined);
+    return celexes.length ? celexes : undefined;
+  };
+
   // The `ECLI:` prefix is optional because the Court itself usually omits it. Since 2014 the
   // standard CJEU and Advocate General style writes the identifier bare and parenthesised —
   // "Judgment in Achmea (C-284/16, EU:C:2018:158, paragraph 35)" — so requiring the prefix
@@ -708,18 +824,9 @@ export function detectCitations(text: string): CitationMatch[] {
       label: labelForDocumentType(documentType, 'CJEU judgment'), value: match[0].toUpperCase(), index, source: 'curia', ecli,
       caseNumber, caseName: caseNameBefore(text, index, segment.start), documentType, documentTypeStated: stated || undefined,
       celex: caseNumber ? celexForCase(caseNumber, { documentType, court: courtFromEcli(ecli) }) : undefined,
+      alternativeCelexes: alternativesFor(caseNumber, { documentType, court: courtFromEcli(ecli) }), joinedCaseNumbers: siblingsOf(caseNumber),
       ...pinpointFor(index, index + match[0].length),
     });
-  }
-
-  // "Joined Cases C-293/12 and C-594/12" is one judgment cited under several numbers, not
-  // several authorities. The ECLI scan above already collapses the group whenever an ECLI
-  // follows it, which hid this: with no ECLI, every number in the group became its own
-  // citation, so the reviewer saw several chips for one judgment and each derived a CELEX
-  // that need not name any document.
-  for (const group of text.matchAll(JOINED_GROUP)) {
-    const numbers = [...group[1].matchAll(caseNumberPattern)].map((number) => normaliseCaseNumber(number[0]));
-    for (const caseNumber of numbers.slice(1)) representedCaseNumbers.add(caseNumber);
   }
 
   // Pre-1989 case numbers carry no court prefix at all: Van Gend en Loos is "Case 26/62",
@@ -746,7 +853,8 @@ export function detectCitations(text: string): CitationMatch[] {
     add({
       label: labelForDocumentType(documentType, 'CJEU case number'), value: caseNumber, index, source: 'curia', caseNumber,
       caseName: caseNameBefore(text, index, segment.start) ?? caseNameAfter(text, index + match[0].length, segment.end),
-      documentType, documentTypeStated: stated || undefined, celex: celexForCase(caseNumber, { documentType }), ...pinpointFor(index, index + match[0].length),
+      documentType, documentTypeStated: stated || undefined, celex: celexForCase(caseNumber, { documentType }),
+      alternativeCelexes: alternativesFor(caseNumber, { documentType }), joinedCaseNumbers: siblingsOf(caseNumber), ...pinpointFor(index, index + match[0].length),
     });
   }
 
@@ -764,7 +872,8 @@ export function detectCitations(text: string): CitationMatch[] {
     add({
       label: labelForDocumentType(documentType, 'CJEU case number'), value: caseNumber, index, source: 'curia', caseNumber,
       caseName: caseNameBefore(text, index, segment.start) ?? caseNameAfter(text, index + match[0].length, segment.end),
-      documentType, documentTypeStated: stated || undefined, celex: celexForCase(caseNumber, { documentType }), ...pinpointFor(index, index + match[0].length),
+      documentType, documentTypeStated: stated || undefined, celex: celexForCase(caseNumber, { documentType }),
+      alternativeCelexes: alternativesFor(caseNumber, { documentType }), joinedCaseNumbers: siblingsOf(caseNumber), ...pinpointFor(index, index + match[0].length),
     });
   }
 

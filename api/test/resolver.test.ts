@@ -632,11 +632,30 @@ describe('EUR-Lex retrieval', () => {
     assert.equal(preview.excerpt.length, 900);
   });
 
-  test('derives the title from the text ahead of the Official Journal reference', async () => {
+  test('derives the title from the act title the document states', async () => {
+    // This used to assert that everything ahead of the Journal reference is the title, on a
+    // fixture that opened with a bare short title. No real document opens that way: the
+    // classic rendition states the numbered title and *then* the Journal reference, and the
+    // modern one states the Journal reference first and the title after it — which is how
+    // the GDPR came to be titled `L_2016119EN.01000101.xml 4.5.2016 EN`. The anchor is now
+    // the act's own number, so the fixture is the real shape.
+    const { fetcher } = stubFetcher([html(
+      '<p>Directive 2002/58/EC of the European Parliament and of the Council of 12 July 2002 concerning the processing of '
+      + 'personal data (Directive on privacy and electronic communications) Official Journal L 201</p>',
+    )]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(eurLexLookup());
+    assert.equal(preview.title, 'Directive 2002/58/EC of the European Parliament and of the Council of 12 July 2002 '
+      + 'concerning the processing of personal data (Directive on privacy and electronic communications)');
+  });
+
+  test('falls back to the citation where the document names no act number', async () => {
+    // A short title on its own does not identify which act is on screen, and the name derived
+    // from the citation always does.
     const { fetcher } = stubFetcher([html('<p>Directive on privacy and electronic communications Official Journal L 201</p>')]);
     const { resolver } = makeResolver({ fetcher });
     const [preview] = await resolver.resolve(eurLexLookup());
-    assert.equal(preview.title, 'Directive on privacy and electronic communications');
+    assert.equal(preview.title, 'Directive 2002/58/CE');
   });
 
   test('falls back to the citation as the title when the document is empty', async () => {
@@ -1388,5 +1407,303 @@ describe('EUR-Lex request spacing', () => {
       'https://example.test/celex/32016R0679',
     ], 'issued in the order asked for, one after another');
     assert.deepEqual(clock.slept, [1_000, 1_000], 'each spaced from the one before it');
+  });
+});
+
+/**
+ * A joined judgment or opinion is one document filed under one of its case numbers, and no
+ * rule says which. Measured live on 2026-08-25: `62012CJ0293` serves Digital Rights Ireland
+ * while `62012CJ0594` — the same judgment's other number — answers `Resource … not found`
+ * in both languages and both formats. Google France and Verholen behave the same way.
+ *
+ * Without the alternatives a footnote that happens to state the group's numbers in the other
+ * order reaches a CURIA link and no text at all, for a judgment CELLAR holds and would serve
+ * on the next request.
+ */
+describe('a joined case filed under a sibling number', () => {
+  const joined = (overrides: Partial<EuLookup> = {}): EuLookup => ({
+    source: 'curia', value: 'C-594/12', caseNumber: 'C-594/12', celex: '62012CJ0594',
+    alternativeCelexes: ['62012CJ0293'], ...overrides,
+  });
+
+  test('retrieves the document under the sibling once its own identifier names nothing', async () => {
+    const { fetcher, calls } = stubFetcher([noSuchDocument('62012CJ0594'), html('<p>Judgment text, point 65 of the ruling.</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(joined({ locator: { kind: 'point', start: 65 } }));
+
+    assert.deepEqual(calls.map((call) => call.url), [
+      'https://example.test/celex/62012CJ0594',
+      'https://example.test/celex/62012CJ0293',
+    ], 'one request to say the identifier names nothing, then the sibling');
+    assert.equal(preview.source, 'CURIA');
+    assert.equal(preview.url, 'https://example.test/celex/62012CJ0293', 'the reader is linked to the document that answered');
+  });
+
+  test('costs nothing when the citation\'s own identifier works', async () => {
+    const { fetcher, calls } = stubFetcher([html('<p>Judgment text, point 57 of the ruling.</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    await resolver.resolve(curiaJudgmentLookup({ alternativeCelexes: ['62012CJ0594'] }));
+    assert.deepEqual(calls.map((call) => call.url), ['https://example.test/celex/62012CJ0293']);
+  });
+
+  test('comes after the ECLI, which is the name the court itself gave the document', async () => {
+    const { fetcher, calls } = stubFetcher([noSuchDocument('62012CJ0594'), html('<p>Judgment text, point 65.</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    await resolver.resolve(joined({ ecli: 'ECLI:EU:C:2014:238' }));
+    assert.deepEqual(calls.map((call) => call.url), [
+      'https://example.test/celex/62012CJ0594',
+      `https://example.test/ecli/${encodeURIComponent('ECLI:EU:C:2014:238')}`,
+    ]);
+  });
+
+  test('a malformed alternative is dropped rather than requested', async () => {
+    // An alternative is only ever reached when the reviewer has already waited out a failed
+    // lookup. Spending more of that wait on a request that cannot succeed is the one cost
+    // worth refusing outright.
+    const { fetcher, calls } = stubFetcher([noSuchDocument('62012CJ0594')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(joined({ alternativeCelexes: ['../../etc/passwd', 'not-a-celex', '62012CJ0594'] }));
+    assert.deepEqual(calls.map((call) => call.url), ['https://example.test/celex/62012CJ0594'], 'and the identifier already tried is not tried twice');
+    assert.equal(preview.source, 'CURIA');
+    assert.ok(preview.url.startsWith('https://curia.europa.eu/'), 'the official link stays the floor');
+  });
+});
+
+/**
+ * `Accept-Language` is a request, and the label under the excerpt is a statement to a lawyer
+ * about which text they are reading. CELLAR has honoured the request in every document
+ * tested — it 404s cleanly for a language a document never had — but that is its behaviour,
+ * not a guarantee this service holds.
+ *
+ * The markers are the ones real documents carry, confirmed live on 2026-08-25: the classic
+ * `text/html` era declares the language outright, and the modern `application/xhtml+xml`
+ * era declares nothing anywhere in the markup (its `Content-Language` response header is
+ * present and empty), so its language is read from the heading it opens with.
+ */
+describe('the language served, not the language asked for', () => {
+  const asFrenchJudgment = (body: string) => html(`<p>ARRÊT DE LA COUR (grande chambre)</p>${body}`);
+
+  test('a French document answering an English request is labelled French', async () => {
+    const { fetcher, calls } = stubFetcher([asFrenchJudgment('<p>1. Texte de l\'arrêt.</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup());
+    assert.equal(new Headers(calls[0].init.headers).get('accept-language'), 'eng', 'English was what was asked for');
+    assert.equal(preview.language, 'fr', 'French is what came back');
+  });
+
+  test('and is offered to the translator on the strength of what it is', async () => {
+    // The whole cost of getting this wrong: a French passage recorded as English is shown
+    // unlabelled, untranslated, and as though the Court had written it that way.
+    const { fetcher } = stubFetcher([asFrenchJudgment('<p>1. Texte de l\'arrêt.</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, translate: async (text, from) => `[EN of ${from}] ${text}` });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup());
+    assert.match(preview.excerpt, /^\[EN of fr\]/);
+    assert.deepEqual(preview.translation, { from: 'fr', officialUrl: preview.url });
+  });
+
+  test('reads the declaration the classic rendition carries', async () => {
+    const { fetcher } = stubFetcher([html('<meta name="DC.language" content="FR"><p>Texte.</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    assert.equal((await resolver.resolve(curiaJudgmentLookup()))[0].language, 'fr');
+  });
+
+  test('recognises each document type\'s own heading, in both languages', async () => {
+    const headings: Array<[string, string]> = [
+      ['<p>JUDGMENT OF THE COURT (Grand Chamber)</p>', 'en'],
+      ['<p>OPINION OF ADVOCATE GENERAL WATHELET</p>', 'en'],
+      ['<p>CONCLUSIONS DE L’AVOCAT GÉNÉRAL M. WATHELET</p>', 'fr'],
+      ['<p>ORDONNANCE DU VICE-PRÉSIDENT DE LA COUR</p>', 'fr'],
+      ['<p>FR Journal officiel de l’Union européenne</p>', 'fr'],
+    ];
+    for (const [heading, expected] of headings) {
+      const { fetcher } = stubFetcher([html(heading)]);
+      const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+      assert.equal((await resolver.resolve(curiaJudgmentLookup()))[0].language, expected, heading);
+    }
+  });
+
+  test('leaves the requested language standing when the document says nothing', async () => {
+    // This can correct a label; it must never invent one. A document carrying no marker
+    // keeps exactly the behaviour that preceded this check.
+    const { fetcher } = stubFetcher([html('<p>Judgment text, point 57 of the ruling.</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    assert.equal((await resolver.resolve(curiaJudgmentLookup()))[0].language, 'en');
+  });
+
+  test('a cached document is labelled by what it holds, not by the key it is held under', async () => {
+    // The store is keyed by the language requested, so a document read back from it would
+    // otherwise be labelled by the request that first fetched it while the fresh copy of the
+    // same bytes was labelled by its contents.
+    const documentStore = createMemoryDocumentStore();
+    const body = '<p>ARRÊT DE LA COUR (grande chambre)</p><p>1. Texte.</p>';
+    const first = makeResolver({ fetcher: stubFetcher([documentResponse(body)]).fetcher, minRequestIntervalMs: 0, documentStore });
+    assert.equal((await first.resolver.resolve(curiaJudgmentLookup()))[0].language, 'fr');
+
+    const second = makeResolver({ fetcher: stubFetcher([notModified()]).fetcher, minRequestIntervalMs: 0, documentStore });
+    assert.equal((await second.resolver.resolve(curiaJudgmentLookup()))[0].language, 'fr', 'the same document, revalidated');
+  });
+});
+
+/**
+ * The title is the line a lawyer reads first, and it used to be the document's internal
+ * filename. `decodeHtml(html).slice(0, 260).split('Official Journal')[0]` assumed the title
+ * precedes the Journal reference — true of the classic rendition, and exactly backwards for
+ * the modern one, where the act's title *follows* it. So the most cited instrument in EU law
+ * was titled `L_2016119EN.01000101.xml 4.5.2016 EN`.
+ */
+describe('what a legislative passage is titled', () => {
+  const modern = (body: string) => html(
+    `L_2016119EN.01000101.xml 4.5.2016 EN Official Journal of the European Union L 119/1 ${body}`,
+  );
+
+  test('reads the title that follows the Journal line, as the modern rendition writes it', async () => {
+    const { fetcher } = stubFetcher([modern(
+      'REGULATION (EU) 2016/679 OF THE EUROPEAN PARLIAMENT AND OF THE COUNCIL of 27 April 2016 on the protection of natural '
+      + 'persons (General Data Protection Regulation) (Text with EEA relevance) THE EUROPEAN PARLIAMENT AND THE COUNCIL OF THE EUROPEAN UNION,',
+    )]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup({ celex: '32016R0679', value: 'Regulation (EU) 2016/679' }));
+    assert.equal(preview.title, 'REGULATION (EU) 2016/679 OF THE EUROPEAN PARLIAMENT AND OF THE COUNCIL of 27 April 2016 '
+      + 'on the protection of natural persons (General Data Protection Regulation)');
+  });
+
+  test('and the title that precedes it, as the classic rendition writes it', async () => {
+    const { fetcher } = stubFetcher([html(
+      'EUR-Lex - 32002L0058 - EN Avis juridique important | 32002L0058 Directive 2002/58/EC of the European Parliament and of '
+      + 'the Council of 12 July 2002 concerning the processing of personal data Official Journal L 201 , 31/07/2002 P. 0037',
+    )]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup());
+    assert.equal(preview.title, 'Directive 2002/58/EC of the European Parliament and of the Council of 12 July 2002 '
+      + 'concerning the processing of personal data');
+  });
+
+  test('keeps the institutions the title itself names', async () => {
+    // The enacting formula has to be matched in full. An act's own title reads "OF THE
+    // EUROPEAN PARLIAMENT AND OF THE COUNCIL", so cutting at a bare "THE EUROPEAN PARLIAMENT"
+    // truncates every co-decided act to its first four words.
+    const { fetcher } = stubFetcher([modern('REGULATION (EU) 2016/679 OF THE EUROPEAN PARLIAMENT AND OF THE COUNCIL of 27 April 2016 on something. Having regard to the Treaty')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup({ celex: '32016R0679' }));
+    assert.match(preview.title, /AND OF THE COUNCIL of 27 April 2016/);
+  });
+
+  test('accepts the number in either convention, and the year in either length', async () => {
+    // A directive is year/number and a pre-2015 regulation number/year; an act from before
+    // 2000 states its year in two digits while its CELEX states four.
+    const reversed = stubFetcher([html('Regulation (EC) No 1049/2001 of the European Parliament and of the Council of 30 May 2001 regarding public access Official Journal L 145')]);
+    const short = stubFetcher([html('Directive 95/46/EC of the European Parliament and of the Council of 24 October 1995 on the protection of individuals Official Journal L 281')]);
+    const first = await makeResolver({ fetcher: reversed.fetcher, minRequestIntervalMs: 0 }).resolver.resolve(eurLexLookup({ celex: '32001R1049' }));
+    const second = await makeResolver({ fetcher: short.fetcher, minRequestIntervalMs: 0 }).resolver.resolve(eurLexLookup({ celex: '31995L0046' }));
+    assert.match(first[0].title, /^Regulation \(EC\) No 1049\/2001 of the European Parliament/);
+    assert.match(second[0].title, /^Directive 95\/46\/EC of the European Parliament/);
+  });
+
+  test('refuses a title naming an act other than the one fetched', async () => {
+    // A title is a claim about which act is on screen. A document that opens by citing a
+    // different act must not have that act's name put above this one's text.
+    const { fetcher } = stubFetcher([html('Corrigendum to Directive 95/46/EC of the European Parliament and of the Council of 24 October 1995 Official Journal L 281')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup({ celex: '32002L0058', value: 'Directive 2002/58/EC' }));
+    assert.equal(preview.title, 'Directive 2002/58/EC', 'falls back to the name derived from the citation');
+  });
+
+  test('falls back to the citation where the document states no act title at all', async () => {
+    // A treaty article is a small single-article document with no act title in it.
+    const { fetcher } = stubFetcher([html('<p>Article 101</p><p>1. The following shall be prohibited</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup({ celex: '12016E101', value: 'Article 101 TFEU' }));
+    assert.equal(preview.title, 'Article 101 TFEU');
+  });
+});
+
+describe('the letters a European legal text is written with', () => {
+  test('decodes the accented entities the classic rendition uses', async () => {
+    // A French passage reached the pane reading `du Parlement europ&eacute;en`, and French is
+    // exactly the case where the reader has no English to fall back on.
+    const { fetcher } = stubFetcher([html('R&egrave;glement (UE) 2016/679 du Parlement europ&eacute;en et du Conseil du 27 avril 2016 relatif &agrave; la protection Journal officiel L 119')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup({ celex: '32016R0679' }));
+    assert.match(preview.title, /^Règlement \(UE\) 2016\/679 du Parlement européen et du Conseil du 27 avril 2016 relatif à la protection$/);
+  });
+
+  test('keeps the case the entity was written in', async () => {
+    // A named entity is case-sensitive. Folding it before the lookup renders the heading
+    // `ARRÊT DE LA COUR` as `ARRêT DE LA COUR`.
+    const { fetcher } = stubFetcher([html('<p>ARR&Ecirc;T DE LA COUR</p><p>1. Texte de l&rsquo;arr&ecirc;t.</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 1 } }));
+    assert.match(preview.excerpt, /Texte de l’arrêt/);
+    assert.equal(preview.language, 'fr', 'and the heading is still recognised for what it is');
+  });
+
+  test('leaves an entity it does not know exactly as it stands', async () => {
+    // Showing `&permil;` is a small blemish; silently dropping a character out of a passage a
+    // lawyer is about to rely on is not.
+    const { fetcher } = stubFetcher([html('<p>Article 15</p><p>1. A rate of 5&unknownentity; applies.</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 15 } }));
+    assert.match(preview.excerpt, /5&unknownentity; applies/);
+  });
+});
+
+/**
+ * Every CELLAR rendition opens with publication apparatus, and it was reaching the reviewer.
+ * Seen in the pane on a real client document: a regulation cited without a pinpoint showed
+ * `L_2004364EN.01000101.xml 9.12.2004 EN Official Journal of the European Union L 364/1
+ * REGULATION (EC) No 2006/2004 …`, and a judgment showed its bare CELEX first.
+ */
+describe('where an excerpt starts', () => {
+  test('skips the filename and Journal line an act is printed behind', async () => {
+    const { fetcher } = stubFetcher([html(
+      'L_2004364EN.01000101.xml 9.12.2004 EN Official Journal of the European Union L 364/1 '
+      + 'REGULATION (EC) No 2006/2004 OF THE EUROPEAN PARLIAMENT AND OF THE COUNCIL of 27 October 2004 on cooperation',
+    )]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup({ celex: '32004R2006' }));
+    assert.match(preview.excerpt, /^REGULATION \(EC\) No 2006\/2004 OF THE EUROPEAN PARLIAMENT/);
+  });
+
+  test('skips the bare CELEX a judgment is printed behind', async () => {
+    const { fetcher } = stubFetcher([html('62012CJ0293 JUDGMENT OF THE COURT (Grand Chamber) 8 April 2014 Electronic communications')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup());
+    assert.match(preview.excerpt, /^JUDGMENT OF THE COURT \(Grand Chamber\)/);
+  });
+
+  test('and the apparatus the classic rendition prints instead', async () => {
+    const { fetcher } = stubFetcher([html(
+      '@import url(lex/css/lex-screen.css); EUR-Lex - 32002L0058 - EN Avis juridique important | 32002L0058 '
+      + 'Directive 2002/58/EC of the European Parliament and of the Council of 12 July 2002 concerning the processing',
+    )]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup());
+    assert.match(preview.excerpt, /^Directive 2002\/58\/EC of the European Parliament/);
+  });
+
+  test('shows a document it does not recognise from its very first character', async () => {
+    // Bounded on purpose: not recognising an opening must cost nothing, never a skipped
+    // passage. A reviewer reading a stray heading is a blemish; a reviewer reading a passage
+    // that starts later than the document does is a missing one.
+    const { fetcher } = stubFetcher([html('Some document with no heading this resolver knows about, shown whole.')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup());
+    assert.match(preview.excerpt, /^Some document with no heading/);
+  });
+
+  test('a title too long for the card is cut on a word boundary', async () => {
+    // The pane renders the title as the card's link, unwrapped. Directive 2005/29/EC names
+    // every act it amends, and states it in 400 characters.
+    const { fetcher } = stubFetcher([html(
+      'DIRECTIVE 2005/29/EC OF THE EUROPEAN PARLIAMENT AND OF THE COUNCIL of 11 May 2005 concerning unfair '
+      + 'business-to-consumer commercial practices in the internal market and amending Council Directive 84/450/EEC, '
+      + 'Directives 97/7/EC, 98/27/EC and 2002/65/EC of the European Parliament and of the Council Official Journal L 149',
+    )]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(eurLexLookup({ celex: '32005L0029' }));
+    assert.ok(preview.title.length <= 201, `titled ${preview.title.length} characters`);
+    assert.ok(preview.title.endsWith('…'), preview.title);
+    assert.ok(!/\S…$/.test(preview.title.replace(/\w…$/, '')) || !preview.title.includes('  '), 'cut on a word boundary');
+    assert.match(preview.title, /^DIRECTIVE 2005\/29\/EC OF THE EUROPEAN PARLIAMENT/);
   });
 });

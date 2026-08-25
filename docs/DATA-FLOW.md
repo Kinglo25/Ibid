@@ -51,7 +51,7 @@ GET {api-origin}/api/sources?lookup={...}
 It is sent when the reviewer selects a citation, and — since the pane began warming the
 cache at document open — also once per distinct authority the document cites, in reading
 order, in the background. **The content of the request is identical either way**: both paths
-build it through the same `lookupFor` function, which names the nine fields below one by
+build it through the same `lookupFor` function, which names the ten fields below one by
 one. Warming changes *when* lookups happen and how many, not what is in them.
 
 What that means for a reviewer of this document: opening a file in Word now produces a
@@ -74,6 +74,13 @@ The `lookup` object contains only these fields, and nothing else:
 | `documentType` | `judgment` |
 | `locator` | `{ kind: 'point', start: 40 }` |
 | `paragraphs` | `[40]` |
+| `alternativeCelexes` | `['62012CJ0594']` |
+
+`alternativeCelexes` is present only where the footnote cites a joined case, and carries the
+other case numbers of that same group as CELEX identifiers — CELLAR files a joined judgment
+under one of its numbers and not the others, so this is what lets the passage be found under
+whichever one the drafter wrote. It is the group's own identifiers and nothing else: it can
+never name an authority the footnote did not cite.
 
 Notably **not** sent: the document, the footnote as written, the citation's surrounding
 context, the file name, the user's identity, or anything about the matter.
@@ -81,7 +88,7 @@ context, the file name, the user's identity, or anything about the matter.
 The exclusion is structural rather than incidental. The object handed to the lookup
 function is a `CitationContext`, which is defined as `CitationMatch & { context: string }`
 (`shared/src/index.ts`) — the surrounding prose *is* present on the object, in memory, at
-the moment the request is built. The request is nonetheless assembled by naming its nine
+the moment the request is built. The request is nonetheless assembled by naming its ten
 fields one by one, in `lookupFor` (`addin/src/ui/App.tsx`), not by spreading the citation
 object. A developer adding a new field to the citation type therefore cannot cause it to
 start crossing the wire by accident: it would have to be typed out inside that function.
@@ -91,7 +98,9 @@ There is exactly one such function, and both the click path and the background w
 through it — which makes the guarantee stronger than it was when only one caller existed,
 because a second caller spelling the fields out again is precisely how a field like
 `context` gets added to one of them and not the other. `addin/test/App.test.tsx` asserts
-the exact key set on a warming request for this reason.
+the exact key set on a warming request for this reason — twice, because an absent field is
+dropped by `JSON.stringify`: once for an ordinary citation and once for a joined case, which
+is the only citation that sends the tenth field.
 
 The server then requests the cited document from the EU Publications Office
 (`publications.europa.eu`) and returns the relevant passage.
@@ -276,8 +285,8 @@ grep -rn "insertText\|insertParagraph\|insertHtml\|insertOoxml" addin/src/
 # Read-only permission. Expect: <Permissions>ReadDocument</Permissions>
 grep -n "Permissions" addin/manifest.xml
 
-# Exactly what is put on the wire — nine named fields, no spread.
-sed -n '/const lookup = {/,/};/p' addin/src/ui/App.tsx
+# Exactly what is put on the wire — ten named fields, no spread.
+sed -n '/^function lookupFor/,/^}/p' addin/src/ui/App.tsx
 
 # Everything the server writes to disk, and the only place it does. Expect hits in
 # document-store.ts alone — the retrieved-document cache described above.

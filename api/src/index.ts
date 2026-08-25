@@ -10,6 +10,22 @@ export type EuLookup = {
   source: 'curia' | 'eur-lex' | 'commission';
   value: string;
   celex?: string;
+  /**
+   * Other CELEX identifiers naming the same document, tried only after `celex` and `ecli`
+   * have both failed to produce it.
+   *
+   * A joined judgment or opinion is one document that CELLAR files under one of its case
+   * numbers, and nothing in the citation says which: measured live on 2026-08-25,
+   * `62012CJ0293` serves Digital Rights Ireland while `62012CJ0594` — the second number of
+   * the same judgment — answers `Resource … not found`, and the same holds for Google
+   * France (`62008CJ0237`, `62008CJ0238`) and Verholen (`61990CJ0088`, `61990CJ0089`).
+   * A footnote that happens to state the group's numbers in the other order would otherwise
+   * reach the CURIA link and no text at all.
+   *
+   * The caller is trusted for the identifier and nothing else. Each is checked here against
+   * the CELEX shape before it is used, so a malformed one is dropped rather than fetched.
+   */
+  alternativeCelexes?: string[];
   ecli?: string;
   caseNumber?: string;
   /**
@@ -169,8 +185,43 @@ export type ResolverOptions = {
   now?: () => number;
 };
 
-const NAMED_ENTITIES: Record<string, string> = {
+/**
+ * The six structural entities, which older CELLAR renditions spell in either case.
+ */
+const STRUCTURAL_ENTITIES: Record<string, string> = {
   nbsp: ' ', amp: '&', quot: '"', apos: "'", lt: '<', gt: '>',
+};
+
+/**
+ * The letters and marks a European legal text is actually written with.
+ *
+ * Matched **case-sensitively**, because a named entity is: `&Eacute;` is a different
+ * character from `&eacute;`, and both appear in the cached corpus (as do `&Ouml;`/`&ouml;`
+ * and `&Uuml;`/`&uuml;`). Folding the name to lower case before the lookup would have
+ * rendered `ARR&Ecirc;T DE LA COUR` as `ARRêT DE LA COUR`.
+ *
+ * Without these, a French passage reached the pane reading `du Parlement europ&eacute;en et
+ * du Conseil` — the classic rendition writes its accents this way, and French is exactly the
+ * case where the reader has no English to fall back on.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  Agrave: 'À', Aacute: 'Á', Acirc: 'Â', Atilde: 'Ã', Auml: 'Ä', Aring: 'Å',
+  AElig: 'Æ', Ccedil: 'Ç', Egrave: 'È', Eacute: 'É', Ecirc: 'Ê', Euml: 'Ë',
+  Igrave: 'Ì', Iacute: 'Í', Icirc: 'Î', Iuml: 'Ï', Ntilde: 'Ñ', Ograve: 'Ò',
+  Oacute: 'Ó', Ocirc: 'Ô', Otilde: 'Õ', Ouml: 'Ö', Oslash: 'Ø', Ugrave: 'Ù',
+  Uacute: 'Ú', Ucirc: 'Û', Uuml: 'Ü', Yacute: 'Ý', OElig: 'Œ', Scaron: 'Š',
+  agrave: 'à', aacute: 'á', acirc: 'â', atilde: 'ã', auml: 'ä', aring: 'å',
+  aelig: 'æ', ccedil: 'ç', egrave: 'è', eacute: 'é', ecirc: 'ê', euml: 'ë',
+  igrave: 'ì', iacute: 'í', icirc: 'î', iuml: 'ï', ntilde: 'ñ', ograve: 'ò',
+  oacute: 'ó', ocirc: 'ô', otilde: 'õ', ouml: 'ö', oslash: 'ø', ugrave: 'ù',
+  uacute: 'ú', ucirc: 'û', uuml: 'ü', yacute: 'ý', yuml: 'ÿ', szlig: 'ß',
+  oelig: 'œ', scaron: 'š',
+  laquo: '«', raquo: '»', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+  ndash: '–', mdash: '—', hellip: '…', bull: '•', middot: '·', sect: '§',
+  para: '¶', deg: '°', times: '×', divide: '÷', euro: '€', pound: '£',
+  copy: '©', reg: '®', trade: '™', dagger: '†', Dagger: '‡', permil: '‰',
+  sup2: '²', sup3: '³', frac12: '½', frac14: '¼', frac34: '¾', minus: '−',
+  prime: '′', Prime: '″',
 };
 
 /**
@@ -195,7 +246,7 @@ function decodeHtml(value: string): string {
         // entity as written beats throwing out of an excerpt that is otherwise fine.
         return Number.isInteger(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
       }
-      return NAMED_ENTITIES[String(name).toLowerCase()] ?? entity;
+      return NAMED_ENTITIES[String(name)] ?? STRUCTURAL_ENTITIES[String(name).toLowerCase()] ?? entity;
     })
     .replace(/\s+/g, ' ').trim();
 }
@@ -435,7 +486,7 @@ type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' };
 
 /** The opening of the document, marked as the fallback it is. */
 function documentOpening(html: string, cited: boolean): Excerpt {
-  const excerpt = decodeHtml(html).slice(0, 900);
+  const excerpt = fromDocumentContent(decodeHtml(html)).slice(0, 900);
   return cited ? { excerpt, passage: 'opening' } : { excerpt };
 }
 
@@ -501,10 +552,194 @@ function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
  * without a recognised marker, rather than risk rejecting a genuine document
  * in a convention not yet catalogued here.
  */
+/**
+ * Which language a document actually came back in.
+ *
+ * `Accept-Language` is a request. CELLAR has honoured it in every document tested — it
+ * answers `404` cleanly for a language a document was never published in, rather than
+ * substituting another — but that is its behaviour, not a guarantee this service holds, and
+ * the language is not a detail: it is a statement to a lawyer about which text is on screen,
+ * and the thing that decides whether a passage is offered to the translator at all. A French
+ * passage recorded as English is shown unlabelled, untranslated, and as though the Court had
+ * written it that way. So it is read off the document instead of assumed.
+ *
+ * The two CELLAR eras declare it differently, and both were checked live on 2026-08-25.
+ * Classic `text/html` renditions say so outright, in a `DC.language` meta and an `html lang`
+ * attribute. Modern `application/xhtml+xml` renditions say nothing at all — no language
+ * attribute anywhere in the markup, and a `Content-Language` response header that is present
+ * but empty — so the language comes from the fixed heading every such document opens with
+ * (`JUDGMENT OF THE COURT` against `ARRÊT DE LA COUR`, `OPINION OF ADVOCATE GENERAL` against
+ * `CONCLUSIONS DE L'AVOCAT GÉNÉRAL`) and, for legislation, from the Official Journal line and
+ * the language code in the internal filename (`L_2016119EN.01000101.xml`).
+ *
+ * Only the opening of the document is read, so a heading quoted somewhere in a judgment's
+ * body cannot outvote the one at its head, and nothing recognised — or both recognised —
+ * returns `undefined` rather than a guess. That leaves the requested language standing,
+ * which is exactly the behaviour this replaces, so this can correct a label but never
+ * invent one.
+ */
+const DECLARED_LANGUAGE = /<meta\s+name="DC\.language"\s+content="([A-Za-z]{2})"|<html[^>]*\blang="([A-Za-z]{2})"/i;
+
+/** The accented characters as a document may spell them: the character itself, or either entity form. */
+const E_CIRCUMFLEX = String.raw`(?:Ê|&Ecirc;|&#202;)`;
+const E_ACUTE = String.raw`(?:É|&Eacute;|&#201;)`;
+const APOSTROPHE = String.raw`(?:['’]|&rsquo;|&#8217;)`;
+
+const ENGLISH_DOCUMENT = new RegExp([
+  String.raw`JUDGMENT OF THE (?:COURT|GENERAL COURT)`,
+  String.raw`OPINION OF ADVOCATE GENERAL`,
+  String.raw`ORDER OF THE (?:COURT|GENERAL COURT|PRESIDENT|VICE-PRESIDENT)`,
+  String.raw`Official Journal of the European Union`,
+  String.raw`_\d+EN\.\d`,
+].join('|'));
+
+const FRENCH_DOCUMENT = new RegExp([
+  String.raw`ARR${E_CIRCUMFLEX}T DE LA COUR`,
+  String.raw`ARR${E_CIRCUMFLEX}T DU TRIBUNAL`,
+  String.raw`CONCLUSIONS DE L${APOSTROPHE}AVOCAT G${E_ACUTE}N${E_ACUTE}RAL`,
+  String.raw`ORDONNANCE (?:DE LA COUR|DU TRIBUNAL|DU (?:VICE-)?PR${E_ACUTE}SIDENT)`,
+  String.raw`Journal officiel de l${APOSTROPHE}Union europ`,
+  String.raw`_\d+FR\.\d`,
+].join('|'));
+
+/** How much of a document is read for its language. The heading is within the first kilobyte of every rendition measured; this is room to spare, not a search. */
+const LANGUAGE_MARKER_WINDOW = 20_000;
+
+function languageOf(html: string): SourceLanguage | undefined {
+  const opening = html.slice(0, LANGUAGE_MARKER_WINDOW);
+  const declared = DECLARED_LANGUAGE.exec(opening);
+  const code = (declared?.[1] ?? declared?.[2])?.toLowerCase();
+  if (code === 'en' || code === 'fr') return code;
+
+  const english = ENGLISH_DOCUMENT.test(opening);
+  const french = FRENCH_DOCUMENT.test(opening);
+  if (english === french) return undefined;
+  return english ? 'en' : 'fr';
+}
+
 function looksLikeCellarDocument(html: string): boolean {
   if (/<!--\s*(?:CONVEX|fmx2xhtml)\b/i.test(html)) return true;
   if (/<meta\s+name="DC\.title"\s+content="EUR-Lex\b/i.test(html)) return true;
   return html.length > 2_000;
+}
+
+/**
+ * An act's own title, as the document states it.
+ *
+ * The two CELLAR eras bury it in opposite directions, which is why taking the opening of the
+ * document and cutting at "Official Journal" produced a filename for the most cited
+ * instrument in EU law. Measured on the real documents:
+ *
+ *   modern   L_2016119EN.01000101.xml 4.5.2016 EN Official Journal … L 119/1 REGULATION (EU) 2016/679 OF THE …
+ *   classic  EUR-Lex - 32002L0058 - EN Avis juridique important | 32002L0058 Directive 2002/58/EC of the … Official Journal L 201 …
+ *
+ * The title follows the Official Journal line in one and precedes it in the other, so the
+ * cut has to be anchored on the title itself: the act word and its number, which is where
+ * every such title begins, through to whatever ends it — the Journal reference, the EEA
+ * relevance note, or the enacting formula.
+ *
+ * Then the number it found is checked against the CELEX that was actually fetched, in both
+ * conventions (directives are year/number, pre-2015 regulations number/year). A title is a
+ * claim about which act is on screen; one taken from a reference to a *different* act, in a
+ * document that happens to open by citing one, would be that claim made wrongly. Where the
+ * check fails, or nothing is found, the caller falls back to the name derived from the
+ * citation, which is what the reader wrote and always describes the right act.
+ */
+const ACT_TITLE_START = /(?:Regulations?|Directives?|Decisions?|Recommendations?|R\u00e8glement|D\u00e9cision|Recommandation)\s+(?:\((?:EU|EC|EEC|Euratom|UE|CE|CEE)\)\s*)?(?:No\s+)?(\d{1,4})\/(\d{1,4})/i;
+
+const ACT_TITLE_END = new RegExp([
+  // The Journal reference, which follows the title in the classic era and precedes it in the modern one.
+  String.raw`\bOfficial Journal\b`,
+  String.raw`\bJournal officiel\b`,
+  // The EEA note, which closes a title in the modern era.
+  String.raw`\(Text with EEA relevance\)`,
+  String.raw`\(Texte pr\u00e9sentant de l['\u2019]int\u00e9r\u00eat pour l['\u2019]EEE\)`,
+  // The enacting formula, spelled in full. The short form cannot be used: an act's own title
+  // reads "OF THE EUROPEAN PARLIAMENT AND OF THE COUNCIL", so cutting at a bare "THE
+  // EUROPEAN PARLIAMENT" truncates every co-decided act to its first four words. What starts
+  // the recitals is the same institutions in the other order, followed by the Union.
+  String.raw`\bTHE EUROPEAN PARLIAMENT AND THE COUNCIL OF THE EUROPEAN UNION\b`,
+  String.raw`\bTHE COUNCIL OF THE EUROPEAN UNION\s*,`,
+  String.raw`\bTHE EUROPEAN COMMISSION\s*,`,
+  String.raw`\bLE PARLEMENT EUROP\u00c9EN ET LE CONSEIL DE L['\u2019]UNION EUROP\u00c9ENNE\b`,
+  String.raw`\bLA COMMISSION EUROP\u00c9ENNE\s*,`,
+  // And the first recital, as a backstop for an act whose formula is spelled some other way.
+  String.raw`\bHaving regard to\b`,
+  String.raw`\bvu le trait\u00e9\b`,
+].join('|'), 'i');
+
+/** How far into the document the title is looked for. Both eras state it within the first few hundred characters; this is room to spare, and it is what stops a reference deep in the text being read as the title. */
+const ACT_TITLE_WINDOW = 2_000;
+
+/** The longest a title is allowed to run before it is treated as having no recognisable end. */
+const ACT_TITLE_LENGTH = 400;
+
+/**
+ * How long a title may be on screen. The pane renders it as the card's link, unwrapped, so a
+ * title stated in full runs to 400 characters for an act that amends four others — the real
+ * title of Directive 2005/29/EC names every one of them. Cut on a word boundary and marked
+ * with an ellipsis, because the whole of it is one click away in the source itself.
+ */
+const ACT_TITLE_SHOWN = 200;
+
+function shorten(title: string): string {
+  if (title.length <= ACT_TITLE_SHOWN) return title;
+  const cut = title.slice(0, ACT_TITLE_SHOWN);
+  const boundary = cut.lastIndexOf(' ');
+  return `${(boundary > ACT_TITLE_SHOWN / 2 ? cut.slice(0, boundary) : cut).replace(/[\s,;:]+$/, '')}…`;
+}
+
+function actTitle(celex: string, text: string): string | undefined {
+  const start = ACT_TITLE_START.exec(text.slice(0, ACT_TITLE_WINDOW));
+  if (!start) return undefined;
+
+  // The act this title names must be the act that was fetched. Both orders are accepted
+  // because the conventions disagree — a directive is year/number, a pre-2015 regulation
+  // number/year — and the year is matched two digits or four, because an act from before
+  // 2000 states it short: "Directive 95/46/EC" against CELEX `31995L0046`.
+  const celexYear = celex.slice(1, 5);
+  const celexNumber = String(Number(celex.slice(6)));
+  const isYear = (part: string) => part === String(Number(celexYear)) || part === String(Number(celexYear.slice(2)));
+  const [first, second] = [start[1], start[2]].map((part) => String(Number(part)));
+  if (!((isYear(first) && second === celexNumber) || (isYear(second) && first === celexNumber))) return undefined;
+
+  const from = text.slice(start.index, start.index + ACT_TITLE_LENGTH);
+  const end = ACT_TITLE_END.exec(from);
+  const title = (end && end.index > 0 ? from.slice(0, end.index) : from).trim().replace(/[\s,;:]+$/, '');
+  return title.length >= 12 ? shorten(title) : undefined;
+}
+
+/**
+ * Where the document's own text begins, past whatever the Publications Office prints in
+ * front of it.
+ *
+ * Every rendition opens with publication apparatus, and it was going straight to the
+ * reviewer: a regulation's opening excerpt began `L_2004364EN.01000101.xml 9.12.2004 EN
+ * Official Journal of the European Union L 364/1 REGULATION (EC) No 2006/2004 …`, and a
+ * judgment's began with its bare CELEX. Seen in the pane, on a real client document.
+ *
+ * Anchored on what the content itself starts with — the heading of a judgment, opinion or
+ * order, or an act's designation and number — rather than on a list of the preambles to
+ * strip, because the preambles differ by era and language and the content does not. Bounded,
+ * so a document whose opening is not recognised keeps every character it has rather than
+ * being skipped into.
+ */
+const DOCUMENT_CONTENT_START = new RegExp([
+  String.raw`JUDGMENT OF THE`,
+  String.raw`OPINION OF ADVOCATE GENERAL`,
+  String.raw`ORDER OF THE`,
+  String.raw`ARR${E_CIRCUMFLEX}T D[EU]`,
+  String.raw`CONCLUSIONS DE L`,
+  String.raw`ORDONNANCE D[EU]`,
+  ACT_TITLE_START.source,
+].join('|'), 'i');
+
+/** How far in the content is looked for. Past this, the document is shown from its first character. */
+const CONTENT_START_WINDOW = 1_200;
+
+function fromDocumentContent(text: string): string {
+  const start = DOCUMENT_CONTENT_START.exec(text.slice(0, CONTENT_START_WINDOW));
+  return start ? text.slice(start.index) : text;
 }
 
 /**
@@ -522,6 +757,17 @@ function locatorLabel(lookup: EuLookup): string | undefined {
   const listed = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
   return `${runs.length === 1 && runs[0].from === runs[0].to ? 'Point' : 'Points'} ${listed}`;
 }
+
+/**
+ * What a CELEX identifier looks like, used on the alternatives a caller supplies.
+ *
+ * `cellarUrl` already makes an identifier incapable of leaving its path segment, so this is
+ * not what stops a bad one being dangerous — it is what stops a bad one being *asked for*.
+ * An alternative is only ever tried after the citation's own identifiers have failed, which
+ * is the moment a reviewer is already waiting longest, and spending that wait on a request
+ * that cannot succeed is the one cost worth refusing outright.
+ */
+const CELEX_SHAPE = /^[1-9]\d{4}[A-Z]{1,2}\d{3,4}(?:\(\d{2}\))?$/;
 
 function cellarUrl(celex: string, baseUrl: string): string {
   return `${baseUrl.replace(/\/$/, '')}/${encodeURIComponent(celex)}`;
@@ -751,7 +997,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       lastModified: response.headers.get('last-modified') ?? undefined,
       fetchedAt: verifiedAt,
     });
-    return { html, language: rendition.language, verifiedAt, url: target.url };
+    return { html, language: languageOf(html) ?? rendition.language, verifiedAt, url: target.url };
   }
 
   /**
@@ -793,7 +1039,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       // that the text already in hand is current.
       const verifiedAt = now();
       await documentStore.set(key, { ...stored, fetchedAt: verifiedAt });
-      return { html: stored.html, language: rendition.language, verifiedAt, url: target.url };
+      return { html: stored.html, language: languageOf(stored.html) ?? rendition.language, verifiedAt, url: target.url };
     }
     if (response.ok) return acceptDocument(target, key, rendition, response);
     if (response.status === 404) {
@@ -853,16 +1099,27 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
    * CELLAR appears simply not to mint a CELEX for some case-law documents it nonetheless
    * holds and indexes by ECLI.
    */
-  function cellarTargets(celex: string, ecli: string | undefined): CellarTarget[] {
+  function celexTarget(celex: string): CellarTarget {
     // The CELEX carries its year directly after the sector digit: 61999J0309 is 1999.
-    const targets: CellarTarget[] = [{ id: `celex:${celex}`, url: cellarUrl(celex, cellarBaseUrl), year: celex.slice(1, 5) }];
+    return { id: `celex:${celex}`, url: cellarUrl(celex, cellarBaseUrl), year: celex.slice(1, 5) };
+  }
+
+  function cellarTargets(celex: string, ecli: string | undefined, alternatives: readonly string[] = []): CellarTarget[] {
+    const targets: CellarTarget[] = [celexTarget(celex)];
     const byEcli = ecli && ecliUrl(ecli, cellarBaseUrl);
     if (ecli && byEcli) targets.push({ id: `ecli:${ecli}`, url: byEcli, year: ecliYear(ecli) });
+    // Last, and only the well-formed ones: an alternative is a name for the document already
+    // being asked for, so it is worth a request once the two identifiers the citation itself
+    // carries have produced nothing, and worth nothing before that.
+    for (const alternative of alternatives) {
+      if (!CELEX_SHAPE.test(alternative) || alternative === celex) continue;
+      targets.push(celexTarget(alternative));
+    }
     return targets;
   }
 
-  async function loadCellarDocument(celex: string, ecli?: string): Promise<LoadedDocument> {
-    const targets = cellarTargets(celex, ecli);
+  async function loadCellarDocument(celex: string, ecli?: string, alternatives?: readonly string[]): Promise<LoadedDocument> {
+    const targets = cellarTargets(celex, ecli, alternatives);
 
     for (const target of targets) {
       for (const rendition of renditionsFor(target.year)) {
@@ -877,7 +1134,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
         // last time it genuinely was confirmed rather than with now. Every real CELLAR
         // response carries an ETag, so this is the path for a store written by something
         // else, not the ordinary one.
-        if (!conditional) return { html: stored.html, language: rendition.language, verifiedAt: stored.fetchedAt, url: target.url };
+        if (!conditional) return { html: stored.html, language: languageOf(stored.html) ?? rendition.language, verifiedAt: stored.fetchedAt, url: target.url };
 
         return onTheWire(async () => {
           const confirmed = await revalidate(target, rendition, key, stored, conditional);
@@ -931,7 +1188,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     const cached = previewCache.get(key);
     if (cached) return cached;
 
-    const { html, language, verifiedAt, url } = await loadCellarDocument(celex, lookup.ecli);
+    const { html, language, verifiedAt, url } = await loadCellarDocument(celex, lookup.ecli, lookup.alternativeCelexes);
 
     // Judgments and legislative acts use different paragraph-numbering
     // markup (see sliceByHeadingAnchor), so they need different extraction —
@@ -940,8 +1197,9 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       ? { title: describeDocument(lookup), ...extractJudgmentPoint(html, lookup), url, source, locator: locatorLabel(lookup), language }
       : {
           // Legislation states its own title in the document, which beats anything derived
-          // from the citation; the derived name is the fallback when extraction comes up empty.
-          title: decodeHtml(html).slice(0, 260).split('Official Journal')[0].trim() || describeDocument(lookup),
+          // from the citation; the derived name is the fallback when extraction comes up empty
+          // or finds a title naming a different act.
+          title: actTitle(celex, decodeHtml(html)) ?? describeDocument(lookup),
           ...extractLegislativeLocator(html, lookup.locator, lookup.paragraphs), url, source, locator: locatorLabel(lookup), language,
         };
     const preview = await translateIfNeeded({ ...base, verifiedAt: new Date(verifiedAt).toISOString() });

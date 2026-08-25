@@ -18,6 +18,7 @@ const toLookup = (citation: CitationMatch): EuLookup => ({
   source: citation.source,
   value: citation.value,
   celex: citation.celex,
+  alternativeCelexes: citation.alternativeCelexes,
   ecli: citation.ecli,
   caseNumber: citation.caseNumber,
   caseName: citation.caseName,
