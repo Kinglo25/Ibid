@@ -389,6 +389,19 @@ describe('known detection gaps', () => {
     // resolving the implied century (19xx) is not attempted.
     assert.deepEqual(detectCitations('Regulation (EEC) No 2913/92'), []);
   });
+
+  test('does not take a four-digit regulation number for its year', () => {
+    // The 1989 Merger Regulation, as the 2026 draft merger guidelines cite it. Read year-first
+    // it became CELEX 34064R0089, reported as resolved.
+    assert.deepEqual(detectCitations('Notes on Council Regulation 4064/89, p. 25.'), []);
+  });
+
+  test('does not read a pre-2015 regulation year-first', () => {
+    // Number 1998 of 2006. A regulation's year has led only since 2015, so the year-first
+    // reading would be a regulation of 1998 — another document. Bracket-less number/year is
+    // not read at all, so this reports nothing rather than the wrong act.
+    assert.deepEqual(detectCitations('Commission Regulation 1998/2006 on de minimis aid'), []);
+  });
 });
 
 describe('Treaty articles', () => {
@@ -729,6 +742,61 @@ describe('detectCitationsAcrossFootnotes (explicitly defined short forms)', () =
     ]);
     assert.deepEqual(second[0].locator, { kind: 'point', start: 41, paragraph: undefined, end: undefined });
     assert.deepEqual(third[0].locator, { kind: 'point', start: 60, paragraph: undefined, end: undefined });
+  });
+
+  // From the Commission's 2026 draft merger guidelines. The term names the Notice, which
+  // detection does not report; the Regulation is only in the Notice's title. Bound to the
+  // Regulation, every later use of the term showed the Merger Regulation as the document cited.
+  test('does not give an act the term defined for a notice whose title names it', () => {
+    const [first, second] = detectCitationsAcrossFootnotes([
+      'See Commission Notice on a simplified treatment for certain concentrations under Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings, OJ C 160, 5.5.2023, p.1 (‘Notice on Simplified Procedure’).',
+      'Notice on Simplified Procedure, paragraph 5(d)(bb).',
+    ]);
+    assert.deepEqual(first.map((citation) => citation.celex), ['32004R0139'], 'the Regulation is still cited where it is named');
+    // What is left is the ordinary report of a name Ibid cannot place: asked about, not answered.
+    assert.ok(second.length > 0);
+    assert.ok(second.every((citation) => citation.status !== 'resolved' && !citation.celex && !citation.ecli && !citation.caseNumber));
+  });
+
+  test('does not give a term to an act named inside another act’s title', () => {
+    // Nearest to the term is the Regulation being repealed. Nor does the term pass back to the
+    // act at the head of the title: whether it would be right to is not something the text
+    // around a single citation can settle, and an undefined term shows nothing wrong.
+    const [, second] = detectCitationsAcrossFootnotes([
+      'Commission Implementing Regulation (EU) 2023/914 implementing Council Regulation (EC) No 139/2004 and repealing Commission Regulation (EC) No 802/2004 (‘Implementing Regulation’).',
+      'See the Implementing Regulation.',
+    ]);
+    assert.deepEqual(second, []);
+  });
+
+  test('does not give a judgment’s short name to the Treaty article it interprets', () => {
+    const [, second] = detectCitationsAcrossFootnotes([
+      'Judgment of 6 September 2017, Intel v Commission, C-413/14 P, EU:C:2017:632, on Article 102 TFEU (‘Intel’).',
+      'Intel, paragraph 138.',
+    ]);
+    assert.equal(second.some((citation) => citation.celex === '12016E102'), false);
+  });
+
+  test('still gives the term to the act it follows where nothing else is named first', () => {
+    // The same guidelines, and the shape the rule above must leave alone: an article of the
+    // act is not a different instrument.
+    const [, second] = detectCitationsAcrossFootnotes([
+      'As guaranteed by Article 22 of Regulation (EU) 2024/1083 establishing a common framework for media services in the internal market (the ‘European Media Freedom Act’).',
+      'Article 22 European Media Freedom Act.',
+    ]);
+    assert.equal(second.length, 1);
+    assert.equal(second[0].celex, '32024R1083');
+    assert.equal(second[0].resolutionMethod, 'explicit_alias');
+  });
+
+  test('reads each act of a list against its own term', () => {
+    // A term already declared ends the reference it closed, so the second act is not taken
+    // for part of the first one's title.
+    const [, second] = detectCitationsAcrossFootnotes([
+      'Regulation (EU) 2022/1925 (‘DMA’) and Regulation (EU) 2022/2065 (‘DSA’).',
+      'DMA, Article 6; DSA, Article 34.',
+    ]);
+    assert.deepEqual(second.map((citation) => citation.celex), ['32022R1925', '32022R2065']);
   });
 });
 

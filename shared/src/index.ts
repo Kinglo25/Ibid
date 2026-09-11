@@ -696,11 +696,28 @@ function celexForTreatyArticle(treaty: string, articleNumber: string): string {
  * The keyword itself (Directive/Regulation/etc.) is what rules out a bare
  * pair of numbers being mistaken for a citation — the bracket is only needed
  * to disambiguate the "No" case above, which reverses the number order.
+ *
+ * Four digits are not a year on that account alone. The merger guidelines cite
+ * `Council Regulation 4064/89` — the 1989 Merger Regulation, number 4064, with
+ * no "No" — and reading the first number as the year produced `34064R0089`,
+ * reported as resolved. So a year has to be one an act could carry, and a
+ * regulation's year comes first only in the convention that began in 2015:
+ * before it the number led, so `Regulation 1998/2006` — the de minimis
+ * regulation of 2006 — must not be read as a regulation of 1998, which would
+ * be another document entirely. Neither is reported at all,
+ * the same as a two-digit year (see "known detection gaps" in the tests):
+ * reading a bracket-less number/year is not attempted.
  */
-function parseActNumbers(hasSuffix: boolean, hasNo: boolean, first: string, second: string): { year: string; number: string } | undefined {
-  if (hasSuffix) return first.length === 4 ? { year: first, number: second } : undefined;
-  if (hasNo) return second.length === 4 ? { year: second, number: first } : undefined;
-  return first.length === 4 ? { year: first, number: second } : undefined;
+const FIRST_ACT_YEAR = 1952;
+const CURRENT_CONVENTION_FROM = 2015;
+
+function parseActNumbers(kind: string, hasSuffix: boolean, hasNo: boolean, first: string, second: string): { year: string; number: string } | undefined {
+  const isYear = (value: string, from = FIRST_ACT_YEAR) =>
+    value.length === 4 && Number(value) >= from && Number(value) <= new Date().getFullYear();
+  if (hasSuffix) return isYear(first) ? { year: first, number: second } : undefined;
+  if (hasNo) return isYear(second) ? { year: second, number: first } : undefined;
+  const from = REGULATION_WORDS.test(kind) ? CURRENT_CONVENTION_FROM : FIRST_ACT_YEAR;
+  return isYear(first, from) ? { year: first, number: second } : undefined;
 }
 
 /** Detects EU legal references and attaches the official-source identifier where it can be derived safely. */
@@ -880,7 +897,7 @@ export function detectCitations(text: string): CitationMatch[] {
   for (const match of text.matchAll(new RegExp(String.raw`\b(${ACT_KEYWORDS})\s*(?:\((EU|EC|CE|EEC|EWG|UE|CEE)\)\s*)?(No\.?\s*)?(\d{1,4})\/(\d{1,4})(?:\/(EU|EC|CE|EEC|UE|CEE))?\b`, 'gi'))) {
     const index = match.index ?? 0;
     const [, kind, , no, first, second, suffix] = match;
-    const parsed = parseActNumbers(Boolean(suffix), Boolean(no), first, second);
+    const parsed = parseActNumbers(kind, Boolean(suffix), Boolean(no), first, second);
     if (!parsed) continue;
     add({
       label: DIRECTIVE_WORDS.test(kind) ? 'EU directive' : REGULATION_WORDS.test(kind) ? 'EU regulation'
@@ -959,6 +976,51 @@ function shortFormPattern(key: string): RegExp {
  */
 const DEFINED_TERM = /\(\s*(?:the\s+)?["“'‘]([^)]{1,80})["”'’]\s*\)/i;
 const DEFINED_TERM_SCAN_WINDOW = 160;
+const DEFINED_TERMS = new RegExp(DEFINED_TERM.source, 'gi');
+
+/**
+ * A defined term naming a kind of instrument that detection never reports — a notice, a set
+ * of guidelines, a communication. Whatever such a term names, it is not any citation found
+ * in the footnote, so it is bound to none of them.
+ */
+const UNDETECTED_INSTRUMENT_TERM = /\b(?:Notice|Guidelines?|Guidance|Communication|Best Practices|Working (?:Document|Paper))\b/i;
+
+/** The name of an instrument, where one opens the reference a citation sits inside. */
+const INSTRUMENT_NOUN = /\b(?:Notice|Guidelines?|Guidance|Communication|Best Practices|Working (?:Document|Paper)|Regulations?|Règlements?|Directives?|Decisions?|Décisions?|Recommendations?|Recommandations?|Judge?ments?)\b/i;
+
+const SENTENCE_BREAK = /[.!?]["”’']?\s+(?=[A-Z“‘"'])/g;
+
+/**
+ * Whether an act or a Treaty article is cited as part of how some other instrument is
+ * described, rather than in its own right.
+ *
+ * The Commission's 2026 draft merger guidelines define a term straight after the Merger
+ * Regulation: `Commission Notice on a simplified treatment for certain concentrations under
+ * Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings,
+ * OJ C 160, 5.5.2023, p.1 (‘Notice on Simplified Procedure’)`. The Regulation is there only to
+ * say what the Notice is about, and the term names the Notice — but the Regulation was the
+ * nearest citation to it, so the term was bound to 32004R0139 and every later `Notice on
+ * Simplified Procedure, paragraph 5(d)(bb)` put the Merger Regulation on screen as the
+ * document cited. A real text, correctly retrieved, under a citation it is not.
+ *
+ * Read from the reference itself: something before this citation in the same sentence, and
+ * since the last term declared there, names an instrument. The same shape covers an act in
+ * another act's title (`… implementing Council Regulation (EC) No 139/2004 …`) and a Treaty
+ * article in a judgment's (`Judgment of …, interpreting Article 102 TFEU`). Only acts and
+ * Treaty articles are asked, because they are what turns up inside titles; a case-law
+ * citation opens with `Judgment of …`, and that is its own reference, not someone else's.
+ *
+ * Wrong in the safe direction when it is wrong. A term refused here is left undefined, and a
+ * later use of it resolves to nothing rather than to a document.
+ */
+function citedWithinAnotherInstrument(text: string, citation: CitationMatch, segmentStart: number): boolean {
+  if (citation.source !== 'eur-lex') return false;
+  const before = text.slice(segmentStart, citation.index);
+  let from = 0;
+  for (const boundary of before.matchAll(SENTENCE_BREAK)) from = (boundary.index ?? 0) + boundary[0].length;
+  for (const term of before.matchAll(DEFINED_TERMS)) from = Math.max(from, (term.index ?? 0) + term[0].length);
+  return INSTRUMENT_NOUN.test(before.slice(from));
+}
 
 type RegisteredCitation = Pick<CitationMatch, 'label' | 'source' | 'celex' | 'ecli' | 'caseNumber' | 'caseName' | 'documentType' | 'documentTypeStated'>;
 
@@ -1407,9 +1469,17 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[])
       const segment = segmentAt(segments, citation.index);
       const parenthetical = DEFINED_TERM.exec(text.slice(windowStart, Math.min(segment.end, windowStart + DEFINED_TERM_SCAN_WINDOW)));
       if (parenthetical) {
-        newEntries.push({ key: parenthetical[1].trim().toLowerCase(), method: 'explicit_alias', order: order++, citation: registered });
         const start = windowStart + (parenthetical.index ?? 0);
         declared.push({ start, end: start + parenthetical[0].length });
+        // A term belongs to the citation nearest before it, or to nothing. Letting every
+        // citation in reach register it and the latest win came to the same thing until the
+        // nearest one is refused below — and then the next one back would inherit a term that
+        // was never about it either.
+        const nearer = hardMatches.some((other) => other.index >= windowStart && other.index < start);
+        if (!nearer && !UNDETECTED_INSTRUMENT_TERM.test(parenthetical[1])
+            && !citedWithinAnotherInstrument(text, citation, segment.start)) {
+          newEntries.push({ key: parenthetical[1].trim().toLowerCase(), method: 'explicit_alias', order: order++, citation: registered });
+        }
       }
 
       if (citation.caseName) {
