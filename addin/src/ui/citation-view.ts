@@ -98,7 +98,7 @@ export function inlineFootnotesInBody(bodyText: string): ReviewFootnote[] {
 }
 
 export const INLINE_NOTE_FLOOR = 30;
-const INLINE_NOTE_CEILING = 2000;
+export const INLINE_NOTE_CEILING = 2000;
 
 export function citationKey(citation: CitationContext, footnoteId: string): string {
   return `${footnoteId}-${citation.index}-${citation.value}`;
@@ -127,7 +127,16 @@ export function officialSourceUrl(citation: CitationContext): string {
   // derived from the document type — so an opinion links to the opinion, not to the
   // judgment in the same case.
   if (citation.celex) return `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:${citation.celex}`;
-  if (citation.source === 'commission') return `https://competition-cases.ec.europa.eu/search?query=${encodeURIComponent(citation.value)}`;
+  // The case's own page in DG Competition's register, not a search for its number — see the
+  // note on `commissionUrl` in the resolver, which builds the same link and must agree.
+  // A `C(yyyy) nnnn` decision number names an act rather than a case file and has no page
+  // there, so it keeps the search.
+  if (citation.source === 'commission') {
+    const value = citation.value.replace(/^COMP\//i, '');
+    return /^(?:AT|SA|M)\.\d{3,6}$/i.test(value)
+      ? `https://competition-cases.ec.europa.eu/cases/${encodeURIComponent(value)}`
+      : `https://competition-cases.ec.europa.eu/search?query=${encodeURIComponent(citation.value)}`;
+  }
   // caseNumber, then ecli, then the literal matched text, in that preference order: a
   // shorthand reference resolved via a defined term (e.g. "Akzo Nobel, para. 45.") carries
   // its originating citation's caseNumber/ecli but its own `value` is just the short form,
@@ -135,8 +144,25 @@ export function officialSourceUrl(citation: CitationContext): string {
   return curiaSearchUrl(citation.caseNumber ?? citation.ecli ?? citation.value);
 }
 
+/**
+ * What tells one option in the pick-list apart from another.
+ *
+ * CELEX first, because it is the only identifier here that names a *document* rather than a
+ * case. The judgment, the order and the Advocate General's opinion in one case share a case
+ * number, and where none of them carries an ECLI — which is usual for an order — keying on
+ * the number gave two options the same key. React is explicit that it may then drop one of
+ * them, so a reviewer asked to choose between the order and the judgment in T-457/08 could
+ * be shown one option and never learn the other existed. Found by driving the pane through
+ * the Intel decision in `real-documents.test.tsx`; no hand-written fixture cited a case
+ * twice in two document types.
+ */
 export function candidateKey(candidate: CitationCandidate): string {
-  return candidate.ecli ?? candidate.caseNumber ?? candidate.celex ?? candidate.caseName ?? 'unknown';
+  if (candidate.celex) return candidate.celex;
+  if (candidate.ecli) return candidate.ecli;
+  if (candidate.caseNumber) {
+    return candidate.documentType ? `${candidate.caseNumber}:${candidate.documentType}` : candidate.caseNumber;
+  }
+  return candidate.caseName ?? 'unknown';
 }
 
 /**

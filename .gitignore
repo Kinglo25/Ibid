@@ -35,3 +35,8 @@ samples/ibid-demo-docx/*
 # Throwaway trial state: the tunnel URL of the day, its logs, and the add-in Id.
 # The Id is deliberately kept across runs but is local to this machine.
 .trial/
+
+# Accuracy sampling: marking sheets carry the text of real footnotes, so a sheet is as
+# confidential as the document it was drawn from. The scripts that produce them are in the
+# repository; their output never is. See docs/ACCURACY.md.
+.accuracy/

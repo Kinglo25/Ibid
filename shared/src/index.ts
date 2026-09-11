@@ -1004,10 +1004,31 @@ function sameAuthority(a: RegisteredCitation, b: RegisteredCitation): boolean {
   const courts = [courtOf(a), courtOf(b)];
   if (courts[0] && courts[1] && courts[0] !== courts[1]) return false;
 
-  for (const [left, right] of [[a.ecli, b.ecli], [a.caseNumber, b.caseNumber], [a.celex, b.celex]]) {
-    if (left && right) return left === right;
-  }
+  // Most specific first, because these do not all identify the same thing. An ECLI and a
+  // CELEX name a *document*; a case number names the case, and one case holds a judgment, an
+  // order and an opinion. Comparing the case number before the CELEX meant a document cited
+  // once as `C-95/04 P` and once as `C-95/04` was two separate authorities however plainly
+  // its CELEX said otherwise — so the reviewer was offered the same judgment twice, one of
+  // the two under a name that had lost its suffix.
+  if (a.ecli && b.ecli) return a.ecli === b.ecli;
+  if (a.celex && b.celex) return a.celex === b.celex;
+  if (a.caseNumber && b.caseNumber) return caseIdentity(a.caseNumber) === caseIdentity(b.caseNumber);
   return Boolean(a.caseName && b.caseName && a.caseName.toLowerCase() === b.caseName.toLowerCase());
+}
+
+/**
+ * A case number with the suffix that says what kind of proceeding it was left off.
+ *
+ * `C-97/08 P` is the appeal, `T-139/24 R` the interim measures, `C-639/23 P(R)` both. The
+ * court, the number and the year say which case; the suffix says what was done in it, and a
+ * drafter routinely writes it in one footnote and leaves it off in the next. Only reached
+ * where neither citation carries an ECLI or a CELEX, so a genuine order and judgment in one
+ * case are still told apart above — by their document type, and by the CELEX they derive.
+ */
+function caseIdentity(value: string): string {
+  const upper = value.toUpperCase().replace(/[\u2010-\u2015]/g, '-');
+  const match = /^([CTF])-?(\d{1,4})\/(\d{2,4})/.exec(upper);
+  return match ? `${match[1]}-${Number(match[2])}/${match[3]}` : upper;
 }
 
 /**

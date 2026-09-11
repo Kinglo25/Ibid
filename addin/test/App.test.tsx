@@ -216,6 +216,31 @@ describe('the pane, rendered', () => {
       await screen.findByText(/According to settled case-law/);
       assert.equal(screen.queryByText(/could not be located/), null);
     });
+
+    /**
+     * The Reports published this order as a summary and EUR-Lex holds nothing else, so
+     * "could not be located" would send the reviewer hunting a paragraph that is not there
+     * to find — and one of them did exactly that, and was told by a chatbot that EUR-Lex was
+     * broken. The grounds are real and CURIA has them, which is the only reason this case is
+     * worth separating from an ordinary miss: it ends with a link instead of a shrug.
+     */
+    test('a summary publication says so, and links to the full text on CURIA', async () => {
+      servingDocuments([{
+        title: 'Intel v Commission, T-457/08 R (order)', source: 'CURIA',
+        url: 'https://eur-lex.europa.eu/x', locator: 'Point 87', language: 'en' as const,
+        passage: 'summary', fullTextUrl: 'https://curia.europa.eu/juris/liste.jsf?language=en&num=T-457%2F08%20R',
+        excerpt: 'Order of the President of the Court of First Instance of 27 January 2009...',
+      }]);
+      const user = userEvent.setup();
+      render(<App />);
+      await showEveryFootnote(user);
+      await user.click((await findChip('Ibid.'))[0]);
+
+      await screen.findByText(/EUR-Lex holds only the published summary/);
+      assert.equal(screen.queryByText(/could not be located/), null);
+      const curia = screen.getByRole('link', { name: 'CURIA' });
+      assert.equal(curia.getAttribute('href'), 'https://curia.europa.eu/juris/liste.jsf?language=en&num=T-457%2F08%20R');
+    });
   });
 });
 
@@ -649,6 +674,49 @@ describe('finding the footnote the cursor is actually in', () => {
     // "Note" rather than "Footnote" is the body-text distinction; the badge is a fixed
     // pill, so it carries the label and the context line below carries the explanation.
     await screen.findByText('Note 72', { selector: '.count' });
+  });
+
+  test('a note broken over a page break is told from the notes that open the same way', async () => {
+    // Reported from the 2026 guidelines on exclusionary abuses, where twenty-three footnotes
+    // open with the same judgment and part company only at the pinpoint. Note 6 there runs
+    // over a page break, so its first paragraph is exactly that shared opening — and the
+    // pane, taking the first note whose text contained it, answered with a note five pages
+    // earlier. It named that note confidently and retrieved the right source for it, which
+    // is the failure worth guarding: the reviewer is shown a real authority for a footnote
+    // they are not looking at.
+    const opening = 'Judgment of 14 September 2022, Google and Alphabet v Commission (Google Android), T-604/18,';
+    const tail = 'EU:T:2022:541, paragraph 281. See also judgment of 21 December 2023, European Superleague Company, C-333/21, EU:C:2023:1011, paragraph 131.';
+    // The decoy is note 3, so a reader taking the first match takes it rather than note 6.
+    const decoy = `See also ${opening} EU:T:2022:541, paragraph 1028: in that case the General Court held the practices detrimental to consumers.`;
+    const prose = 'Ordinary prose of the document, set larger than the notes at the foot of the page.';
+    word = installWordStub([], `${prose}\r${prose}\r${prose}`, [
+      { label: '(3)', text: decoy, size: 10 },
+      { label: '(6)', text: opening, size: 10 },
+      // No label: the remainder of note 6, which the conversion left on its own.
+      { text: tail, size: 10 },
+    ]);
+    render(<App />);
+    await paneReady();
+
+    // The caret in the half that names no pinpoint, with the rest of its note after it.
+    word.putCursorInBodyParagraph(opening, tail);
+    await screen.findByText('Note 6', { selector: '.count' });
+  });
+
+  test('a paragraph that is a whole note is that note, not the longer one quoting it', async () => {
+    // A short note cited in full, and a longer note quoting the same passage. Both contain
+    // the paragraph the caret is in; only one of them *is* it.
+    const short = 'Judgment of 14 February 1978, United Brands v Commission, C-27/76, EU:C:1978:22, paragraph 65.';
+    const prose = 'Ordinary prose of the document, set larger than the notes at the foot of the page.';
+    word = installWordStub([], `${prose}\r${prose}\r${prose}`, [
+      { label: '(4)', text: `See, to that effect, ${short} And see further the Commission's own practice.`, size: 10 },
+      { label: '(9)', text: short, size: 10 },
+    ]);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorInBodyParagraph(short, '');
+    await screen.findByText('Note 9', { selector: '.count' });
   });
 
   test('a note in the body keeps the number the document shows, not a position in the list', async () => {

@@ -21,7 +21,8 @@ The name is styled **Ibid.** with the terminal period on branded surfaces — th
 - `api/` optional backend for source normalization and retries
 - `shared/` common types and utilities
 - `docs/` security, hosting, and implementation documentation
-- `samples/` fictional Word documents for manual checks
+- `samples/` Word documents the tests and manual checks run against
+- `scripts/` the corpus harness, the Word comparison, and the trial packaging
 
 ## Current state
 
@@ -66,9 +67,35 @@ and it lists what is in that folder at the time Word starts. `docs/HOSTING.md` h
 steps. If the add-in does not appear, check that the manifest is actually in the shared
 folder and restart Word before looking anywhere else.
 
-Run `npm run verify` to lint, type-check the tests, run the full test suite, and build. It is the single command that establishes the tree is sound.
+### Checking it
 
-Three sample documents sit in [samples/ibid-demo-docx/](samples/ibid-demo-docx/); their own README says what each is for. All three are constructed, covering detection, the collected citation patterns, and back-references — every identity in them is fictional and every authority public, so they can be used anywhere a client document could not.
+Three layers, and only the first runs on every change:
+
+```bash
+npm run verify      # lint, type-check, unit tests, build — offline, seconds
+npm run corpus      # detection over real documents, graded against CELLAR — network, minutes
+npm run word-check  # the .docx reader against real Word — needs Word on Windows
+```
+
+`npm run verify` establishes that the tree is sound. It does not establish that Ibid works
+on a document nobody wrote a test for, and that distinction is the reason for the other two.
+`npm run corpus` runs detection across real Commission decisions and Advocate General
+opinions and checks every identifier it derives against the ECLI CELLAR declares for it —
+[scripts/README.md](scripts/README.md) explains what it measures and, just as importantly,
+what a zero in each column does and does not mean. `npm run word-check` asks Word itself
+whether the corpus is reading the same footnotes out of a file that Word reads out of it.
+
+The pane's own tests are driven from those same sample documents rather than from fixtures
+typed by hand — see `addin/test/real-documents.test.tsx`.
+
+### The samples
+
+Four documents sit in [samples/ibid-demo-docx/](samples/ibid-demo-docx/); their own README
+says what each is for. Three are constructed — every identity fictional, every authority
+public, so they can be used anywhere a client document could not. The fourth is the
+Commission's published decision in COMP/C-3/37.990, a real document naming real parties
+because the Commission published it that way, kept for the one thing no constructed sample
+gives you: scale, and a PDF conversion's damage.
 
 The API defaults to port 4000. If it is already in use, start both the API and Vite proxy on another port with `IBID_API_PORT=4001 npm run dev`.
 

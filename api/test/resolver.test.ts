@@ -344,6 +344,116 @@ describe('CURIA case-law text retrieval', () => {
     assert.equal(preview.passage, 'cited');
   });
 
+  // The ECR-era CURIA rendering: the same `C01PointnumeroteAltN` class as the anchored
+  // convention above, but with no anchor at all — the number opens the paragraph and a run
+  // of `&nbsp;` entities separates it from the text. Markup copied from Groupe Danone
+  // (62002TJ0038) and Atlantic Container Line/TACA (61998TJ0191), both cited in the
+  // Commission's Intel decision. `&nbsp;` is six literal characters in raw HTML, so the
+  // `\s+` the bare-number pattern relies on never matched, and both citations fell back to
+  // the headnote.
+  //
+  // The headnote is the trap, and it is in the fixture for that reason. These documents open
+  // with the Reports' "Summary of the Judgment", whose items carry the sibling `S` classes
+  // and start again at 1 — Danone holds 31 of them ahead of the judgment's own paragraph 1.
+  // The slice takes the first match numbered as the target, so a pattern blind to the class
+  // prefix answers a citation to paragraph 2 with headnote 2: a different text, with nothing
+  // on screen to say so.
+  const ecrEraPointsBody = ['1', '2', '3'].map((n) =>
+    `<P class="S01PointnumeroteAltN">${n}.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Headnote ${n}, from the summary of the judgment.</P>`).join('')
+    + ['1', '2', '3'].map((n) =>
+      `<P class="C01PointnumeroteAltN">${n}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Paragraph ${n} of the ruling`
+      + `${n === '2' ? ' — this is the cited paragraph' : ', unrelated matter'}.</P>`).join('');
+
+  test('focuses the excerpt on the cited point using the ECR-era unanchored markup', async () => {
+    const { fetcher } = stubFetcher([html(ecrEraPointsBody)]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62002TJ0038', locator: { kind: 'point', start: 2 }, paragraphs: [2] }));
+
+    assert.ok(preview.excerpt.includes('this is the cited paragraph'));
+    assert.ok(!preview.excerpt.includes('Paragraph 1'));
+    assert.ok(!preview.excerpt.includes('Paragraph 3'));
+    assert.equal(preview.passage, 'cited');
+  });
+
+  test('reads the judgment paragraph, never the headnote item that shares its number', async () => {
+    const { fetcher } = stubFetcher([html(ecrEraPointsBody)]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62002TJ0038', locator: { kind: 'point', start: 2 }, paragraphs: [2] }));
+
+    assert.ok(!preview.excerpt.includes('Headnote'), 'the summary of the judgment is not the judgment');
+  });
+
+  test('carries a cited range across the ECR-era markup, stopping after the last point asked for', async () => {
+    // TACA is cited at paragraphs 349-359 and runs to 1,648, so a range that failed to
+    // terminate would return the rest of the judgment rather than the passage.
+    const { fetcher } = stubFetcher([html(['348', '349', '350', '351'].map((n) =>
+      `<P class="C01PointnumeroteAltN">${n}&nbsp;&nbsp;&nbsp;Paragraph ${n} of the ruling.</P>`).join(''))]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({
+      celex: '61998TJ0191', locator: { kind: 'point', start: 349, end: 350 }, paragraphs: [349, 350],
+    }));
+
+    assert.ok(preview.excerpt.includes('Paragraph 349'));
+    assert.ok(preview.excerpt.includes('Paragraph 350'));
+    assert.ok(!preview.excerpt.includes('Paragraph 348'), 'the range starts where it was told to');
+    assert.ok(!preview.excerpt.includes('Paragraph 351'), 'and ends where it was told to');
+    assert.equal(preview.locator, 'Points 349\u2013350');
+  });
+
+  // The Reports' oldest rendering: all capitals, and the number runs straight into the first
+  // word with no separator of any kind. Markup copied from Hoffmann-La Roche (61976CJ0085),
+  // whose paragraphs 38, 41, 71, 74, 76, 89, 90 and 125 the Commission's Intel decision
+  // cites, and United Brands (61976CJ0027, paragraph 65) — the two judgments that define
+  // dominance and the abuse of it, and the two the pane answered with a headnote.
+  const allCapitalsPointsBody = ['37', '38', '39'].map((n) =>
+    `<p>  ${n}ARTICLE 86 IS AN APPLICATION OF THE GENERAL OBJECTIVE`
+    + `${n === '38' ? ' - THIS IS THE CITED PARAGRAPH' : ', UNRELATED MATTER'} .</p>`).join('');
+
+  test('focuses the excerpt on the cited point where the number runs into the text', async () => {
+    const { fetcher } = stubFetcher([html(allCapitalsPointsBody)]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '61976CJ0085', locator: { kind: 'point', start: 38 }, paragraphs: [38] }));
+
+    assert.ok(preview.excerpt.includes('THIS IS THE CITED PARAGRAPH'));
+    assert.ok(!preview.excerpt.includes('37ARTICLE'));
+    assert.ok(!preview.excerpt.includes('39ARTICLE'));
+    assert.equal(preview.passage, 'cited');
+  });
+
+  // The "Parties / Grounds / Operative part" rendering, where the paragraph number takes a
+  // period. Markup copied from France Télécom (62007CJ0202), cited at paragraphs 104 and
+  // 107-111. This is the one convention that collides with the numbering of a provision
+  // quoted inside a judgment, which is why it is tried last of all — see the pattern list.
+  const periodNumberedPointsBody = ['103', '104', '105'].map((n) =>
+    `<p>${n}. In that context, in prohibiting the abuse of a dominant market position`
+    + `${n === '104' ? ' — this is the cited paragraph' : ', unrelated matter'}.</p>`).join('');
+
+  test('focuses the excerpt on the cited point where the number takes a period', async () => {
+    const { fetcher } = stubFetcher([html(periodNumberedPointsBody)]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62007CJ0202', locator: { kind: 'point', start: 104 }, paragraphs: [104] }));
+
+    assert.ok(preview.excerpt.includes('this is the cited paragraph'));
+    assert.ok(!preview.excerpt.includes('103.'));
+    assert.ok(!preview.excerpt.includes('105.'));
+    assert.equal(preview.passage, 'cited');
+  });
+
+  test('the period-numbered shape never outranks a convention that carries a marker', async () => {
+    // A judgment that quotes a directive article by its own numbering, and marks its own
+    // paragraphs properly. The quoted `1.` must not be reachable as "paragraph 1": the
+    // marked convention is tried first and answers, so the loose shape is never consulted.
+    const { fetcher } = stubFetcher([html(
+      '<p>1. Member States shall ensure that this quoted provision is applied.</p>'
+      + '<p class="coj-count" id="point1">1</p><p>The judgment\u2019s own first paragraph.</p>',
+    )]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 1 }, paragraphs: [1] }));
+
+    assert.match(preview.excerpt, /own first paragraph/);
+    assert.ok(!preview.excerpt.includes('Member States shall ensure'), 'a quoted provision is not the judgment\u2019s paragraph 1');
+  });
+
   test('falls back to the document start when no known point-anchor convention matches', async () => {
     // e.g. a document CELLAR mirrors under a further, uncatalogued convention.
     const { fetcher } = stubFetcher([html('<p>No point anchors in this document.</p>')]);
@@ -424,6 +534,26 @@ describe('Commission adapter', () => {
     assert.equal(preview.source, 'European Commission');
     assert.ok(preview.url.startsWith('https://competition-cases.ec.europa.eu/search?query='));
     assert.ok(preview.url.includes(encodeURIComponent('C(2019) 3288')));
+  });
+
+  test('a case number links to the case, not to a search for it', async () => {
+    // Confirmed by hand in a browser on 2026-09-10: the register serves the same Angular
+    // shell for every path, so nothing outside a browser can tell a real case page from an
+    // invented one, and this shape had to be checked by a person before it could be relied on.
+    const { fetcher, calls } = stubFetcher([]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'M.8713' });
+
+    assert.equal(calls.length, 0, 'the register is still never fetched');
+    assert.equal(preview.url, 'https://competition-cases.ec.europa.eu/cases/M.8713');
+  });
+
+  test('COMP/ is dropped, because the register numbers the case without it', async () => {
+    const { fetcher } = stubFetcher([]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'COMP/M.8713' });
+
+    assert.equal(preview.url, 'https://competition-cases.ec.europa.eu/cases/M.8713');
   });
 
   test('mentions the locator in the guidance text when one was detected', async () => {
@@ -1762,5 +1892,94 @@ describe('a judgment the Court published only in part', () => {
     const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 339 }, paragraphs: [339] }));
     assert.equal(preview.passage, 'cited');
     assert.match(preview.excerpt, /present after all/);
+  });
+});
+
+/**
+ * The Reports published many orders — the President's interim-measures orders above all —
+ * as a summary rather than a text: title, catchwords, subject-matter, operative part, and
+ * not one paragraph of the grounds. That summary is the whole of what CELLAR holds under
+ * the CELEX, in every language.
+ *
+ * Recital 91 of the Commission's Intel decision cites paragraph 87 of the order in
+ * T-457/08 R. The paragraph exists — the 2014 judgment in T-286/09 restates it at its own
+ * paragraph 332 — and EUR-Lex holds 2,945 bytes of summary in which no paragraph 87 could
+ * ever appear. Told as an ordinary miss, that reads as a broken tool, and the first reviewer
+ * who read it went looking for a fault that was not there.
+ *
+ * The fixtures below are the real markup, cut down: CURIA's `REF` rendition marker in the
+ * filename comment, and the summary's own operative-part heading class.
+ */
+describe('a document EUR-Lex holds only in summary', () => {
+  const summary = (marker: string) => html(
+    `<!--Filename : ${marker}-->`
+    + '<P class="C10Titre"><B>Order of the President of 27 January 2009 \u2013 Intel v Commission</B></P>'
+    + '<P class="C10Titre"><B>(Case T-457/08 R)</B></P>'
+    + '<P class="C03MotCle">Application for interim measures (see paras 46-48)</P>'
+    + '<P class="C11ObjetIntroduction"><B>Re: </B></P>'
+    + '<P class="C12DispositifIntroduction"><B>Operative part</B></P>'
+    + '<P class="C13Dispositifnonnumerote">Dismisses the application for interim relief.</P>',
+  );
+
+  const orderLookup = (overrides: Partial<EuLookup> = {}): EuLookup => ({
+    source: 'curia', value: 'T-457/08 R', caseNumber: 'T-457/08 R', celex: '62008TO0457',
+    documentType: 'order', locator: { kind: 'point', start: 87 }, paragraphs: [87], ...overrides,
+  });
+
+  test('says the text was never published here, rather than blaming retrieval', async () => {
+    const { fetcher } = stubFetcher([summary('RTO@TRA-DOC-EN-REF-T-0457-2008-200905691-05_00')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(orderLookup());
+    assert.equal(preview.passage, 'summary');
+  });
+
+  test('sends the reviewer to CURIA, which has the grounds', async () => {
+    const { fetcher } = stubFetcher([summary('RTO@TRA-DOC-EN-REF-T-0457-2008-200905691-05_00')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(orderLookup());
+    assert.equal(preview.fullTextUrl, 'https://curia.europa.eu/juris/liste.jsf?language=en&num=T-457%2F08%20R');
+    // The card's own link still opens what the excerpt was cut from. Two links, each
+    // meaning what it says.
+    assert.equal(preview.url, 'https://example.test/celex/62008TO0457');
+  });
+
+  test('recognises the summary by its operative-part heading, with no filename marker', async () => {
+    // Not every rendition carries the comment; the class is the second, independent signal.
+    // A full text spells the same heading `C41DispositifIntroduction`, so the number is
+    // what separates them.
+    const { fetcher } = stubFetcher([summary('nothing-recognisable-here')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(orderLookup());
+    assert.equal(preview.passage, 'summary');
+  });
+
+  test('does not claim it of a full text whose paragraph simply was not found', async () => {
+    // The classic-era full-text rendition of an order: an `ORD` marker, numbered points, and
+    // the operative part under its own class. An ordinary miss here must keep saying so, and
+    // must not offer a CURIA link implying there is more text elsewhere.
+    const { fetcher } = stubFetcher([html(
+      '<!--Filename : BDU@TRA-DOC-EN-ORD-T-0393-2010-200910123-05_00-->'
+      + '<P class="C01PointnumeroteAltN"><A NAME="point1">1</A></P><P>First.</P>'
+      + '<P class="C41DispositifIntroduction"><B>On those grounds,</B></P>',
+    )]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(orderLookup({ locator: { kind: 'point', start: 99 }, paragraphs: [99] }));
+    assert.equal(preview.passage, 'opening');
+    assert.equal(preview.fullTextUrl, undefined);
+  });
+
+  test('never overrides a passage that was found', async () => {
+    // As with an extract judgment, this only ever chooses the wording of an explanation for
+    // a passage already missing. One that is present is returned as cited.
+    const { fetcher } = stubFetcher([html(
+      '<!--Filename : RTO@TRA-DOC-EN-REF-T-0457-2008-200905691-05_00-->'
+      + '<P class="C12DispositifIntroduction"><B>Operative part</B></P>'
+      + '<p class="coj-count" id="point87">87</p><p>The cited paragraph, present after all.</p>',
+    )]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(orderLookup());
+    assert.equal(preview.passage, 'cited');
+    assert.match(preview.excerpt, /present after all/);
+    assert.equal(preview.fullTextUrl, undefined);
   });
 });

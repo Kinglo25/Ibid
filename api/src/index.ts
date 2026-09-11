@@ -70,12 +70,25 @@ export type SourcePreview = {
    * which is a fact about the document rather than a failure of retrieval, and the reader
    * should not be sent looking for a fault that is not there.
    *
+   * `'summary'` is the other established cause, and the one with somewhere to go: the
+   * Reports carried a summary of this document rather than its text, so EUR-Lex holds no
+   * paragraph of it at all, but CURIA holds the whole thing. `fullTextUrl` comes with it.
+   *
    * Every point-anchor convention this resolver knows was added after meeting a document
    * that used none of the ones already catalogued, so `'opening'` is a state it can go on
    * arriving in rather than a bug on its way to being finished. What must not happen is a
    * lawyer reading a judgment's catchwords under a heading naming paragraph 46.
    */
-  passage?: 'cited' | 'opening' | 'unpublished';
+  passage?: 'cited' | 'opening' | 'unpublished' | 'summary';
+  /**
+   * Where the full text is, when `url` leads to something less than it.
+   *
+   * Set only alongside `passage: 'summary'`, where EUR-Lex published a summary of the
+   * document and CURIA has its grounds. `url` still opens what the excerpt was cut from —
+   * that link must keep meaning what it says — so this is a second one, offered as what it
+   * is rather than substituted for the first.
+   */
+  fullTextUrl?: string;
   /** The language `excerpt` is actually in. Absent where no document was retrieved. */
   language?: SourceLanguage;
   /**
@@ -286,6 +299,11 @@ function decodeHtml(value: string): string {
  *    judgments not yet migrated to the above): the number is a same-value
  *    anchor name at the start of the numbered-point paragraph,
  *    `<P class="C01PointnumeroteAltN"><A NAME="point87">87</A>text...`.
+ *  - Judgment point (CURIA-native, ECR era): the same class with no anchor at
+ *    all, the number opening the paragraph and separated from the text by
+ *    `&nbsp;` entities, `<P class="C01PointnumeroteAltN">66&nbsp;&nbsp;It is
+ *    also clear...`. The `C` prefix keeps it off the `S`-classed headnote
+ *    paragraphs, which carry their own numbering from 1.
  *  - Judgment point (legacy, ~1990s–2000s): a definition-term/definition-data
  *    pair holding just the number, text following outside it,
  *    `<dt>128<dd></dd></dt>text...`.
@@ -392,9 +410,10 @@ const ARTICLE_PARAGRAPH_HEADING = /<p[^>]*>\s*(\d+)\.\s/gi;
 /**
  * Tried in order; the first pattern that anchors the target point number
  * wins. Several real, distinct markup conventions across document eras were
- * found live, in one round of testing against real client citations — this
- * is deliberately a list to try, not a single assumed format, because a
- * fifth convention turning up would not be surprising.
+ * found live, in successive rounds of testing against real client citations —
+ * this is deliberately a list to try, not a single assumed format, because
+ * the next convention turning up would not be surprising. It has happened
+ * every time a document from an era not yet met was put through.
  */
 const JUDGMENT_POINT_HEADINGS = [
   /<p[^>]*\bid="point(\d+)"[^>]*>/gi,
@@ -406,6 +425,24 @@ const JUDGMENT_POINT_HEADINGS = [
   // opinion in Akzo Nobel (62007CC0550). `NAME=` is what makes this safe to generalise: a
   // cross-reference to a point is an `HREF="#pointN"`, never a `NAME`.
   /<P[^>]*class="[^"]*Point[^"]*"[^>]*>\s*<A[^>]*\bNAME="point(\d+)"[^>]*>/gi,
+  // The same CURIA-native class without the anchor: the ECR-era rendition writes the number
+  // as the paragraph's own first characters and separates it from the text with a run of
+  // `&nbsp;` entities, `<P class="C01PointnumeroteAltN">66&nbsp;&nbsp;&nbsp;It is also clear
+  // from case-law that...`. Confirmed live against Groupe Danone (62002TJ0038, 526
+  // paragraphs) and Atlantic Container Line/TACA (61998TJ0191, 1,648). Neither the anchor
+  // pattern above nor the shape below could reach it — `&nbsp;` in raw HTML is six literal
+  // characters, so the `\s+` those rely on never matched, and a lawyer citing Danone's
+  // paragraph 66 got the headnote instead.
+  //
+  // `C` is load-bearing and not a stylistic detail. These documents open with the Reports'
+  // "Summary of the Judgment", whose headnote items carry the sibling `S` classes and their
+  // own numbering from 1: `<P class="S01PointnumeroteAltN">1.&nbsp;The right of access to
+  // the file...`. Danone holds 31 of those before paragraph 1 of the judgment begins, and
+  // `sliceByHeadingAnchor` takes the first match numbered as the target — so a class pattern
+  // blind to the prefix would answer a citation to paragraph 5 with headnote 5, a different
+  // text, shown as though it were the one cited. Requiring `&nbsp;` or whitespace directly
+  // after the number rules them out a second time: a headnote number carries a period.
+  /<P[^>]*class="C\d+Pointnumerote[^"]*"[^>]*>\s*(\d+)(?:&nbsp;|\s)/gi,
   /<dt>\s*(\d+)\s*<dd>\s*<\/dd>\s*<\/dt>/gi,
   // Legacy EUR-Lex "TexteOnly" rendering, where a numbered point has no anchor, no class
   // and no wrapper of any kind: the number simply opens the paragraph, `<p>46 According to
@@ -417,9 +454,31 @@ const JUDGMENT_POINT_HEADINGS = [
   // Requiring running text after the number — not whitespace, and not the next tag — is
   // what keeps it out of the way of the conventions above, whose anchors hold the number
   // alone and close immediately (`<p class="count" id="point57">57</p>`),
-  // and a period after it belongs to legislative numbering (`<p>1. text`), which is a
-  // different structure read by ARTICLE_PARAGRAPH_HEADING. Recitals are parenthesised.
+  // and a period after it belongs to legislative numbering (`<p>1. text`), which is the
+  // structure ARTICLE_PARAGRAPH_HEADING reads. Recitals are parenthesised.
   /<p[^>]*>\s*(\d+)\s+(?=[^\s<])/gi,
+  // The Reports' oldest rendering, all capitals and no separator at all between the number
+  // and the first word: `<p>  38ARTICLE 86 IS AN APPLICATION OF THE GENERAL OBJECTIVE...`.
+  // Confirmed live against Hoffmann-La Roche (61976CJ0085, 1979: 139 of its 142 paragraphs
+  // marked this way) and United Brands (61976CJ0027, 1978: 309 of them) — both cited by
+  // paragraph in the Commission's Intel decision, and both showing the reader a headnote.
+  // Two capitals rather than one: it is the all-capitals era that runs the number into the
+  // text, and requiring the shape of that era is what keeps this from reading a stray digit
+  // in a mixed-case document as a paragraph number.
+  /<p[^>]*>\s*(\d+)(?=[A-Z]{2})/gi,
+  // The "Parties / Grounds / Operative part" rendering, where the number opens the paragraph
+  // and takes a period: `<p>104. In that context, in prohibiting the abuse of a dominant
+  // market position...`. Confirmed live against France Télécom (62007CJ0202, 2009), whose
+  // Grounds run 1 to 122 in exactly this form.
+  //
+  // Last, and after the period-free shape above, because it is the one convention that
+  // collides with something else real: a quoted provision inside a judgment is numbered
+  // `<p>1. Member States shall...` too. Nothing in a flat scan of the markup can tell those
+  // apart, so what protects the reader is position in this list — every pattern above is
+  // tried first, and this is reached only for a document in which none of them found the
+  // cited number at all. In that document the alternative is not a safer excerpt; it is the
+  // catchwords, shown in place of the paragraph.
+  /<p[^>]*>\s*(\d+)\.\s+(?=[^\s<])/gi,
 ];
 
 /**
@@ -487,7 +546,7 @@ function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly nu
  * `passage` is absent where the citation pinpointed nothing at all. Then the opening is
  * simply what there is to show, and there is nothing to admit.
  */
-type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' | 'unpublished' };
+type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' | 'unpublished' | 'summary' };
 
 /** The opening of the document, marked as the fallback it is. */
 function documentOpening(html: string, cited: boolean): Excerpt {
@@ -548,6 +607,42 @@ function isExtractJudgment(html: string): boolean {
   return numbered.length > 0 && Math.max(...numbered) > numbered.length;
 }
 
+/**
+ * Whether EUR-Lex holds only the Reports' summary of this document, and not its text.
+ *
+ * A third thing entirely from an extract judgment. The Reports published many orders — the
+ * President's interim-measures orders above all — as a *summary*: the title, the catchwords,
+ * the subject-matter, and the operative part. Not one paragraph of the grounds. That summary
+ * is the whole of what CELLAR holds under the CELEX, in every language: the order in
+ * Intel v Commission (T-457/08 R) is 2,945 bytes in English, 2,989 in French, and its
+ * paragraph 87 is in none of them, though it exists and the 2014 judgment in T-286/09
+ * restates it at paragraph 332. The grounds are on CURIA and nowhere in CELLAR.
+ *
+ * Distinguished from an extract judgment because the way out is different, and that is the
+ * whole value of saying it. An extract judgment's missing paragraph is missing everywhere,
+ * and the reader should stop looking. A summary publication's missing paragraph is one click
+ * away on CURIA, and the reader should be sent there — which is why `resolveCellarPreview`
+ * attaches the case record to this and to nothing else.
+ *
+ * Two signals, either sufficient, both confirmed live on 2026-08-27 against the summary
+ * renditions of T-457/08 R, T-173/09, T-195/08, T-246/08 and T-18/10, and against the
+ * full-text renditions of C-8/08, T-393/10 and T-411/07, which carry neither:
+ *  - CURIA's own rendition marker in the filename comment every classic-era document opens
+ *    with: `RTO@TRA-DOC-EN-REF-T-0457-2008-…`. `REF` is the summary; `ARRET`, `ORD` and
+ *    `CONCL` are texts. The prefix before the `@` varies by translator and carries nothing.
+ *  - The stylesheet class of the summary's operative-part heading, `C12DispositifIntroduction`.
+ *    A full text uses `C41DispositifIntroduction` for the same heading, so the number is the
+ *    discriminator and a substring match would defeat it.
+ *
+ * Read only where a pinpoint has already failed, so — as with `isExtractJudgment` — a wrong
+ * answer here costs a sentence and never a passage.
+ */
+const SUMMARY_PUBLICATION = /TRA-DOC-[A-Z]{2}-REF-|class="C12DispositifIntroduction"/i;
+
+function isSummaryPublication(html: string): boolean {
+  return SUMMARY_PUBLICATION.test(html);
+}
+
 function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
   const locator = lookup.locator;
   if (!locator || locator.kind !== 'point') return documentOpening(html, false);
@@ -559,6 +654,11 @@ function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
     if (result) return { excerpt: result, passage: 'cited' };
   }
   const opening = documentOpening(html, true);
+  // Summary first: a summary publication has no numbered paragraphs at all, so the gap
+  // `isExtractJudgment` reads in the numbering is not there to read, and it would fall
+  // through to the wording that sends the reader looking for a paragraph EUR-Lex will
+  // never show them.
+  if (isSummaryPublication(html)) return { ...opening, passage: 'summary' };
   return isExtractJudgment(html) ? { ...opening, passage: 'unpublished' } : opening;
 }
 
@@ -656,6 +756,13 @@ function languageOf(html: string): SourceLanguage | undefined {
 function looksLikeCellarDocument(html: string): boolean {
   if (/<!--\s*(?:CONVEX|fmx2xhtml)\b/i.test(html)) return true;
   if (/<meta\s+name="DC\.title"\s+content="EUR-Lex\b/i.test(html)) return true;
+  // CURIA's own filename comment, which every classic-era case-law rendition opens with:
+  // `<!--Filename : BDU@TRA-DOC-EN-ARRET-C-0008-2008-…-->`. Added for the summary
+  // publications, which carry no generator comment and no Dublin Core tag and are the only
+  // real documents small enough to come near the length floor below — the summary of the
+  // order in T-457/08 R is 2,945 bytes, and a shorter one would have been thrown away as an
+  // interstitial. Nothing but a CURIA document says `TRA-DOC-`.
+  if (/TRA-DOC-[A-Z]{2}-/i.test(html)) return true;
   return html.length > 2_000;
 }
 
@@ -833,8 +940,28 @@ function curiaUrl(lookup: EuLookup): string {
   return `https://curia.europa.eu/juris/liste.jsf?language=en&num=${encodeURIComponent(query)}`;
 }
 
+/** DG Competition's own case numbering: `AT.` antitrust, `SA.` State aid, `M.` merger. */
+const COMMISSION_CASE_NUMBER = /^(?:AT|SA|M)\.\d{3,6}$/i;
+
+/**
+ * The case's own page in DG Competition's register.
+ *
+ * A search for the number was the safe answer while the register's URL shape could not be
+ * confirmed from outside a browser, and it could not: the register serves the same Angular
+ * shell for every path — a real case, an invented number, nonsense, even `robots.txt`, all
+ * byte-identical — so a `200` proves nothing there and a link that 404s is worse than one
+ * that searches. Confirmed by hand in a browser on 2026-09-10: `/cases/M.8713` opens
+ * TATA STEEL / THYSSENKRUPP / JV. `COMP/` is dropped because the register numbers the case
+ * without it. Kept in step with `officialSourceUrl` in the pane, which builds the same link.
+ */
 function commissionUrl(lookup: EuLookup): string {
-  return `https://competition-cases.ec.europa.eu/search?query=${encodeURIComponent(lookup.value)}`;
+  const value = lookup.value.replace(/^COMP\//i, '');
+  // Only a case number addresses a case. A `C(yyyy) nnnn` decision number is the number of
+  // the act, not of the file it was taken in, and the register has no page under it — so
+  // that one keeps the search, which is still the best answer available for it.
+  return COMMISSION_CASE_NUMBER.test(value)
+    ? `https://competition-cases.ec.europa.eu/cases/${encodeURIComponent(value)}`
+    : `https://competition-cases.ec.europa.eu/search?query=${encodeURIComponent(lookup.value)}`;
 }
 
 function retryDelay(response: Response | undefined, attempt: number): number {
@@ -1229,8 +1356,15 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     // Judgments and legislative acts use different paragraph-numbering
     // markup (see sliceByHeadingAnchor), so they need different extraction —
     // both run on the raw HTML, before it is decoded.
-    const base: SourcePreview = source === 'CURIA'
-      ? { title: describeDocument(lookup), ...extractJudgmentPoint(html, lookup), url, source, locator: locatorLabel(lookup), language }
+    const caseLaw = source === 'CURIA' ? extractJudgmentPoint(html, lookup) : undefined;
+    const base: SourcePreview = caseLaw
+      ? {
+          title: describeDocument(lookup), ...caseLaw, url, source, locator: locatorLabel(lookup), language,
+          // The grounds this document does not contain, on the service that has them. Only
+          // here: everywhere else `url` already leads to the whole text, and a second link
+          // beside it would say there is more to find when there is not.
+          ...(caseLaw.passage === 'summary' ? { fullTextUrl: curiaUrl(lookup) } : {}),
+        }
       : {
           // Legislation states its own title in the document, which beats anything derived
           // from the citation; the derived name is the fallback when extraction comes up empty

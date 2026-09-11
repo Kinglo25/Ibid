@@ -59,7 +59,9 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 486 tests (273 detection and resolution, 124 resolver, document store and contract, 89 task pane). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
+- `npm run test` passes: 567 tests (283 detection and resolution, 173 resolver, document store and contract, 111 task pane). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
+- `npm run corpus` passes: 21 documents, 17 read, 1,083 citations, 165 identifiers checked against CELLAR, 0 wrong-source. Outside `verify`: it needs the network.
+- `npm run word-check` passes: the .docx reader and real Word agree on all 1,991 footnotes of the Intel decision, and on every other sample. Outside `verify`: it needs Word on Windows.
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
 
@@ -1639,6 +1641,19 @@ What it looks like: the file stops after `following the cursor` completes and be
 gives up, reporting `✖ test/App.test.tsx … 'test failed'` with no individual test having
 failed and no assertion error. Roughly one run in three on this machine at the time of
 writing, in that region of the file every time.
+
+Still present on 28 August 2026, at **four failures in six runs** (fail, fail, fail, pass,
+pass, fail) against the ~40% measured on 24 August. Two observations from that day, neither
+of them a new hypothesis — the ones worth having are below, and the ones below this entry
+have already been falsified.
+
+It now stops *inside* `following the cursor`, after that suite's first test rather than
+after its last, so the region has drifted slightly from the description above.
+
+And it corrupts the count as well as the result. A hung run reports 84 tests in `addin`
+where a clean one reports 111, because the file's remaining subtests are never counted. Any
+test total taken from a stalled run is therefore wrong rather than merely incomplete — which
+is worth knowing before someone updates the figure in this document from a red run.
 
 What has been ruled out:
 

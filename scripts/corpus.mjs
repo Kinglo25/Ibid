@@ -23,9 +23,14 @@
  * being right, which is the only failure here that can put a false authority in a legal
  * document.
  *
- *   npm run corpus              read the corpus and report recall (no network beyond harvest)
- *   npm run corpus -- --verify  also ask CELLAR what each derived identifier really is
- *   npm run corpus -- --offline use only what is already cached
+ * It exits non-zero when a wrong source is found, when it was asked to check and checked
+ * nothing, or when every document was skipped. A corpus run that cannot fail is a report,
+ * and a report is what let a run of 561 citations and 0 identifiers checked read as a clean
+ * bill of health.
+ *
+ *   npm run corpus                 read the corpus, check every derived identifier
+ *   npm run corpus -- --offline    use only what is already cached
+ *   npm run corpus -- --no-verify  recall only, and no network beyond harvest
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -38,7 +43,7 @@ import { ecliOf, fetchCellar, notesFromCellar, notesFromDocx } from './corpus-so
 const root = fileURLToPath(new URL('..', import.meta.url));
 const cache = join(root, '.corpus-cache');
 const flags = new Set(process.argv.slice(2));
-const verify = flags.has('--verify');
+const verify = !flags.has('--no-verify');
 const offline = flags.has('--offline');
 
 /**
@@ -51,6 +56,11 @@ const offline = flags.has('--offline');
 const LOOSE = [
   /\b(?:ECLI:)?EU:[CTF]:\d{4}:\d+\b/gi,
   /\b(?:Cases?|Affaires?)\s+[CT][-‐-―]?\d{1,4}\/\d{2}\b/gi,
+  // Before the Court of First Instance existed there was no letter to cite by, so a decision
+  // of that era writes `Case 172/80` and every net above it looks straight past. Without this
+  // the corpus reported no missed citations at all across six Commission decisions that cite
+  // almost entirely in that form — measuring nothing and printing a zero for it.
+  /\b(?:Joined\s+)?Cases?\s+\d{1,3}\/\d{2}\b/gi,
 ];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -97,7 +107,13 @@ function identifier(value) {
   const ecli = /(?:ECLI:)?EU:([CTF]):(\d{4}):(\d+)/.exec(upper);
   if (ecli) return `EU:${ecli[1]}:${ecli[2]}:${ecli[3]}`;
   const number = /([CTF])-?(\d{1,4})\/(\d{2,4})/.exec(upper);
-  return number ? `${number[1]}-${Number(number[2])}/${number[3]}` : upper.replace(/\s+/g, '');
+  if (number) return `${number[1]}-${Number(number[2])}/${number[3]}`;
+  // A bare-numbered case is a Court of Justice case by definition — the General Court did not
+  // exist yet — and detection reports it under the letter it would have had, so the loose net
+  // has to arrive at the same spelling or every one of them reads as a miss.
+  const bare = /CASES?\s+(\d{1,4})\/(\d{2,4})/.exec(upper);
+  if (bare) return `C-${Number(bare[1])}/${bare[2]}`;
+  return upper.replace(/\s+/g, '');
 }
 
 /**
@@ -132,6 +148,9 @@ function missedIn(notes, detected) {
   return missed;
 }
 
+/** Never asked, which is not the same as asked and unanswered. */
+const UNCHECKED = Symbol('not asked');
+
 /**
  * What CELLAR says each identifier really is, remembered between runs.
  *
@@ -143,6 +162,10 @@ const declaredFile = join(cache, 'declared-eclis.json');
 const declared = existsSync(declaredFile) ? JSON.parse(await readFile(declaredFile, 'utf8')) : {};
 async function declaredEcli(celex) {
   if (celex in declared) return declared[celex];
+  // Offline, an identifier nobody has asked about yet is unchecked. Calling it unavailable
+  // instead would count it as checked and answered, which is the reading this run exists to
+  // stop: a citation nothing verified, reported in the same column as one that passed.
+  if (offline) return UNCHECKED;
   await sleep(600);
   try { declared[celex] = (await ecliOf(celex)) ?? null; } catch { declared[celex] = null; }
   await mkdir(cache, { recursive: true });
@@ -150,7 +173,7 @@ async function declaredEcli(celex) {
   return declared[celex];
 }
 
-const report = { documents: [], totals: { notes: 0, citations: 0, missed: 0, checked: 0, wrongSource: 0, unavailable: 0 } };
+const report = { verified: verify, documents: [], totals: { notes: 0, citations: 0, missed: 0, checked: 0, wrongSource: 0, unavailable: 0 } };
 const manifest = JSON.parse(await readFile(join(root, 'scripts/corpus.manifest.json'), 'utf8'));
 
 for (const entry of manifest.documents) {
@@ -158,6 +181,14 @@ for (const entry of manifest.documents) {
   if (got.skipped) {
     report.documents.push({ id: entry.id, skipped: got.skipped });
     console.log(`— ${entry.id}: skipped (${got.skipped})`);
+    continue;
+  }
+  // A document read as holding nothing has no missed citations and no wrong sources, so it
+  // passes every check here by having no content to fail one. That is how a whole era of
+  // Commission decisions sat in this corpus scoring perfect recall over notes never read.
+  if (got.notes.length === 0) {
+    report.documents.push({ id: entry.id, skipped: 'read as a document, but no notes came out of it' });
+    console.log(`— ${entry.id}: skipped (no notes came out of it)`);
     continue;
   }
   const detected = detectCitationsAcrossFootnotes(got.notes);
@@ -177,6 +208,7 @@ for (const entry of manifest.documents) {
     }
     for (const [celex, citation] of pairs) {
       const says = await declaredEcli(celex);
+      if (says === UNCHECKED) continue;
       report.totals.checked += 1;
       const cited = citation.ecli.toUpperCase();
       if (!says) {
@@ -232,3 +264,29 @@ for (const document of report.documents) {
 
 await writeFile(join(root, 'corpus-report.json'), JSON.stringify(report, null, 2));
 console.log('\nfull report written to corpus-report.json');
+
+/**
+ * What makes this a check rather than a readout.
+ *
+ * Three ways to fail, and two of them are failures to have measured anything at all. A run
+ * that checked nothing and a run that read nothing both print zeros in the column that must
+ * be zero, and zeros there are indistinguishable from a pass unless something says otherwise.
+ */
+const read = report.documents.filter((document) => !document.skipped);
+const failures = [];
+if (report.totals.wrongSource > 0) {
+  failures.push(`${report.totals.wrongSource} citation(s) resolved to a source belonging to another document`);
+}
+if (verify && report.totals.checked === 0) {
+  failures.push('asked to check derived identifiers and checked none, so the zero above means nothing');
+}
+if (read.length === 0) failures.push('every document was skipped; nothing was read');
+
+if (failures.length) {
+  console.error('\nFAILED');
+  for (const failure of failures) console.error(`  - ${failure}`);
+  process.exit(1);
+}
+console.log(read.length === report.documents.length
+  ? `\nOK — ${read.length} documents read, ${report.totals.checked} identifiers checked`
+  : `\nOK — ${read.length} of ${report.documents.length} documents read, ${report.totals.checked} identifiers checked`);

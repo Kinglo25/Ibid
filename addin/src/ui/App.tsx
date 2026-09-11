@@ -3,7 +3,7 @@ import { citedAuthorities, getCitationContextsForFootnotes, reresolveBackReferen
 import { prefetchStatus, prefetchTargets, startPrefetch, type PrefetchProgress, type Prefetcher } from './prefetch';
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
-  autoSelectable, inlineFootnotesInBody, INLINE_NOTE_FLOOR, needsReview, officialSourceUrl,
+  autoSelectable, inlineFootnotesInBody, INLINE_NOTE_CEILING, INLINE_NOTE_FLOOR, needsReview, officialSourceUrl,
   resolutionNote, toReviewFootnotes,
   unresolvedMessage, verificationNote, type ReviewFootnote,
 } from './citation-view';
@@ -12,8 +12,10 @@ type ReviewDocument = {
   title: string; excerpt: string; url: string; source: string;
   /** What the citation pinpointed, as the resolver labelled it: "Point 46", "Article 17(1)". */
   locator?: string;
-  /** Whether the excerpt is that passage, the document's opening standing in for it, or the opening of a judgment the Court published only in part. */
-  passage?: 'cited' | 'opening' | 'unpublished';
+  /** Whether the excerpt is that passage, the document's opening standing in for it, the opening of a judgment the Court published only in part, or a summary published in place of the text. */
+  passage?: 'cited' | 'opening' | 'unpublished' | 'summary';
+  /** Where the grounds are, when EUR-Lex published only a summary of them. Set with `passage: 'summary'` and never otherwise. */
+  fullTextUrl?: string;
   language?: 'en' | 'fr';
   translation?: { from: 'en' | 'fr'; officialUrl: string };
   /** When the resolver last confirmed this text against EUR-Lex, as an ISO timestamp. */
@@ -47,49 +49,121 @@ async function waitForWordRuntime(): Promise<boolean> {
   }
 }
 
+/** A number Word draws for a list item — `275`, `(89)`, `39.` — or nothing. */
+const labelNumber = (label: string): number | undefined => {
+  const match = /^\(?(\d{1,3})[).]?$/.exec(label.trim());
+  return match ? Number(match[1]) : undefined;
+};
+
 /**
- * Notes a conversion rebuilt as an auto-numbered list.
+ * Notes a conversion left in the body: the ones Word rebuilt as an auto-numbered list, and
+ * the ones whose number it left typed at the front of the paragraph.
  *
- * The third shape this decision's footnotes arrive in, and the one nothing textual can find.
- * Fifty-three of them are body paragraphs carrying `<w:numPr>`, so Word draws the number
+ * The shapes nothing textual can find are the numbered ones. Fifty-three of the Intel
+ * decision's footnotes are body paragraphs carrying `<w:numPr>`, so Word draws the number
  * itself and the paragraph's own text begins at "Judgment of 31 May 2018, Groningen Seaports
  * v. Commission…" with no number in it anywhere. `Body.text` never sees a list label, so the
  * only way to read one is to ask Word for it.
  *
- * `listString` is what separates a note from a recital. Both are numbered lists here, but
- * the decision's recitals render as `(48)` and its converted footnotes as a bare `275` —
- * a difference in the numbering definition rather than in the text, which is why it survives
- * where every other distinction between the two has been flattened by the conversion.
+ * What separates a note from a paragraph of the document's own text is `listString` *and*
+ * the size it is set in, because neither settles it alone. The Intel decision renders its
+ * recitals `(48)` and its converted footnotes a bare `275`, and sets both in 12pt — there,
+ * only the numbering tells them apart. The 2026 guidelines on exclusionary abuses render the
+ * two exactly the other way round, footnotes `(89)` against paragraphs numbered `39.`, and
+ * reading the numbering alone found 12 of its 494 footnotes and got 9 of those wrong. What
+ * holds in both is that a note is set smaller than the prose around it.
  *
  * One extra read of the body's paragraphs, once per document, and guarded: a build without
- * `isListItem` returns nothing here rather than taking the whole document read down with it.
+ * `isListItem` returns nothing here rather than taking the whole document read down with it,
+ * and the caller falls back on reading the body text.
  */
-async function numberedNotesInBody(
+async function notesInBody(
   context: Word.RequestContext,
   body: Word.Body,
-): Promise<ReviewFootnote[]> {
+): Promise<ReviewFootnote[] | undefined> {
   try {
     const paragraphs = body.paragraphs;
     paragraphs.load('items');
     await context.sync();
     paragraphs.items.forEach((paragraph) => {
-      paragraph.load('text,isListItem');
+      paragraph.load('text,isListItem,font/size');
       paragraph.listItemOrNullObject.load('listString');
     });
     await context.sync();
 
+    const read = paragraphs.items
+      .map((paragraph) => ({
+        text: (paragraph.text ?? '').trim(),
+        // `font.size` is null where a paragraph mixes sizes, which is the same paragraph the
+        // corpus reader gives up on — see `notesFromDocx`. Fewer than one in fifty.
+        size: typeof paragraph.font?.size === 'number' ? paragraph.font.size : undefined,
+        number: paragraph.isListItem
+          ? labelNumber(String(paragraph.listItemOrNullObject?.listString ?? ''))
+          : undefined,
+        bare: paragraph.isListItem
+          ? /^\d{1,3}$/.test(String(paragraph.listItemOrNullObject?.listString ?? '').trim())
+          : false,
+      }))
+      .filter((paragraph) => paragraph.text);
+
+    // The size the document's prose is set in, counted over the paragraphs carrying no number
+    // of their own. Deliberately not the commonest size in the document: in the exclusionary
+    // abuses guidelines the 483 flattened footnotes outweigh the 255 paragraphs of text, so
+    // the commonest size *is* the footnote size and every test against it inverts. Where this
+    // lands too low nothing is smaller than it and no paragraph is admitted by size, which
+    // leaves the reader where it was before — the safe direction to be wrong in.
+    const proseSizes = new Map<number, number>();
+    for (const paragraph of read) {
+      if (paragraph.number !== undefined || paragraph.size === undefined) continue;
+      if (paragraph.text.length < INLINE_NOTE_FLOOR) continue;
+      proseSizes.set(paragraph.size, (proseSizes.get(paragraph.size) ?? 0) + 1);
+    }
+    const proseSize = [...proseSizes].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const belowProse = (size?: number) =>
+      proseSize !== undefined && size !== undefined && size < proseSize;
+    const startsNote = (at: number, size: number) =>
+      read[at]?.number !== undefined && read[at].text.length >= INLINE_NOTE_FLOOR
+      && read[at].size === size && belowProse(read[at].size);
+    /** Whether an unnumbered paragraph sits inside a block of notes, not merely beside one. */
+    const insideNoteBlock = (at: number, size: number) => {
+      for (let next = at + 1; next < read.length; next += 1) {
+        if (read[next].size !== size) return false;
+        if (read[next].number !== undefined) return startsNote(next, size);
+      }
+      return false;
+    };
+
     const notes: ReviewFootnote[] = [];
-    paragraphs.items.forEach((paragraph) => {
-      if (!paragraph.isListItem) return;
-      const label = String(paragraph.listItemOrNullObject?.listString ?? '').trim();
-      if (!/^\d{1,3}$/.test(label)) return;
-      const text = (paragraph.text ?? '').trim();
-      if (text.length < INLINE_NOTE_FLOOR) return;
-      notes.push({ id: `list-note-${notes.length + 1}`, number: Number(label), text, inBody: true });
+    let open: { at: number; size: number } | undefined;
+    read.forEach((paragraph, at) => {
+      const { text, size, number, bare } = paragraph;
+      if (number !== undefined) {
+        if (text.length < INLINE_NOTE_FLOOR) return;
+        if (!bare && !belowProse(size)) return;
+        notes.push({ id: `list-note-${notes.length + 1}`, number, text, inBody: true });
+        // Only a note set smaller than the prose can take a tail: a bare number at prose size
+        // is the Intel shape, where nothing was broken across a page to leave one behind.
+        if (belowProse(size) && size !== undefined) open = { at: notes.length - 1, size };
+        return;
+      }
+      // A note broken over a page break, whose tail the conversion left as its own paragraph.
+      // Joined rather than listed: every citation in those paragraphs is already inside the
+      // note above them, so listing them separately double-counts each one and leaves half a
+      // note in the reviewer's list for them to click on.
+      if (open && size !== undefined && size === open.size
+          && (insideNoteBlock(at, size) || startsNote(at - 1, size))) {
+        notes[open.at] = { ...notes[open.at], text: `${notes[open.at].text} ${text}` };
+        return;
+      }
+      // The number Word left typed at the front of the paragraph rather than drawing itself.
+      const typed = /^(\d{1,3})[ \t\u00a0]+([A-Z\u201c\u2018"'][\s\S]*)$/.exec(text);
+      if (typed && typed[2].length >= INLINE_NOTE_FLOOR && typed[2].length <= INLINE_NOTE_CEILING) {
+        notes.push({ id: `body-note-${notes.length + 1}`, number: Number(typed[1]), text: typed[2], inBody: true });
+      }
     });
     return notes;
   } catch {
-    return [];
+    return undefined;
   }
 }
 
@@ -103,8 +177,7 @@ async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
     footnotes.items.forEach((footnote) => footnote.body.load('text'));
     await context.sync();
 
-    const numbered = await numberedNotesInBody(context, body);
-    const bodyText = body.text.trim();
+    const inBody = await notesInBody(context, body);
     return {
       footnotes: [
         // Every footnote, empties included: numbering is what back-references count on, and
@@ -114,9 +187,12 @@ async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
         // count on it, so anything inserted among the real footnotes would send `supra note
         // 14` to a different authority than the document cited there. These sit past the end,
         // where they add themselves to the list without moving anything already in it.
-        ...inlineFootnotesInBody(bodyText),
-        // And the ones Word numbers itself, which no reading of the body text can find.
-        ...numbered,
+        //
+        // Reading the paragraphs is what finds these; `inlineFootnotesInBody` is the fallback
+        // for a build that cannot report `isListItem`, where the body text is all there is.
+        // Only one of the two ever runs, because they overlap: the paragraph read joins a
+        // note's tail onto the note, and the text read would list that same tail again.
+        ...(inBody ?? inlineFootnotesInBody(body.text.trim())),
       ],
     };
   });
@@ -236,16 +312,57 @@ function comparisonKey(value: string): string {
  * incidental to it.
  */
 function findFootnote(keys: readonly string[], text: string): number {
+  const inside = footnotesContaining(keys, text);
+  if (inside.length) return inside[0];
   const key = comparisonKey(text);
   if (key.length < SUBSTRING_FLOOR) return -1;
-  const inside = keys.findIndex((candidate) => candidate.includes(key));
-  if (inside >= 0) return inside;
   let longest = -1;
   keys.forEach((candidate, index) => {
     if (candidate.length < CONTAINED_FLOOR || !key.includes(candidate)) return;
     if (longest < 0 || candidate.length > keys[longest].length) longest = index;
   });
   return longest;
+}
+
+/**
+ * Every footnote whose text contains this text, in reading order.
+ *
+ * More than one is the ordinary case in a document that cites the same authority repeatedly,
+ * and it is not a near-miss: the 2026 guidelines on exclusionary abuses open twenty-three
+ * separate footnotes with `Judgment of 14 September 2022, Google and Alphabet v Commission
+ * (Google Android), T-604/18,` and then part company at the pinpoint. Where a note runs to
+ * two paragraphs, a caret in its first one yields exactly that shared opening, so taking the
+ * first match named a footnote five pages earlier and described it with complete confidence.
+ */
+function footnotesContaining(keys: readonly string[], text: string): number[] {
+  const key = comparisonKey(text);
+  if (key.length < SUBSTRING_FLOOR) return [];
+  return keys.flatMap((candidate, index) => (candidate.includes(key) ? [index] : []));
+}
+
+/**
+ * Which of several candidate footnotes a caret is really in, told apart by the paragraph
+ * following the one it sits in.
+ *
+ * A note the conversion broke over a page break is two paragraphs, and the first is the half
+ * that is not distinctive. The second is: `EU:T:2022:541, paragraph 281. See also judgment of
+ * 21 December 2023, European Superleague…` belongs to one footnote in the document. So where
+ * the caret's own paragraph cannot settle it, the two paragraphs read together can.
+ *
+ * Returns nothing rather than a guess where they still cannot. A footnote named wrongly here
+ * is the failure this whole area exists to avoid — the reviewer is shown a real authority,
+ * correctly retrieved, for a footnote they are not looking at.
+ */
+function distinguishByNextParagraph(
+  keys: readonly string[],
+  candidates: readonly number[],
+  text: string,
+  nextText: string,
+): number | undefined {
+  if (!nextText) return undefined;
+  const narrowed = footnotesContaining(keys, `${text} ${nextText}`)
+    .filter((index) => candidates.includes(index));
+  return narrowed.length === 1 ? narrowed[0] : undefined;
 }
 
 /** A footnote read back from Word, matched to the list the pane already holds. */
@@ -315,13 +432,46 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
     await context.sync();
     if (paragraphs.items.length && paragraphs.items.length <= PARAGRAPH_CEILING) {
       paragraphs.items.forEach((paragraph) => paragraph.load('text'));
+      // The paragraph after each, for the case where a note runs to more than one and the
+      // caret is in the half that names no pinpoint. Loaded with the paragraphs themselves
+      // rather than in a round trip of its own, and read only if it turns out to be needed.
+      const followers = paragraphs.items.map((paragraph) => {
+        try {
+          const next = paragraph.getNextOrNullObject();
+          next.load('text,isNullObject');
+          return next;
+        } catch {
+          return undefined;
+        }
+      });
       await context.sync();
-      const texts = paragraphs.items
-        .map((paragraph) => normaliseText(paragraph.text ?? ''))
-        .sort((a, b) => b.length - a.length);
-      for (const text of texts) {
-        const containing = findFootnote(keys, text);
-        if (containing >= 0) return { kind: 'footnotes' as const, indexes: [containing] };
+      const read = paragraphs.items
+        .map((paragraph, at) => ({
+          text: normaliseText(paragraph.text ?? ''),
+          next: followers[at]?.isNullObject ? '' : normaliseText(followers[at]?.text ?? ''),
+        }))
+        .sort((a, b) => b.text.length - a.text.length);
+      for (const { text, next } of read) {
+        const containing = footnotesContaining(keys, text);
+        if (containing.length === 1) return { kind: 'footnotes' as const, indexes: containing };
+        if (containing.length > 1) {
+          // A paragraph that is a whole note in itself is that note — not the longer note
+          // that happens to quote the same judgment at the same pinpoint. Twenty-one of the
+          // fifty-three ambiguous paragraphs in the exclusionary-abuses guidelines are this,
+          // and it costs nothing: the text is already in hand.
+          const exact = containing.filter((index) => keys[index] === comparisonKey(text));
+          if (exact.length === 1) return { kind: 'footnotes' as const, indexes: exact };
+          const settled = distinguishByNextParagraph(keys, containing, text, next);
+          if (settled !== undefined) return { kind: 'footnotes' as const, indexes: [settled] };
+          // Several notes hold this text and nothing separates them. Where they all say the
+          // same thing that is not a problem — a decision repeats a footnote verbatim often —
+          // and any of them answers. Where they differ, no answer is the honest one.
+          const texts = new Set(containing.map((index) => keys[index]));
+          if (texts.size === 1) return { kind: 'footnotes' as const, indexes: [containing[0]] };
+          continue;
+        }
+        const contained = findFootnote(keys, text);
+        if (contained >= 0) return { kind: 'footnotes' as const, indexes: [contained] };
       }
     }
 
@@ -442,6 +592,11 @@ function VerificationNote({ document }: { document: ReviewDocument }) {
  * a citation naming paragraph 46 and has no reason to doubt it, which is a worse position
  * than being shown nothing. The official-source link below it is then the way to the
  * paragraph itself.
+ *
+ * Three reasons a pinpoint goes missing, and they do not ask the same thing of the reader:
+ * an ordinary miss, a judgment the Court published in extract, and a document the Reports
+ * published only in summary. Only the last has somewhere else to send them, so only the
+ * last carries a link.
  */
 function ExcerptScopeNote({ document }: { document: ReviewDocument }) {
   const what = document.locator ?? 'The cited passage';
@@ -453,6 +608,18 @@ function ExcerptScopeNote({ document }: { document: ReviewDocument }) {
   if (document.passage === 'unpublished') return <p className="source-note">
     {what} is not in the published text: the Court published only part of this judgment.
     Below is the opening of what it did publish.
+  </p>;
+  // The Reports carried a summary of this one instead of its text, so EUR-Lex holds no
+  // paragraph of it to find — but the grounds exist and CURIA has them. The distinction is
+  // only worth drawing because it ends somewhere: this is the one case where the reviewer
+  // is told where to go next, so the link is the point of the sentence, not a decoration.
+  if (document.passage === 'summary') return <p className="source-note">
+    EUR-Lex holds only the published summary of this document — its catchwords,
+    subject-matter and operative part — so {what.toLowerCase()} is not in it. The full text
+    is on{' '}
+    {document.fullTextUrl
+      ? <a href={document.fullTextUrl} target="_blank" rel="noreferrer">CURIA</a>
+      : 'CURIA'}.
   </p>;
   if (document.passage !== 'opening') return null;
   return <p className="source-note">

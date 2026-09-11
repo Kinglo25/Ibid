@@ -28,7 +28,15 @@ Ibid is an EU-law Word add-in for lawyers. It identifies references in footnotes
 ## Development
 Run `npm run dev` from the repository root. This builds and starts the local resolver and Vite task-pane server. If port 4000 is occupied, use `IBID_API_PORT=4001 npm run dev` so both the API and Vite proxy use the same alternate port.
 
-Run `npm run verify` to lint, type-check the tests, run the 542 tests, and build.
+Run `npm run verify` to lint, type-check the tests, run the 567 tests, and build.
+
+Two checks sit outside it because they need something a unit test does not have. `npm run
+corpus` runs detection over real Commission decisions and Advocate General opinions and
+grades every identifier it derives against the ECLI CELLAR declares for that document — it
+needs the network and takes minutes. `npm run word-check` opens the sample documents in real
+Word and reports every footnote where the corpus reader and Word disagree — it needs Word on
+Windows. Both exit non-zero on a finding. `scripts/README.md` explains what each measures,
+and what a zero in each column does not mean.
 
 The API server keeps the EU documents it retrieves in a cache directory outside the repository (`~/.cache/ibid/documents` by default) and prints the path it is using at startup. `IBID_CACHE_DIR` moves it; `IBID_CACHE_ENTRIES=0` switches it off. It holds public EU legal text only — nothing from the user's document ever reaches the server. See [DATA-FLOW.md](DATA-FLOW.md).
 

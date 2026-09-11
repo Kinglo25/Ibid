@@ -15,4 +15,10 @@ export default [
     languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: { ...globals.node } },
     ...baseRules,
   },
+  {
+    // The harnesses in `scripts/` are command-line tools whose entire purpose is to report
+    // what they found. `console.log` is their output, not a debugging leftover.
+    files: ['scripts/**/*.mjs'],
+    rules: { 'no-console': 'off' },
+  },
 ];

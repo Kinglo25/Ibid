@@ -7,9 +7,33 @@ Manual Word checks. Sideload `addin/manifest.xml`, open a document, and use Refr
 | `EU_Data_Retention_Memo.docx` | All full citations, in French. Exercises detection, not resolution |
 | `eu-case-law-citation-test.docx` | The 20 collected citation patterns. Its footnotes are pinned as a fixture in `shared/test/resolve-citations.test.ts` |
 | `back-reference-test.docx` | `Ibid.`, `Id.`, `supra note n`, and the refusals around them |
+| `EC Decision - Intel (2009).docx` | A real decision: 506 pages, 1,991 footnotes. Exercises scale, and the sources EUR-Lex does not hold in full |
+| `Merger Guidelines - final for public consultation.docx` | A 2026 Commission draft, 98 pages. Converted cleanly: 433 of its 478 footnotes are still footnotes |
+| `Guidelines_on_exclusionary_abuses_of_dominance_102TFEU.docx` | The same conversion gone the other way: 494 footnotes, none of them footnotes. Exercises the reader that finds them anyway |
 
-All three are constructed: every identity in them is fictional, every authority public, so
-they can be used anywhere a client document could not.
+The first three are constructed: every identity in them is fictional, every authority
+public, so they can be used anywhere a client document could not. The Intel decision is not
+constructed — it is the Commission's own published decision in COMP/C-3/37.990, a public
+document naming real parties because the Commission published it that way. The two sets of
+guidelines are Commission drafts, public and naming no private party, and are kept out of
+the repository for their size rather than for what is in them.
+
+## The two guidelines, and why both are here
+
+They are the same conversion — Word, opening the Commission's published PDF — reaching
+opposite results, and the pair is the point.
+
+Word's converter pairs a superscript reference mark in the text with the block at the foot
+of the page carrying the same number. The merger guidelines mark their footnotes with a bare
+superscript `27` and label them `27` below, the two match, and 433 real Word footnotes come
+back. The guidelines on exclusionary abuses write both as `(90)`, the parentheses defeat the
+matcher, and **nothing** is paired: all 494 footnotes arrive as ordinary body paragraphs, and
+the reference marks stay behind in the text as literal `(90)`.
+
+What is left to tell a note from the document's own text is the numbering Word draws and the
+size it is set in, and neither settles it alone — the two documents disagree about which
+numbering shape means which. See `notesFromDocx` in `scripts/corpus-sources.mjs` and
+`notesInBody` in `addin/src/ui/App.tsx`, which have to agree with each other.
 
 ## back-reference-test.docx
 
@@ -64,3 +88,48 @@ preview memo; nothing new is introduced here.
 - **An `Ibid.` immediately after an empty footnote would be reported unresolved**, since the
   empty footnote establishes nothing. Not exercised here; footnote 10 uses `supra note n`
   across the gap instead, which is the case that matters for numbering.
+
+## EC Decision - Intel (2009).docx
+
+The published Commission decision of 13 May 2009 in COMP/C-3/37.990 — Intel, as .docx.
+Nothing about it is constructed, which is the point: it is the length, footnote density and
+citation habits of the documents this tool is actually for.
+
+### The three conventions this document found
+
+EUR-Lex does not hold case law in one markup convention, it holds it in several, and which
+one a judgment arrives in follows the era it was decided in rather than anything a citation
+can state. The Intel decision cites 28 documents by paragraph, 102 pinpoints in all,
+spanning 1976 to 2008 — enough that three conventions the resolver had never met turned up
+in one document. Each one showed the reviewer the judgment's headnote under a heading naming
+the paragraph they had asked for:
+
+| Rendition | Markup | Found in |
+| --- | --- | --- |
+| ECR era | `<P class="C01PointnumeroteAltN">66&nbsp;&nbsp;It is also clear…` | Groupe Danone (T-38/02), TACA (T-191/98), Michelin II (T-203/01), British Airways (C-95/04 P) |
+| Parties/Grounds | `<p>104. In that context…` | France Télécom (C-202/07 P) |
+| Oldest, all capitals | `<p>38ARTICLE 86 IS AN APPLICATION…` | Hoffmann-La Roche (C-85/76), United Brands (C-27/76) |
+
+Of the 102 pinpoints, 46 resolved before those three were added and 98 do now. **Footnotes 49
+and 50** — TACA at paragraphs 349-359 and Groupe Danone at paragraph 66 — are the ones to
+check for the first of them; **footnote 1148** (Hoffmann-La Roche paragraph 89) for the last.
+
+Of the four that still do not, three are footnote 91 below, and the fourth is not a defect:
+**footnote 1109** reads "Case 86/76 Hoffmann-La Roche, paragraph 71", and Hoffmann-La Roche
+is Case 85/76. Case 86/76 is Gervais-Danone v Hauptzollamt München-Mitte, a customs-tariff
+reference whose grounds run to paragraph 11. The pane shows
+both what the number names and what the name names, which is the right answer to a citation
+whose two halves disagree.
+
+**Footnote 91 is the one to check.** It cites `Case T-457/08 R Intel v Commission,
+paragraph 87` — an order of the President in interim measures. Paragraph 87 exists; the
+2014 judgment in T-286/09 restates it at its own paragraph 332. But the Reports carried only
+a *summary* of that order — catchwords, subject-matter and operative part — and the summary
+is the whole of what EUR-Lex holds under CELEX 62008TO0457, in every language, at about
+3 KB. The full text is on CURIA and nowhere in CELLAR.
+
+So the pane must not say the paragraph "could not be located": that sends the reviewer
+looking for a fault in the tool, and the first reviewer who read it went to a chatbot
+instead, which told them EUR-Lex was malfunctioning and then invented the paragraph's
+wording twice. What it says instead is that only the summary was published, and it links to
+CURIA. See `a document EUR-Lex holds only in summary` in `api/test/resolver.test.ts`.

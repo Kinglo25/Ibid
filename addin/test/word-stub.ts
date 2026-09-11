@@ -61,9 +61,11 @@ export type WordStub = {
   /**
    * A bare caret in a body paragraph — nothing selected, no reference mark, Word reporting
    * the section. This is where a PDF conversion leaves a footnote it did not convert, and
-   * the only evidence is the paragraph the caret is in.
+   * the only evidence is the paragraph the caret is in, plus `following` — the paragraph
+   * after it, which is what separates a note broken over a page break from every other note
+   * opening with the same words.
    */
-  putCursorInBodyParagraph: (text: string) => void;
+  putCursorInBodyParagraph: (text: string, following?: string) => void;
   /** Make `body.paragraphs` throw, the way a build without `isListItem` would. */
   breakParagraphs: () => void;
   /** Whether the pane registered a selection handler, i.e. whether it is following. */
@@ -88,15 +90,25 @@ export type WordStub = {
 
 const noop = () => undefined;
 
+/**
+ * The size the document's prose is set in. A note the conversion flattened is set smaller,
+ * and that difference is the only thing telling the two apart in a document that numbers its
+ * footnotes the way it numbers its paragraphs — see `notesInBody`.
+ */
+const PROSE_SIZE = 12;
+
 export function installWordStub(
   footnoteTexts: readonly string[],
   bodyText = 'Document body.',
   /**
-   * Body paragraphs Word numbers itself. A conversion rebuilds some footnotes as an
-   * auto-numbered list, and then the number is drawn by Word rather than written in the
-   * paragraph — `label` is what `listString` reports, which is the only place it exists.
+   * The block of notes a conversion left at the foot of a page.
+   *
+   * `label` is what `listString` reports, which is the only place a number Word draws itself
+   * exists. A paragraph with no label is the tail of the note above it — a note the
+   * conversion broke over a page break — and `size` is what separates the whole block from
+   * the document's prose, which is set larger.
    */
-  numbered: readonly { label: string; text: string }[] = [],
+  numbered: readonly { label?: string; text: string; size?: number }[] = [],
 ): WordStub {
   const items: FootnoteItem[] = footnoteTexts.map((text) => ({ body: { text, load: noop } }));
   let cursor: number | null = null;
@@ -109,6 +121,7 @@ export function installWordStub(
   // Where the caret is, and therefore what Word would report for it.
   let mode: 'reference' | 'footnoteText' | 'unknownFootnote' | 'footnoteParagraph' | 'dragAcross' | 'within' | 'outside' | 'bodyParagraph' = 'reference';
   let selectedText = '';
+  let followingText = '';
   let surroundingText = '';
 
   const context = {
@@ -120,14 +133,25 @@ export function installWordStub(
         paragraphs: {
           load: () => { if (paragraphsBroken) throw new Error('isListItem is not supported by this build'); },
           items: [
-            // Ordinary body paragraphs carry no list number, and the decision's own recitals
-            // carry one that reads `(48)` — neither is a note.
-            { text: bodyText, isListItem: false, listItemOrNullObject: { listString: '', load: noop }, load: noop },
-            { text: 'A recital of the decision, numbered as a list.', isListItem: true, listItemOrNullObject: { listString: '(48)', load: noop }, load: noop },
+            // One item per paragraph, the way Word reports them — `Body.text` is these joined
+            // by the paragraph mark, so a stub holding the whole body as a single paragraph
+            // would hide a note the conversion left on a line of its own from every reader
+            // that walks paragraphs rather than splitting text.
+            ...bodyText.split(/[\r\n\v\f\u2028\u2029]/).map((text) => ({
+              text,
+              isListItem: false,
+              font: { size: PROSE_SIZE },
+              listItemOrNullObject: { listString: '', load: noop },
+              load: noop,
+            })),
+            // The decision's own recitals carry a list number that reads `(48)`, and are not
+            // notes. Set in the document's own size, so nothing marks them out as smaller.
+            { text: 'A recital of the decision, numbered as a list.', isListItem: true, font: { size: PROSE_SIZE }, listItemOrNullObject: { listString: '(48)', load: noop }, load: noop },
             ...numbered.map((note) => ({
               text: note.text,
-              isListItem: true,
-              listItemOrNullObject: { listString: note.label, load: noop },
+              isListItem: Boolean(note.label),
+              font: { size: note.size ?? PROSE_SIZE },
+              listItemOrNullObject: { listString: note.label ?? '', load: noop },
               load: noop,
             })),
           ],
@@ -183,7 +207,23 @@ export function installWordStub(
               type: 'Section',
               load: (property: string) => { if (property.includes('text')) documentTextLoads += 1; },
             },
-            paragraphs: { items: [{ text: selectedText, load: noop }], load: noop },
+            paragraphs: {
+              items: [{
+                text: selectedText,
+                load: noop,
+                // A note the conversion broke over a page break is more than one paragraph,
+                // and the caret's own is not always the half that names an authority. What
+                // follows it is how the pane tells such a note from every other note opening
+                // with the same words. A caret with nothing after it reports a null object,
+                // which is what Word does at the end of a document.
+                getNextOrNullObject: () => ({
+                  text: followingText,
+                  isNullObject: followingText === '',
+                  load: noop,
+                }),
+              }],
+              load: noop,
+            },
           };
         }
         if (mode === 'outside') {
@@ -280,7 +320,9 @@ export function installWordStub(
     putCursorInUnknownFootnote: (text = '') => { mode = 'unknownFootnote'; selectedText = text; handler?.(); },
     putCursorInFootnoteParagraph: (footnote) => { mode = 'footnoteParagraph'; cursor = footnote; handler?.(); },
     selectTextOutsideFootnotes: (text) => { mode = 'outside'; cursor = null; selectedText = text; handler?.(); },
-    putCursorInBodyParagraph: (text) => { mode = 'bodyParagraph'; cursor = null; selectedText = text; handler?.(); },
+    putCursorInBodyParagraph: (text, following = '') => {
+      mode = 'bodyParagraph'; cursor = null; selectedText = text; followingText = following; handler?.();
+    },
     breakParagraphs: () => { paragraphsBroken = true; },
     selectWithinFootnote: (footnote, characters, spelling = (text) => text) => {
       mode = 'within';

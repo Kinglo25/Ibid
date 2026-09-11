@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { autoSelectable, candidateLabel, confirmationKey, inlineFootnotesInBody, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
+import { autoSelectable, candidateKey, candidateLabel, confirmationKey, inlineFootnotesInBody, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -147,6 +147,16 @@ describe('the official source a back-reference links to', () => {
       'Opinion of Advocate General Wahl of 20 October 2016 in Intel, ECLI:EU:C:2016:788, point 73.',
     ]).flat();
     assert.notEqual(candidateLabel({ ...judgment }), candidateLabel({ ...opinion }));
+  });
+
+  test('the order and the judgment in one case are separate options, not one', () => {
+    // Both from the Intel decision, which cites T-457/08 in both document types. Neither
+    // carries an ECLI — orders usually do not — so a key built on the case number was the
+    // same string for both, and React may drop one child of a pair sharing a key. The
+    // reviewer would then be choosing between two documents with one of them off the screen.
+    const order = { label: 'T-457/08', source: 'curia' as const, caseNumber: 'T-457/08', celex: '62008TO0457', documentType: 'order' as const };
+    const judgment = { label: 'T-457/08', source: 'curia' as const, caseNumber: 'T-457/08', celex: '62008TJ0457', documentType: 'judgment' as const };
+    assert.notEqual(candidateKey(order), candidateKey(judgment));
   });
 });
 
