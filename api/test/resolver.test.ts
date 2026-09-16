@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { createEuSourceResolver, createApiHealthCheck, createMemoryDocumentStore, type EuLookup, type ResolverOptions } from '../src/index.ts';
+import { buildCommissionCaseIndex, createEuSourceResolver, createApiHealthCheck, createMemoryDocumentStore, type EuLookup, type ResolverOptions } from '../src/index.ts';
 
 type Call = { url: string; init: RequestInit };
 
@@ -567,6 +567,328 @@ describe('Commission adapter', () => {
 
     assert.equal(preview.locator, 'Point 1');
     assert.ok(preview.excerpt.includes('focusing on point 1'));
+  });
+});
+
+describe('Commission decisions, through the Commission’s own case data', () => {
+  const INTEL_2009 = 'https://ec.europa.eu/competition/antitrust/cases/dec_docs/37990/37990_3581_18.pdf';
+  const INTEL_2023 = 'https://ec.europa.eu/competition/antitrust/cases1/202346/AT_37990_9687627_5129_3.pdf';
+
+  const decision = (link: string, date: string) => ({
+    metadata: {
+      attachmentLink: [link],
+      attachmentCategory: [JSON.stringify({ code: 'DocumentCategory0352', label: 'Prohibition Decision (Art. 7)' })],
+      attachmentLanguage: ['EN'],
+      attachmentDocumentDate: [date],
+    },
+  });
+
+  const indexOf = (attachments: ReturnType<typeof decision>[]) => buildCommissionCaseIndex([
+    JSON.stringify({ 'AT.37990': { decisions: [{ decisionAttachments: attachments }] } }),
+  ]);
+
+  const loaderFor = (attachments: ReturnType<typeof decision>[]) => {
+    const index = indexOf(attachments);
+    return { get: async () => index };
+  };
+
+  test('links the decision itself rather than a search for the case', async () => {
+    const { fetcher } = stubFetcher([]);
+    const { resolver } = makeResolver({ fetcher, commissionCases: loaderFor([decision(INTEL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 223 } });
+
+    assert.equal(preview.url, INTEL_2009);
+    assert.equal(preview.source, 'European Commission');
+    assert.equal(preview.locator, 'Point 223');
+    assert.match(preview.excerpt, /13 May 2009/, 'the date is what tells one decision in a case from another');
+  });
+
+  test('no PDF is fetched, and so nothing claims to have been verified', async () => {
+    // The improvement is the link, not the passage: a dependency-free text extractor was
+    // measured against `pdftotext` and recovered the characters but not the line structure
+    // the recital numbers anchor to, which turns a `(223)` inside a cross-reference into a
+    // heading. `verifiedAt` means "confirmed against the publisher", and nothing was.
+    const { fetcher, calls } = stubFetcher([]);
+    const { resolver } = makeResolver({ fetcher, commissionCases: loaderFor([decision(INTEL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990' });
+
+    assert.equal(calls.length, 0, 'the decision itself is never downloaded');
+    assert.equal(preview.verifiedAt, undefined);
+    assert.equal(preview.passage, undefined, 'no passage was cut, so none is described');
+  });
+
+  test('a case decided twice offers both, the original first', async () => {
+    // Intel was decided on 13 May 2009 and re-adopted on 22 September 2023, both labelled
+    // `Prohibition Decision`. A footnote citing paragraph 1000 names neither, so the reviewer
+    // is shown the choice rather than handed a guess.
+    const { fetcher } = stubFetcher([]);
+    const { resolver } = makeResolver({
+      fetcher,
+      commissionCases: loaderFor([decision(INTEL_2023, '2023-09-22'), decision(INTEL_2009, '2009-05-13')]),
+    });
+
+    const previews = await resolver.resolve({ source: 'commission', value: 'AT.37990' });
+
+    assert.equal(previews.length, 2);
+    assert.equal(previews[0].url, INTEL_2009);
+    assert.equal(previews[1].url, INTEL_2023);
+    assert.match(previews[0].excerpt, /One of 2 decisions/);
+  });
+
+  test('a case the data does not name keeps the register link', async () => {
+    const { fetcher } = stubFetcher([]);
+    const { resolver } = makeResolver({ fetcher, commissionCases: loaderFor([decision(INTEL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'M.8713' });
+
+    assert.equal(preview.url, 'https://competition-cases.ec.europa.eu/cases/M.8713');
+  });
+
+  test('a loader that fails costs the decision link and nothing else', async () => {
+    const { fetcher } = stubFetcher([]);
+    const { resolver } = makeResolver({
+      fetcher,
+      commissionCases: { get: async () => { throw new Error('the dataset is unreachable'); } },
+    });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990' });
+
+    assert.equal(preview.url, 'https://competition-cases.ec.europa.eu/cases/AT.37990');
+    assert.equal(preview.source, 'European Commission');
+  });
+});
+
+/**
+ * Reading the decision, rather than linking it.
+ *
+ * Driven through the document store rather than through a real PDF: `extractPdfText` is
+ * exercised against the real files by hand and by the corpus run — Microsoft/LinkedIn and
+ * Intel both agree with `pdftotext` exactly, 451 recital markers against 451 and 1,857
+ * against 1,857 — and a 4MB PDF has no business in `npm run verify`. What is pinned here is
+ * everything the resolver decides once the text is in hand.
+ */
+describe('the passage of a Commission decision', () => {
+  const URL_2009 = 'https://ec.europa.eu/competition/antitrust/cases/dec_docs/37990/37990_3581_18.pdf';
+  const URL_2023 = 'https://ec.europa.eu/competition/antitrust/cases1/202346/AT_37990_9687627_5129_3.pdf';
+
+  const attachment = (link: string, date: string) => ({
+    metadata: {
+      attachmentLink: [link],
+      attachmentCategory: [JSON.stringify({ code: 'c', label: 'Prohibition Decision (Art. 7)' })],
+      attachmentLanguage: ['EN'],
+      attachmentDocumentDate: [date],
+    },
+  });
+
+  const loaderFor = (attachments: ReturnType<typeof attachment>[]) => {
+    const index = buildCommissionCaseIndex([
+      JSON.stringify({ 'AT.37990': { decisions: [{ decisionAttachments: attachments }] } }),
+    ]);
+    return { get: async () => index };
+  };
+
+  const DECISION_TEXT = [
+    '(999) An earlier recital of the decision.',
+    '(1000) The Commission concludes that the rebates were capable of foreclosing.',
+    '(1001) The recital after the one cited.',
+  ].join('\n');
+
+  /** Decisions already read, which is the state every second citation of a case arrives in. */
+  async function storeHolding(...texts: string[]) {
+    const store = createMemoryDocumentStore();
+    const urls = [URL_2009, URL_2023];
+    for (const [at, text] of texts.entries()) {
+      await store.set(`pdf:${urls[at]}`, { html: text, etag: '"decision"', fetchedAt: 1_000 });
+    }
+    return store;
+  }
+
+  test('cuts the cited recital out of the decision itself', async () => {
+    const documentStore = await storeHolding(DECISION_TEXT);
+    const { fetcher } = stubFetcher([new Response(null, { status: 304 })]);
+    const { resolver } = makeResolver({ fetcher, documentStore, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } });
+
+    assert.equal(preview.passage, 'cited');
+    assert.match(preview.excerpt, /^\(1000\) The Commission concludes/);
+    assert.ok(!preview.excerpt.includes('(1001)'), 'and stops where the next recital begins');
+    assert.equal(preview.url, URL_2009, 'the link opens what the passage was cut from');
+    assert.ok(preview.verifiedAt, 'a passage confirmed against the publisher says when');
+    assert.equal(preview.confirmation, undefined, 'and confirmed is the default, so nothing is pending');
+  });
+
+  test('asked to confirm later, a decision already held answers without touching the wire', async () => {
+    // What makes a second look at a decision instant. The text is held; the second it used to
+    // cost was the turn at the wire its `304` waited for, and a case with several decisions
+    // waited for several.
+    const documentStore = await storeHolding(DECISION_TEXT, '(1) A short procedural decision in the same case.');
+    const { fetcher, calls } = stubFetcher([]);
+    const { resolver, clock } = makeResolver({
+      fetcher, documentStore,
+      commissionCases: loaderFor([attachment(URL_2009, '2009-05-13'), attachment(URL_2023, '2023-09-22')]),
+    });
+    clock.advance(86_400_000);
+
+    const previews = await resolver.resolve(
+      { source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } },
+      { confirm: 'later' },
+    );
+
+    assert.equal(calls.length, 0);
+    assert.deepEqual(clock.slept, [], 'nor waited for a turn at it');
+    assert.equal(previews.length, 1);
+    assert.equal(previews[0].passage, 'cited');
+    assert.match(previews[0].excerpt, /^\(1000\) The Commission concludes/);
+    assert.equal(previews[0].confirmation, 'pending');
+    assert.equal(previews[0].verifiedAt, new Date(1_000).toISOString(),
+      'the time it was last confirmed, not the time of this answer');
+  });
+
+  test('asked again without it, the held decision is confirmed', async () => {
+    const documentStore = await storeHolding(DECISION_TEXT);
+    const { fetcher, calls } = stubFetcher([new Response(null, { status: 304 })]);
+    const { resolver, clock } = makeResolver({ fetcher, documentStore, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+    const lookup: EuLookup = { source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } };
+
+    await resolver.resolve(lookup, { confirm: 'later' });
+    clock.advance(60_000);
+    const [confirmed] = await resolver.resolve(lookup);
+
+    assert.equal(calls.length, 1);
+    assert.equal(new Headers(calls[0].init.headers).get('if-none-match'), '"decision"', 'a conditional request, not a download');
+    assert.equal(confirmed.confirmation, undefined);
+    assert.equal(confirmed.verifiedAt, new Date(clock.now()).toISOString());
+  });
+
+  test('a confirmation that cannot reach the Commission keeps the old date, and is not pending', async () => {
+    // The pane asks once, and a pending mark nothing will ever clear would say "checking"
+    // forever. So a failed confirmation answers as a confirmed one would have failed today:
+    // the held text, dated when it really was last confirmed.
+    const documentStore = await storeHolding(DECISION_TEXT);
+    const { fetcher } = stubFetcher([new Error('ECONNRESET')]);
+    const { resolver, clock } = makeResolver({ fetcher, documentStore, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+    clock.advance(60_000);
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } });
+
+    assert.equal(preview.passage, 'cited');
+    assert.equal(preview.confirmation, undefined);
+    assert.equal(preview.verifiedAt, new Date(1_000).toISOString());
+  });
+
+  test('a decision never read is fetched even when confirmation may wait', async () => {
+    // There is nothing held to answer from, so `later` has nothing to offer here.
+    const { fetcher, calls } = stubFetcher([new Error('ECONNRESET')]);
+    const { resolver } = makeResolver({ fetcher, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve(
+      { source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } },
+      { confirm: 'later' },
+    );
+
+    assert.equal(calls.length, 1);
+    assert.equal(preview.confirmation, undefined, 'nothing was answered from a held copy');
+    assert.equal(preview.url, URL_2009);
+  });
+
+  test('a decision published as a scan says so, and shows no passage', async () => {
+    // Stored as an empty string: that records "fetched, and there is no text in it", so the
+    // next citation of the same decision does not download 4MB to learn it again.
+    const documentStore = await storeHolding('');
+    const { fetcher } = stubFetcher([new Response(null, { status: 304 })]);
+    const { resolver } = makeResolver({ fetcher, documentStore, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } });
+
+    assert.equal(preview.passage, 'unreadable');
+    assert.equal(preview.excerpt, '', 'nothing is put on screen under the citation');
+    assert.equal(preview.url, URL_2009);
+  });
+
+  test('a recital the decision does not carry falls back to its opening', async () => {
+    const documentStore = await storeHolding('THE EUROPEAN COMMISSION, having regard to the Treaty, HAS ADOPTED THIS DECISION.');
+    const { fetcher } = stubFetcher([new Response(null, { status: 304 })]);
+    const { resolver } = makeResolver({ fetcher, documentStore, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } });
+
+    assert.equal(preview.passage, 'opening', 'said to be the opening, never presented as the passage');
+    assert.match(preview.excerpt, /^THE EUROPEAN COMMISSION/);
+  });
+
+  test('of two decisions, the one carrying the cited recital is the answer', async () => {
+    // Which decision was meant is settled by evidence rather than by date. Measured on
+    // Dow/DuPont: the decision of 27 March 2017 carries 5,269 recitals including 1975, and
+    // neither of the two published on 28 July 2017 carries any.
+    const documentStore = await storeHolding(DECISION_TEXT, '(1) A short procedural decision in the same case.');
+    const { fetcher } = stubFetcher([new Response(null, { status: 304 }), new Response(null, { status: 304 })]);
+    const { resolver } = makeResolver({
+      fetcher, documentStore,
+      commissionCases: loaderFor([attachment(URL_2009, '2009-05-13'), attachment(URL_2023, '2023-09-22')]),
+    });
+
+    const previews = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } });
+
+    assert.equal(previews.length, 1, 'the ambiguity is resolved, not handed over');
+    assert.equal(previews[0].passage, 'cited');
+    assert.equal(previews[0].url, URL_2009, 'the decision that actually has recital 1000');
+    assert.match(previews[0].excerpt, /^\(1000\) The Commission concludes/);
+  });
+
+  test('two decisions carrying the same recital is an ambiguity, not a pick', async () => {
+    // Here the citation genuinely does not distinguish them, so both are offered and neither
+    // is opened — the failure this guards against is the right paragraph of the wrong decision.
+    const documentStore = await storeHolding(DECISION_TEXT, DECISION_TEXT);
+    const { fetcher } = stubFetcher([new Response(null, { status: 304 }), new Response(null, { status: 304 })]);
+    const { resolver } = makeResolver({
+      fetcher, documentStore,
+      commissionCases: loaderFor([attachment(URL_2009, '2009-05-13'), attachment(URL_2023, '2023-09-22')]),
+    });
+
+    const previews = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } });
+
+    assert.equal(previews.length, 2);
+    for (const preview of previews) assert.equal(preview.passage, undefined, 'neither is presented as the passage');
+  });
+
+  test('a recital no decision in the case carries leaves both as links', async () => {
+    const documentStore = await storeHolding('(1) One decision.', '(2) The other decision.');
+    const { fetcher } = stubFetcher([new Response(null, { status: 304 }), new Response(null, { status: 304 })]);
+    const { resolver } = makeResolver({
+      fetcher, documentStore,
+      commissionCases: loaderFor([attachment(URL_2009, '2009-05-13'), attachment(URL_2023, '2023-09-22')]),
+    });
+
+    const previews = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } });
+
+    assert.equal(previews.length, 2);
+    for (const preview of previews) assert.equal(preview.passage, undefined);
+  });
+
+  test('a citation with no pinpoint is a link, not a download', async () => {
+    // There is no passage to cut, so there is nothing to spend four megabytes on.
+    const documentStore = await storeHolding(DECISION_TEXT);
+    const { fetcher, calls } = stubFetcher([]);
+    const { resolver } = makeResolver({ fetcher, documentStore, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990' });
+
+    assert.equal(calls.length, 0);
+    assert.equal(preview.passage, undefined);
+    assert.equal(preview.url, URL_2009);
+  });
+
+  test('a decision that will not download keeps the link', async () => {
+    const { fetcher } = stubFetcher([new Error('ECONNRESET')]);
+    const { resolver } = makeResolver({ fetcher, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } });
+
+    assert.equal(preview.passage, undefined, 'no passage is claimed');
+    assert.equal(preview.url, URL_2009, 'and the decision is still one click away');
   });
 });
 

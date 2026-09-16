@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { pipeline } from 'node:stream/promises';
-import { createEuSourceResolver, createFileDocumentStore, createStaticFiles, defaultCacheDirectory } from './dist/index.js';
+import { createCommissionCaseIndexLoader, createEuSourceResolver, createFileDocumentStore, createStaticFiles, defaultCacheDirectory } from './dist/index.js';
 
 const eurLexHeaders = {};
 if (process.env.IBID_EURLEX_API_KEY) eurLexHeaders['X-API-Key'] = process.env.IBID_EURLEX_API_KEY;
@@ -20,8 +20,30 @@ const documentStore = cacheEntries > 0
   ? createFileDocumentStore({ directory: process.env.IBID_CACHE_DIR, maxEntries: cacheEntries })
   : undefined;
 
+/**
+ * Where the Commission publishes its competition decisions, from its own open data.
+ *
+ * On by default, because it is what the tool is for: without it a competition citation gets a
+ * link to a search page, which is the work the reviewer came here to be spared. What makes
+ * that safe as a default is the shape of its failures — a dataset that will not download, a
+ * decision published as a scan, two decisions that both carry the cited recital — every one
+ * of them ends at the case-register link, which is exactly the behaviour of a deployment with
+ * this switched off. The worst outcome of leaving it on is the pane a reviewer had before it
+ * existed.
+ *
+ * `IBID_COMMISSION_CASE_DATA=off` turns it off, for a deployment whose IT wants to approve
+ * the outbound hosts first: it contacts `data.europa.eu`'s distribution host and
+ * `ec.europa.eu`, both public sites of the Commission, and downloads about 42MB when it first
+ * builds its index plus the decisions actually cited. Nothing from the user's document is
+ * involved either way — see `docs/DATA-FLOW.md`.
+ */
+const commissionCases = process.env.IBID_COMMISSION_CASE_DATA === 'off'
+  ? undefined
+  : createCommissionCaseIndexLoader({ userAgent: process.env.IBID_USER_AGENT });
+
 const resolver = createEuSourceResolver({
   documentStore,
+  commissionCases,
   cellarBaseUrl: process.env.IBID_EURLEX_CELLAR_BASE_URL,
   userAgent: process.env.IBID_USER_AGENT,
   // Order of preference, e.g. "en,fr". CELLAR answers 404 for a language a document was
@@ -84,7 +106,10 @@ const server = http.createServer(async (request, response) => {
     try {
       const lookup = JSON.parse(url.searchParams.get('lookup') ?? '{}');
       if (!lookup.source || !lookup.value) return json(400, { error: 'A source and citation are required.' });
-      return json(200, { documents: await resolver.resolve(lookup) });
+      // `confirm=later` is the pane asking for a decision already held to be answered from at
+      // once and confirmed on a second request — see `ResolveOptions` in `src/index.ts`.
+      const confirm = url.searchParams.get('confirm') === 'later' ? 'later' : 'first';
+      return json(200, { documents: await resolver.resolve(lookup, { confirm }) });
     } catch (error) {
       return json(502, { error: error instanceof Error ? error.message : 'Official-source lookup failed.' });
     }
@@ -132,4 +157,9 @@ server.listen(port, bindHost, () => {
   console.log(documentStore
     ? `Retrieved EUR-Lex documents cached in ${process.env.IBID_CACHE_DIR ?? defaultCacheDirectory()} (${cacheEntries} max).`
     : 'Retrieved EUR-Lex documents cached in memory only; nothing is written to disk.');
+  // The second outbound host, named at startup for the same reason the cache directory is:
+  // an operator should learn what this process talks to from the process itself.
+  console.log(commissionCases
+    ? 'Commission decisions read from the Commission’s own open case data; set IBID_COMMISSION_CASE_DATA=off to link the case register instead.'
+    : 'Commission citations link to the case register (IBID_COMMISSION_CASE_DATA=off); the cited recital is not retrieved.');
 });

@@ -59,7 +59,7 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 576 tests (290 detection and resolution, 175 resolver, document store and contract, 111 task pane). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
+- `npm run test` passes: 655 tests (290 detection and resolution, 229 resolver, document store and contract, 136 task pane). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
 - `npm run corpus` passes: 21 documents, 17 read, 1,083 citations, 165 identifiers checked against CELLAR, 0 wrong-source. Outside `verify`: it needs the network.
 - `npm run word-check` passes: the .docx reader and real Word agree on all 1,991 footnotes of the Intel decision, and on every other sample. Outside `verify`: it needs Word on Windows.
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
@@ -1578,17 +1578,122 @@ a CELEX from a merger number and fetched it would have put an unrelated merger o
 the citation the reviewer wrote — a wrong source, presented with every appearance of being
 right, which is the one outcome this project holds must stay at zero.
 
-**The full text is not addressable.** The decision PDF's filename carries an internal document
-id (`m8181_2986_3.pdf`) that no rule derives from the case number, and
-`competition-cases.ec.europa.eu` serves the same 57KB Angular shell for every path — case
-pages, invented paths and API-shaped paths alike — so there is nothing to read the id from
-without running JavaScript. This is the same wall CURIA's `liste.jsf` turned into.
+**The full text downloads fine. It is the link to it that cannot be derived.** This was
+previously recorded here as "the full text is not addressable", which overstated it, and the
+distinction is the whole of what makes this decidable. Re-measured on 2026-09-15: the Intel
+decision at
+`ec.europa.eu/competition/antitrust/cases/dec_docs/37990/37990_3581_18.pdf` answers a plain
+`GET` with `200 application/pdf`, 1,758,240 bytes, no JavaScript and no session; `pdftotext`
+turns it into 25,559 lines carrying 1,857 numbered recitals, and recital (1000) is located by
+the same kind of scan the resolver already runs over CELLAR's HTML. Fetching, caching and
+pinpointing a competition decision would all work.
 
-So the link is the floor here in a stronger sense than for case law: for CJEU citations the
-link was a convenience being replaced, and for Commission decisions it is the only honest
-answer available. What could still be worth doing is making the link land on the case rather
-than on a search for it — but the register's URL shape cannot be confirmed from outside a
-browser, and a link that 404s is worse than one that searches.
+What does not work is knowing the filename. The `3581_18` in it is an internal document id
+that no rule derives from `37.990`, and every route to read it off a page is closed:
+`/cases/AT.37990`, `/cases/M.8713`, an invented path, `robots.txt`, `sitemap.xml`, seven
+API-shaped paths, and the legacy `elojade/isef/case_details.cfm?proc_code=1_37990` all return
+the identical 56,823-byte Angular shell — same MD5, `6fe765198254d42de578f3ee0297d406`. And a
+guessed filename fails silently rather than loudly: `37990/37990.pdf` answers `200 text/html`,
+redirecting to a landing page, so a resolver that guessed would put a non-document on screen
+under the reviewer's citation.
+
+**There is a route, and it is a decision rather than a discovery.** The register's SPA reads
+`assets/env-json-config.json`, which is public and names both halves: `attachmentUrl`
+(`https://ec.europa.eu/competition`, the base of the PDF path above) and a case-search API at
+`webgate.ec.europa.eu/es/search-api/rest`, queried by `POST /search` as multipart with a
+hardcoded client key. That endpoint is live — it answers a malformed query with
+`{"type":"businessError","message":"Invalid Query format sent"}` rather than `401`, so the key
+is accepted. So the honest status is **possible, by driving an undocumented internal endpoint
+with a key lifted from a page's configuration**, not impossible.
+
+**That endpoint is not what Ibid uses, and nothing here calls it.** It is recorded because it
+was measured, and because knowing the fragile route exists is what makes the official one
+worth the trouble of finding.
+
+**The Commission publishes the mapping itself.** `data.europa.eu` lists "EU Competition:
+Antitrust and Cartel case publications" and its merger counterpart — creator
+Directorate-General for Competition, licence *European Commission reuse notice* (Decision
+2011/833/EU) — each distributed as a JSON file keyed by case number
+(`compcases-open-data-portal-files-prod.s3.eu-west-1.amazonaws.com/case-data-AT.json`, 2.9MB,
+and `case-data-M.json`, 39MB; state aid is published the same way at 698MB and is out of
+scope for that reason). `AT.37990`'s record carries `37990_3581_18.pdf` — exactly the file
+that had to be found by hand — with the label `Prohibition Decision (Art. 7)`, the language,
+and the date. `AT.40178`, recorded above as reaching only an Advisory Committee opinion,
+carries its Settlement Decision. Measured on 2026-09-15: 360 of 756 antitrust cases and 9,865
+of 10,337 merger cases resolve to a decision document.
+
+`api/src/commission-cases.ts` turns those files into `AT.37990` → its decisions, and
+`resolveCommission` links them. Three things it deliberately does not do:
+
+- **It reads the decision, and that cost `api/` its zero-dependency property.** A
+  dependency-free extractor was written first, using only `node:zlib` to inflate the content
+  streams, and refused: measured against `pdftotext` on four real decisions it recovers 85–95%
+  of the characters and loses the line structure the recital anchors depend on — 12 recital
+  markers found against 1,244 on one decision, and on another the `(223)` it did find was
+  `(223))` inside a cross-reference. `pdfjs-dist` gives each text item its transform, so lines
+  are rebuilt from the baseline coordinate, and it then agrees with `pdftotext` exactly: 451
+  recital markers against 451 on Microsoft/LinkedIn, 1,857 against 1,857 on Intel. One
+  Apache-2.0 package, no transitive dependencies, loaded lazily so a deployment that never
+  opens a Commission decision never parses its 35MB. Its only declared dependency,
+  `@napi-rs/canvas`, is optional and for rendering, never reached by text extraction, and
+  omitted by `--omit=optional` — but a plain `npm install` pulls it, and a blanket `.npmrc`
+  cannot be the fix because Rollup's platform binary is optional too and the pane's build
+  needs it.
+- **A recital is `(350)` at the start of a line and nothing else.** Microsoft/LinkedIn carries
+  paragraph `(350)` and, pages later, `350 Cisco's submission of 4 November 2016` — its
+  footnote 350. Matching a bare number would have put a footnote on screen under a citation to
+  a paragraph. Across eleven real decisions the bare shape appears 2,301 times in Intel alone
+  and is never the recital; the parenthesised shape appears exactly as often as there are
+  recitals.
+- **The footnotes are dropped before the matcher ever sees them, by the size they are set in.**
+  A page carries three things and only one is the decision's text: measured on
+  Microsoft/LinkedIn, 3,447 lines at 12pt are the recitals, 773 at 10pt are the footnote text,
+  850 at 8pt are footnote markers and page numbers, and 6 at 18pt are headings. Keeping only
+  lines set at or above the commonest size is what makes the excerpt readable — recital (350)
+  runs two lines before the footnote block begins, so the slice was collecting footnote 326, a
+  paragraph about Facebook/WhatsApp, and presenting it as part of the cited recital. It is the
+  same signal `notesInBody` uses on a converted decision's Word paragraphs.
+  **It is also more accurate than `pdftotext`**, which is what this was graded against:
+  filtering takes Intel from 1,857 anchors to 1,855, and the two dropped are
+  `(495)-(497), that is to say only concerns [...]` and `(239) ("Get [Dell Senior
+  executive]/OOC clearly understand our meet-comp process` — footnote lines cross-referring to
+  recitals. `pdftotext` counts both, so a citation to Intel paragraph 495 would have anchored
+  on a footnote and shown the wrong passage.
+- **A scan is reported, not shown.** 2 of 9 decisions sampled across 1977–2020 are images
+  (1.99MB yielding zero characters). The text is stored as an empty string so the next
+  citation does not download it again to learn the same thing, and the pane says the decision
+  was published as a scan rather than showing an empty passage.
+- **Which of a case's decisions was meant is settled by evidence, not by date.** 52 of the 360
+  antitrust cases have more than one, and mergers more often still — Dow/DuPont (`M.7932`)
+  publishes three. Choosing by date would be a guess, and the wrong guess puts the right
+  paragraph of the wrong decision on screen. But the citation does say something: a footnote
+  citing "paragraphs 1975 et seq." names a decision that *has* a recital 1975. Measured live on
+  Dow/DuPont, the decision of 27 March 2017 carries 5,269 recitals including 1975 and neither
+  of the two published on 28 July 2017 carries any. So up to four candidates are read and the
+  one carrying the recital answers; where two carry it the citation genuinely does not
+  distinguish them, and both are offered with neither opened. This replaced a blanket refusal
+  to read any multi-decision case, which was measured against a real footnote and found to be
+  costing the passage on two of the three cases it cited.
+- **It is on by default, and `IBID_COMMISSION_CASE_DATA=off` turns it off.** It was written
+  opt-in and flipped deliberately, because the argument for opt-in turned out to be weaker
+  than it looked. It does add two outbound hosts to a service that reached exactly one, and a
+  runtime dependency to a package that had none — but both were claims `DATA-FLOW.md` made,
+  and that document now describes what actually happens, so keeping the feature off to keep a
+  sentence true was the wrong way round. What makes on-by-default safe is the shape of the
+  failures: an unparseable dataset, a download that will not complete, a decision published as
+  a scan, a case the data does not name, two decisions that both carry the cited recital —
+  every one ends at the case-register link, which is precisely the behaviour of a deployment
+  with this switched off. The worst outcome of leaving it on is the pane a reviewer had before
+  it existed. The switch remains for a deployment whose IT wants to approve
+  `data.europa.eu`'s distribution host and `ec.europa.eu` before either is contacted.
+
+The link is now the floor rather than the answer, which is the whole difference this section
+records: a competition citation reaches the cited recital, and falls back to the register only
+where the decision cannot be read or cannot be told apart from another in the same case. Both
+of the things this paragraph used to list as open are closed — the link lands on the case
+(`/cases/M.8713`, confirmed by hand in a browser on 2026-09-10) and, better, on the decision
+itself, whose URL the Commission's own open data supplies rather than leaving it to be guessed
+at from the register's markup.
 
 ### A paragraph that was never published is not a retrieval failure
 
@@ -1649,6 +1754,28 @@ have already been falsified.
 
 It now stops *inside* `following the cursor`, after that suite's first test rather than
 after its last, so the region has drifted slightly from the description above.
+
+**What a failing run is doing, measured on 16 September 2026.** It is not idle: the test
+process grows to about 9GB in roughly 25 seconds, and on this machine (a ~10GB WSL) the
+kernel kills it, which is why the runner reports a whole-file failure with no test and no
+assertion named. A heap cap (`--max-old-space-size`) does not turn it into a readable heap
+error, so what grows is not only the JavaScript heap. The run that showed this had one test
+genuinely failing underneath: `no footnote list while the cursor is being followed` asserted
+right after `paneReady()`, but by then the pane can have read the document before the Word
+stub's `addHandlerAsync` callback (a microtask) has told it that it is following. The list is
+still on screen, so `assert.equal(screen.queryByRole('heading', …), null)` fails — and the
+failure is where the growth begins, instead of an ordinary assertion message. On the working
+tree of that day this failed on every run; it now waits for the pane's following text first.
+
+That was one instance and not the fault. With it fixed, the file still failed **4 of 10
+runs**, every time stopping after `following the cursor` and before `finding the footnote
+the cursor is actually in` completes, with the same growth. The first test there also ends in
+`assert.equal(screen.queryByText(…), null)`. The working hypothesis for the next person: a
+test in these suites fails for a timing reason like the one above, and a failing
+`assert.equal(element, null)` on a happy-dom element is what turns one failed assertion into
+a runaway. Asserting on `=== null` rather than handing the element to `assert`, or waiting
+for the pane's following text in `paneReady()`, are the two cheap things to measure first.
+Watch memory while doing it: an unwatched failing run takes WSL's memory with it.
 
 And it corrupts the count as well as the result. A hung run reports 84 tests in `addin`
 where a clean one reports 111, because the file's remaining subtests are never counted. Any

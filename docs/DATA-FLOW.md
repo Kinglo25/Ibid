@@ -45,8 +45,15 @@ Exactly one kind of outbound request, built and sent from one line of code
 (`addin/src/ui/App.tsx`):
 
 ```
-GET {api-origin}/api/sources?lookup={...}
+GET {api-origin}/api/sources?confirm=later&lookup={...}
 ```
+
+`confirm=later` carries nothing from the document: it asks the server to answer a Commission
+decision it already holds straight away rather than first confirming it against
+`ec.europa.eu`. Such an answer is marked as not yet confirmed, and the pane then sends the
+same lookup a second time without the parameter, once the warming queue below has drained,
+to have it confirmed. So a Commission citation Ibid has read before produces two identical
+lookups rather than one — same fields, one at a time, like every other request here.
 
 It is sent when the reviewer selects a citation, and — since the pane began warming the
 cache at document open — also once per distinct authority the document cites, in reading
@@ -103,7 +110,9 @@ dropped by `JSON.stringify`: once for an ordinary citation and once for a joined
 is the only citation that sends the tenth field.
 
 The server then requests the cited document from the EU Publications Office
-(`publications.europa.eu`) and returns the relevant passage.
+(`publications.europa.eu`) and returns the relevant passage — or, for a competition citation
+from the Commission's own site instead, since a
+competition decision is published there and nowhere else. See the table below.
 
 ## Third parties contacted
 
@@ -112,6 +121,32 @@ The server then requests the cited document from the EU Publications Office
 | `appsforoffice.microsoft.com` | Word | Microsoft's own Office.js library. Required by every Office add-in; loaded by Word, not by Ibid. |
 | Your Ibid host | The pane | The single lookup request above. |
 | `publications.europa.eu` | The Ibid server | Retrieves the cited official text, by CELEX or by ECLI. Public EU legal database; equivalent to opening EUR-Lex in a browser. |
+| `compcases-open-data-portal-files-prod.s3.eu-west-1.amazonaws.com` | The Ibid server, **unless `IBID_COMMISSION_CASE_DATA=off`** | Downloads the Commission's own published competition case data (the distribution `data.europa.eu` lists for "EU Competition: Antitrust and Cartel case publications" and its merger counterpart), so a competition citation can link the decision itself instead of a search page. ~42MB on first use and roughly once a day after. Nothing is sent but the request for the file. |
+| `ec.europa.eu` | The Ibid server, **unless `IBID_COMMISSION_CASE_DATA=off`** | Downloads the published competition decision named by the case data above, so the cited recital can be shown rather than linked. Up to four of a case's published decisions on the first citation of it — the one carrying the cited recital is the one shown — each cached thereafter and only revalidated. The request carries the URL the Commission itself published and nothing else. |
+
+**Why `pdfjs-dist` is here, since this document used to say the server had no dependencies.**
+A Commission decision is published as a PDF and in no other form — CELLAR holds a summary, an
+advisory opinion and a hearing officer's report, and no text of the decision — so showing the
+cited recital means reading a PDF. A dependency-free extractor was written first and refused:
+it recovers most of the characters and loses the line structure the recital anchors depend on,
+which would put a wrong passage under a lawyer's citation. `pdfjs-dist` is one Apache-2.0
+package with no transitive dependencies; its only declared dependency, `@napi-rs/canvas`, is
+*optional*, is loaded by a guarded `require` on the page-rendering path, is never reached by
+text extraction, and is omitted by installing with `--omit=optional`. It is imported lazily,
+so a deployment with the flag off never loads it. Parsing is given the bytes already in hand
+and `useWorkerFetch: false`, so pdfjs makes no network request of its own.
+
+**On those two server-side hosts, because they are the new thing here.** Both are on by
+default and are turned off together by
+`IBID_COMMISSION_CASE_DATA=off`, and neither carries anything of the user's: no part of either
+request comes from the document, because nothing from the document ever reaches the server at
+all. The first downloads two public files describing published competition cases; what comes
+back is reduced to a case-number → decision-URL index held **in memory**, and the files
+themselves are not kept. The second downloads a published decision — **the server does fetch
+the PDF**, which it did not before this feature — reads its text, and keeps *the extracted
+text* in the same disk cache as the CELLAR documents, keyed by the decision's own public URL.
+The PDF itself is not kept. Both are public documents anyone can download without an account,
+and with the flag off neither host is contacted at all.
 
 There are no analytics, no telemetry, no error-reporting service, no advertising, no
 fonts or scripts from any CDN, and no cookies. The pane uses neither `localStorage` nor
@@ -125,7 +160,7 @@ short.
 
 | Component | Runtime dependencies |
 | --- | --- |
-| The API server | **None.** `api/package.json` declares no `dependencies` at all. It runs on the Node standard library — `node:http` and the built-in `fetch`. TypeScript and ESLint are build-time only. |
+| The API server | **One: `pdfjs-dist`** (Apache-2.0), imported lazily and only when a Commission decision is actually read, so a deployment that never meets one never loads it. Everything else runs on the Node standard library — `node:http` and the built-in `fetch`. TypeScript and ESLint are build-time only. |
 | The task pane | **Two:** `react` and `react-dom`. Everything else in `addin/package.json` is a `devDependency` and is not shipped. |
 
 No analytics SDK, no error reporter, no UI component library, no CDN. The pane's bundle is
@@ -145,7 +180,10 @@ of the same text. Each entry is the document's HTML plus its `ETag`, `Last-Modif
 the time it was last confirmed.
 
 - **What is written:** public EU legal texts, byte for byte as the Publications Office
-  serves them. The same documents anyone can fetch from EUR-Lex without an account.
+  serves them. The same documents anyone can fetch from EUR-Lex without an account. It also holds the *text extracted from* a published
+  Commission decision — the text, never the PDF, keyed by the decision's own public URL. A
+  decision published as a scan is stored as an empty string, which records that it was read
+  and has no text, so it is not downloaded again to learn the same thing.
 - **What is never written:** anything from the user's document. Nothing from the document
   reaches the server in the first place — the analysis is entirely local to the task pane —
   so there is nothing of the user's for this to hold. The cache key is the CELEX identifier,
@@ -300,7 +338,8 @@ grep -n "function documentKey" -A 3 api/src/index.ts
 # The server logs startup only, never requests.
 grep -n "console\." api/server.mjs
 
-# Runtime supply chain: none for the API, react + react-dom for the pane.
+# Runtime supply chain: pdfjs-dist for the API, react + react-dom for the pane.
+# Expect @napi-rs/canvas to be absent on a server installed with --omit=optional.
 grep -A4 '"dependencies"' api/package.json addin/package.json
 
 # Dependency advisories, runtime and build-time. Expect: found 0 vulnerabilities.

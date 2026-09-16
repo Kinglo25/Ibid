@@ -26,11 +26,11 @@ The name is styled **Ibid.** with the terminal period on branded surfaces — th
 
 ## Current state
 
-The add-in reads Word footnotes, recognises common EU citations, normalises reliable references to CELEX, and retrieves a bounded EUR-Lex passage when available. CURIA and Commission citations use direct official-record adapters. See [docs/STATUS.md](docs/STATUS.md) for current coverage and deployment constraints.
+The add-in reads Word footnotes — and the citations a drafter wrote into the running text in parentheses — recognises common EU citations, normalises reliable references to CELEX, and retrieves a bounded EUR-Lex passage when available. CURIA citations use a direct official-record adapter; a Commission competition citation can link the published decision itself, read from the Commission's own open case data. See [docs/STATUS.md](docs/STATUS.md) for current coverage and deployment constraints.
 
 ## Requirements
 
-- **Node 22 or later** to build and run.
+- **Node 22.13 or later** to build and run. The floor is `pdfjs-dist`, which reads the Commission decisions published only as PDFs; everything else here runs on Node 22.0.
 - **Word 2302+, Office 2024, Word on the web, or Word for Mac 16.70+.** Footnote enumeration requires WordApi 1.5, which the manifest declares — so Word refuses to activate rather than loading a pane that would find nothing. Volume-licensed Office 2019 and 2021 cannot run Ibid at all; confirm the target build before evaluating.
 
 ## Development

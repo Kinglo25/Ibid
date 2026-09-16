@@ -367,6 +367,117 @@ describe('warming the sources at document open', () => {
 });
 
 /**
+ * A Commission decision the server already holds, answered at once and confirmed afterwards.
+ *
+ * Confirming first is what made a second look at a decision slow: the `304` itself is quick,
+ * but it waits for a turn at the server's one-at-a-time wire, once for every decision in the
+ * case. These pin the three things that make answering first safe — the reviewer is told a
+ * check is coming, a changed decision replaces the passage and says so, and the check never
+ * pushes back a passage the reviewer has not been shown yet.
+ */
+describe('a decision answered from what the server holds', () => {
+  const intel = 'AT.37990, EC Decision of 13 May 2009, para. 1000.';
+  const googleSpain = 'Judgment of 13 May 2014, Google Spain SL and Google Inc. v AEPD, C-131/12, ECLI:EU:C:2014:317, paras 80-82.';
+
+  let word: ReturnType<typeof installWordStub> | undefined;
+  afterEach(() => { word?.remove(); word = undefined; });
+
+  const decision = (excerpt: string, extra: Record<string, unknown> = {}) => ({
+    title: 'AT.37990', source: 'European Commission', url: 'https://ec.europa.eu/competition/37990.pdf',
+    excerpt, passage: 'cited', locator: 'Paragraph 1000', verifiedAt: '2026-09-01T10:00:00.000Z', ...extra,
+  });
+
+  /** Answers a held lookup and its confirmation differently, and records which was asked. */
+  const commissionFetch = (confirmed: ReturnType<typeof decision>, respond: (url: string) => Promise<unknown[]> | undefined = () => undefined) => {
+    const urls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      urls.push(String(url));
+      const documents = await (respond(String(url))
+        ?? Promise.resolve(String(url).includes('confirm=later')
+          ? [decision('(1000) The held passage.', { confirmation: 'pending' })]
+          : [confirmed]));
+      return { ok: true, status: 200, json: () => Promise.resolve({ documents }) } as unknown as Response;
+    }) as typeof fetch;
+    return urls;
+  };
+
+  test('is shown at once, says a check is coming, and is replaced by what the Commission now publishes', async () => {
+    // The confirmation is held back until the held answer has been seen, which over a real
+    // network it always is: the confirmation is a second request, and waits its turn.
+    let releaseConfirmation: () => void = () => undefined;
+    const confirmationSent = new Promise<void>((resolve) => { releaseConfirmation = resolve; });
+    const republished = decision('(1000) The republished passage.', { verifiedAt: new Date().toISOString() });
+    const urls = commissionFetch(republished, (url) =>
+      url.includes('confirm=later') ? undefined : confirmationSent.then(() => [republished]));
+    word = installWordStub([intel]);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(0);
+    await screen.findByText('(1000) The held passage.');
+    await screen.findByText(/Verified against the Commission on 1 September( 2026)? at \d\d:\d\d; checking for changes/);
+
+    releaseConfirmation();
+    await screen.findByText('(1000) The republished passage.');
+    assert.ok(screen.getByText(/has published a different version of this decision since Ibid last read it/));
+    assert.equal(screen.queryByText(/checking for changes/), null, 'the check is over, so it no longer says one is coming');
+    assert.equal(urls.length, 2);
+    assert.ok(urls[0].includes('confirm=later'), 'the reviewer is answered from what is held');
+    assert.ok(!urls[1].includes('confirm=later'), 'and the second request is the confirmation');
+  });
+
+  test('a confirmation that finds nothing changed updates only the date', async () => {
+    const urls = commissionFetch(decision('(1000) The held passage.', { verifiedAt: new Date().toISOString() }));
+    word = installWordStub([intel]);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(0);
+    await screen.findByText('(1000) The held passage.');
+    await screen.findByText(/^Verified against the Commission at \d\d:\d\d$/);
+    assert.equal(screen.queryByText(/published a different version/), null, 'a 304 is not announced as a change');
+    assert.equal(urls.length, 2);
+  });
+
+  test('a confirmation that cannot be sent stops saying a check is coming', async () => {
+    // Nothing will ask again, so "checking for changes" left on screen would be a promise
+    // the pane does not keep. The passage stays, with the date it really was last confirmed.
+    commissionFetch(decision('(1000) unused'), (url) =>
+      url.includes('confirm=later') ? undefined : Promise.reject(new TypeError('Failed to fetch')));
+    word = installWordStub([intel]);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(0);
+    await screen.findByText(/^Verified against the Commission on 1 September( 2026)? at \d\d:\d\d$/);
+    assert.ok(screen.getByText('(1000) The held passage.'));
+    assert.equal(screen.queryByText(/published a different version/), null);
+  });
+
+  test('waits for the sources the reviewer has not been shown yet', async () => {
+    // Google Spain is being warmed and has not come back. The Intel passage is already on
+    // screen, dated, so its confirmation is the request that waits.
+    let releaseWarming: (documents: unknown[]) => void = () => undefined;
+    const warmingDone = new Promise<unknown[]>((resolve) => { releaseWarming = resolve; });
+    const urls = commissionFetch(decision('(1000) The held passage.'), (url) =>
+      url.includes('62012CJ0131') ? warmingDone : undefined);
+    word = installWordStub([googleSpain, intel]);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(1);
+    await screen.findByText('(1000) The held passage.');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(urls.filter((url) => url.includes('AT.37990') && !url.includes('confirm=later')).length, 0,
+      'no confirmation while warming is still out');
+
+    releaseWarming([{ title: 'Google Spain', excerpt: 'The passage.', url: 'https://example.test/x', source: 'CURIA' }]);
+    await waitFor(() => assert.equal(
+      urls.filter((url) => url.includes('AT.37990') && !url.includes('confirm=later')).length, 1));
+  });
+});
+
+/**
  * The pane with a cursor, which is how it is actually used.
  *
  * A reviewer works from the document and asks the pane about the citation in front of them.
@@ -406,6 +517,10 @@ describe('following the cursor', () => {
     word = installWordStub([googleSpain, crossReference]);
     render(<App />);
     await paneReady();
+    // Word answers the handler registration on its own schedule, which can land after the
+    // document is read — so wait for the pane to say it is following before asserting what
+    // following hides.
+    await screen.findByText(/Put your cursor on a citation/);
 
     assert.equal(screen.queryByRole('heading', { name: 'Needs review' }), null);
     assert.equal(screen.queryByRole('button', { name: /Show all/ }), null);

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { citedAuthorities, getCitationContextsForFootnotes, reresolveBackReferences, PREVIEW_FOOTNOTES, type CitationCandidate, type CitationContext } from '../../../shared/src';
-import { prefetchStatus, prefetchTargets, startPrefetch, type PrefetchProgress, type Prefetcher } from './prefetch';
+import { prefetchStatus, prefetchTargets, startConfirmations, startPrefetch, type Confirmations, type PrefetchProgress, type Prefetcher } from './prefetch';
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
-  autoSelectable, inlineFootnotesInBody, INLINE_NOTE_CEILING, INLINE_NOTE_FLOOR, needsReview, officialSourceUrl,
-  resolutionNote, toReviewFootnotes,
+  autoSelectable, bodyProseLines, inlineFootnotesInBody, INLINE_NOTE_CEILING, INLINE_NOTE_FLOOR, INLINE_NOTE_SHAPE, needsReview, officialSourceUrl, parentheticalsInBody,
+  resolutionNote, sourceChanged, toReviewFootnotes,
   unresolvedMessage, verificationNote, type ReviewFootnote,
 } from './citation-view';
 
@@ -12,14 +12,21 @@ type ReviewDocument = {
   title: string; excerpt: string; url: string; source: string;
   /** What the citation pinpointed, as the resolver labelled it: "Point 46", "Article 17(1)". */
   locator?: string;
-  /** Whether the excerpt is that passage, the document's opening standing in for it, the opening of a judgment the Court published only in part, or a summary published in place of the text. */
-  passage?: 'cited' | 'opening' | 'unpublished' | 'summary';
+  /** Whether the excerpt is that passage, the document's opening standing in for it, the opening of a judgment the Court published only in part, a summary published in place of the text, or a decision published only as a scan with no text in it to read. */
+  passage?: 'cited' | 'opening' | 'unpublished' | 'summary' | 'unreadable';
   /** Where the grounds are, when EUR-Lex published only a summary of them. Set with `passage: 'summary'` and never otherwise. */
   fullTextUrl?: string;
   language?: 'en' | 'fr';
   translation?: { from: 'en' | 'fr'; officialUrl: string };
   /** When the resolver last confirmed this text against EUR-Lex, as an ISO timestamp. */
   verifiedAt?: string;
+  /** Answered from a decision the server already held, and not yet confirmed against the Commission. */
+  confirmation?: 'pending';
+  /**
+   * Set by the pane, never by the server: confirming this answer found the Commission now
+   * publishes something different from what was first shown, and this is what it publishes.
+   */
+  republished?: true;
 };
 type ReviewState =
   | { kind: 'idle' }
@@ -80,7 +87,7 @@ const labelNumber = (label: string): number | undefined => {
 async function notesInBody(
   context: Word.RequestContext,
   body: Word.Body,
-): Promise<ReviewFootnote[] | undefined> {
+): Promise<{ notes: ReviewFootnote[]; prose: string[] } | undefined> {
   try {
     const paragraphs = body.paragraphs;
     paragraphs.load('items');
@@ -134,12 +141,16 @@ async function notesInBody(
     };
 
     const notes: ReviewFootnote[] = [];
+    // Everything that is not a note is the document's own text, and it is kept because that
+    // is where a parenthetical citation lives — a decision's numbered recitals above all,
+    // which this loop is otherwise busy refusing to read as notes.
+    const prose: string[] = [];
     let open: { at: number; size: number } | undefined;
     read.forEach((paragraph, at) => {
       const { text, size, number, bare } = paragraph;
       if (number !== undefined) {
-        if (text.length < INLINE_NOTE_FLOOR) return;
-        if (!bare && !belowProse(size)) return;
+        if (text.length < INLINE_NOTE_FLOOR) { prose.push(text); return; }
+        if (!bare && !belowProse(size)) { prose.push(text); return; }
         notes.push({ id: `list-note-${notes.length + 1}`, number, text, inBody: true });
         // Only a note set smaller than the prose can take a tail: a bare number at prose size
         // is the Intel shape, where nothing was broken across a page to leave one behind.
@@ -156,12 +167,14 @@ async function notesInBody(
         return;
       }
       // The number Word left typed at the front of the paragraph rather than drawing itself.
-      const typed = /^(\d{1,3})[ \t\u00a0]+([A-Z\u201c\u2018"'][\s\S]*)$/.exec(text);
+      const typed = INLINE_NOTE_SHAPE.exec(text);
       if (typed && typed[2].length >= INLINE_NOTE_FLOOR && typed[2].length <= INLINE_NOTE_CEILING) {
         notes.push({ id: `body-note-${notes.length + 1}`, number: Number(typed[1]), text: typed[2], inBody: true });
+        return;
       }
+      prose.push(text);
     });
-    return notes;
+    return { notes, prose };
   } catch {
     return undefined;
   }
@@ -178,6 +191,7 @@ async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
     await context.sync();
 
     const inBody = await notesInBody(context, body);
+    const bodyText = body.text.trim();
     return {
       footnotes: [
         // Every footnote, empties included: numbering is what back-references count on, and
@@ -192,7 +206,11 @@ async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
         // for a build that cannot report `isListItem`, where the body text is all there is.
         // Only one of the two ever runs, because they overlap: the paragraph read joins a
         // note's tail onto the note, and the text read would list that same tail again.
-        ...(inBody ?? inlineFootnotesInBody(body.text.trim())),
+        ...(inBody?.notes ?? inlineFootnotesInBody(bodyText)),
+        // Citations the drafter wrote into the running text. Appended after the notes, and
+        // for the same reason they are: these carry no number of their own, so they can only
+        // ever sit past the end of the numbering rather than anywhere inside it.
+        ...parentheticalsInBody(inBody?.prose ?? bodyProseLines(bodyText)),
       ],
     };
   });
@@ -528,16 +546,25 @@ function lookupFor(citation: CitationContext) {
  */
 class RetrievalError extends Error {}
 
+/** A lookup as sent, which is what an answer is held under: the same request, the same answer. */
+const lookupKey = (citation: CitationContext) => JSON.stringify(lookupFor(citation));
+
 const RETRIEVAL_FAILED = 'The source could not be retrieved. Open the official record below.';
 
-async function resolveSource(citation: CitationContext, signal?: AbortSignal): Promise<ReviewDocument[]> {
+/**
+ * `confirm` is `'later'` for every lookup the reviewer or the warming queue makes: a decision
+ * the server already holds is answered at once and confirmed by `startConfirmations`, which
+ * sends the same lookup again with `'first'`. The parameter goes ahead of `lookup` so the
+ * lookup stays the last thing in the URL, as `docs/DATA-FLOW.md` shows it.
+ */
+async function resolveSource(citation: CitationContext, signal?: AbortSignal, confirm: 'first' | 'later' = 'later'): Promise<ReviewDocument[]> {
   // `import.meta.env` is Vite's, and exists only in a Vite-built bundle. Reaching through
   // it unguarded threw a TypeError under every other runtime — which meant the task-pane
   // tests never reached `fetch` at all, and every retrieval state below was silently
   // untested. Optional-chaining here costs nothing in the browser and makes the pane
   // runnable wherever it is imported.
   const apiBase = import.meta.env?.VITE_IBID_API_BASE_URL?.replace(/\/$/, '') ?? '/api';
-  const response = await fetch(`${apiBase}/sources?lookup=${encodeURIComponent(JSON.stringify(lookupFor(citation)))}`, { signal });
+  const response = await fetch(`${apiBase}/sources?${confirm === 'later' ? 'confirm=later&' : ''}lookup=${encodeURIComponent(JSON.stringify(lookupFor(citation)))}`, { signal });
   if (!response.ok) throw new RetrievalError(`The source could not be retrieved (${response.status}). Open the official record below.`);
   const payload = await response.json() as { documents?: ReviewDocument[] };
   return payload.documents ?? [];
@@ -578,8 +605,16 @@ function SourceLanguageNote({ document }: { document: ReviewDocument }) {
  * checked printed underneath it. That is worth stating plainly and worth not hedging.
  */
 function VerificationNote({ document }: { document: ReviewDocument }) {
-  const note = verificationNote(document.verifiedAt);
-  return note ? <p className="source-verified">{note}</p> : null;
+  const note = verificationNote(document.verifiedAt, new Date(), {
+    source: document.source, checking: document.confirmation === 'pending',
+  });
+  return <>
+    {document.republished && <p className="source-note">
+      The Commission has published a different version of this decision since Ibid last read
+      it. What is shown here is the version it publishes now.
+    </p>}
+    {note && <p className="source-verified">{note}</p>}
+  </>;
 }
 
 /**
@@ -620,6 +655,14 @@ function ExcerptScopeNote({ document }: { document: ReviewDocument }) {
     {document.fullTextUrl
       ? <a href={document.fullTextUrl} target="_blank" rel="noreferrer">CURIA</a>
       : 'CURIA'}.
+  </p>;
+  // The Commission published this decision as a scanned image, so there is no text in it to
+  // search — two of nine decisions sampled across 1977–2020 are images. Nothing here is
+  // broken and nothing will fix it, so the reviewer is told what the file is rather than
+  // shown an empty passage under their citation, and the decision itself is one click away.
+  if (document.passage === 'unreadable') return <p className="source-note">
+    This decision was published as a scanned image, so {what.toLowerCase()} cannot be read out
+    of it. The decision itself is linked below.
   </p>;
   if (document.passage !== 'opening') return null;
   return <p className="source-note">
@@ -735,13 +778,13 @@ export default function App() {
    * this and goes to the API — where the document itself is cached, so what it costs is one
    * conditional request rather than another download.
    */
-  const alreadyRetrieved = (citation: CitationContext) => retrieved.current.get(JSON.stringify(lookupFor(citation)));
+  const alreadyRetrieved = (citation: CitationContext) => retrieved.current.get(lookupKey(citation));
 
   const retrieve = async (citation: CitationContext): Promise<ReviewDocument[]> => {
     const held = alreadyRetrieved(citation);
     if (held) return held;
     const documents = await resolveSource(citation);
-    retrieved.current.set(JSON.stringify(lookupFor(citation)), documents);
+    hold(citation, documents);
     return documents;
   };
 
@@ -763,7 +806,10 @@ export default function App() {
     }
     setReview({ kind: 'loading' });
     try {
-      const documents = await retrieve(citation);
+      // Read back rather than taken as returned: a confirmation quick enough to land during
+      // the await has already replaced it, and would find nothing on screen to replace.
+      const returned = await retrieve(citation);
+      const documents = alreadyRetrieved(citation) ?? returned;
       setReview(documents.length ? { kind: 'success', documents } : { kind: 'empty' });
     } catch (error) {
       setReview({ kind: 'error', message: error instanceof RetrievalError ? error.message : RETRIEVAL_FAILED });
@@ -779,7 +825,8 @@ export default function App() {
     setSelected({ citation: confirmed, footnote: selected.footnote });
     setReview({ kind: 'loading' });
     try {
-      const documents = await retrieve(confirmed);
+      const returned = await retrieve(confirmed);
+      const documents = alreadyRetrieved(confirmed) ?? returned;
       setReview(documents.length ? { kind: 'success', documents } : { kind: 'empty' });
     } catch (error) {
       setReview({ kind: 'error', message: error instanceof RetrievalError ? error.message : RETRIEVAL_FAILED });
@@ -801,6 +848,49 @@ export default function App() {
   const retrieved = useRef(new Map<string, ReviewDocument[]>());
   /** The running queue, so the cursor can reorder what it has not reached yet. */
   const warming = useRef<Prefetcher | null>(null);
+  /** Answers the server gave from a decision it held, waiting to be confirmed. */
+  const confirming = useRef<Confirmations<CitationContext> | null>(null);
+
+  /** Keeps a retrieved answer for this document, and has it confirmed if it needs to be. */
+  const hold = (citation: CitationContext, documents: ReviewDocument[]) => {
+    const key = lookupKey(citation);
+    retrieved.current.set(key, documents);
+    if (documents.some((document) => document.confirmation === 'pending')) confirming.current?.add(key, citation);
+  };
+
+  /**
+   * Asks again for an answer the server gave from a decision it held, this time confirmed.
+   *
+   * Whatever comes back replaces the held answer, and the passage on screen if it is still
+   * that answer: a `304` changes only the date, which is now today's; a republished decision
+   * changes the passage, and the pane says so rather than swapping the text under a reader
+   * who may already have read it. A request that fails leaves the held passage where it is,
+   * dated as it was, and no longer claiming a check is on its way.
+   *
+   * "Still that answer" is asked of the screen itself, by identity, rather than of which
+   * citation is selected: the selection is state React has not necessarily rendered yet when
+   * a quick confirmation lands, and the reviewer may since have moved to another citation of
+   * the same lookup, or away and back. The one answer this may replace is the one it confirmed.
+   */
+  const confirmHeld = async (citation: CitationContext, signal: AbortSignal) => {
+    const key = lookupKey(citation);
+    const held = retrieved.current.get(key);
+    if (!held) return;
+    let documents: ReviewDocument[];
+    try {
+      documents = await resolveSource(citation, signal, 'first');
+    } catch {
+      if (signal.aborted) return;
+      documents = held.map(({ confirmation: _pending, ...document }) => document);
+    }
+    if (signal.aborted) return;
+    if (sourceChanged(held, documents)) documents = documents.map((document) => ({ ...document, republished: true as const }));
+    retrieved.current.set(key, documents);
+    const confirmed = documents;
+    setReview((current) => current.kind === 'success' && current.documents === held
+      ? (confirmed.length ? { kind: 'success', documents: confirmed } : { kind: 'empty' })
+      : current);
+  };
   /**
    * The citations as currently resolved, for the warming queue to be built from. Read
    * through a ref so that a confirmation — which changes `citationsByFootnote` — does not
@@ -921,15 +1011,26 @@ export default function App() {
   useEffect(() => {
     retrieved.current = new Map();
     setPrefetching(null);
-    if (!wordReady) return;
+    // Started before either early return: a click retrieves in the browser preview too, and
+    // what it is answered with needs confirming there just the same.
+    const confirmations = startConfirmations<CitationContext>({
+      whenWarm: () => warming.current?.finished ?? Promise.resolve(),
+      confirm: confirmHeld,
+    });
+    confirming.current = confirmations;
+    const stopConfirming = () => {
+      confirming.current = null;
+      confirmations.cancel();
+    };
+    if (!wordReady) return stopConfirming;
     const targets = prefetchTargets(currentCitations.current);
-    if (!targets.length) return;
+    if (!targets.length) return stopConfirming;
 
     const queue = startPrefetch({
       targets,
       retrieve: async (target, signal) => {
         const documents = await resolveSource(target.citation, signal);
-        retrieved.current.set(JSON.stringify(lookupFor(target.citation)), documents);
+        hold(target.citation, documents);
       },
       onProgress: setPrefetching,
     });
@@ -937,6 +1038,7 @@ export default function App() {
     return () => {
       warming.current = null;
       queue.cancel();
+      stopConfirming();
     };
   }, [detected, wordReady]);
 
@@ -1003,7 +1105,16 @@ export default function App() {
     // `footnotes` are read here but must not retrigger it: re-running on every render would
     // reopen the source the reviewer may have just navigated away from.
   }, [focused, unidentified, citationsByFootnote, strayFootnote, strayCitations]);
-  const reviewable = useMemo(() => footnotes.filter((footnote) => footnote.text), [footnotes]);
+  // An in-text span is listed only where detection actually found a citation in it.
+  // `parentheticalsInBody` offers every parenthesis in the document and lets the detector
+  // decide, so without this the list would fill with "(see below)" and "(emphasis added)".
+  // A footnote is listed either way: the document put it there, and an empty one is a fact
+  // about the document rather than noise.
+  const reviewable = useMemo(
+    () => footnotes.filter((footnote, index) =>
+      footnote.text && (!footnote.inText || (citationsByFootnote[index] ?? []).length > 0)),
+    [footnotes, citationsByFootnote],
+  );
 
   const focusedFootnote = focused === null ? undefined : footnotes[focused];
   // A source panel describing a footnote the cursor is no longer in.
@@ -1019,7 +1130,7 @@ export default function App() {
     || strayFootnote?.text === selected.footnote.text;
   const listed = footnotes
     .map((footnote, index) => ({ footnote, index, citations: citationsByFootnote[index] ?? [] }))
-    .filter((entry) => entry.footnote.text)
+    .filter((entry) => entry.footnote.text && (!entry.footnote.inText || entry.citations.length > 0))
     .filter((entry) => showAll || needsReview(entry.citations) || entry.index === focused);
   const outstanding = footnotes
     .filter((footnote, index) => footnote.text && needsReview(citationsByFootnote[index] ?? [])).length;
@@ -1044,8 +1155,9 @@ export default function App() {
         >
           <div
             className="footnote-number"
-            title={footnote.inBody ? 'Left in the body text by the PDF conversion; Word does not hold this as a footnote.' : undefined}
-          >{footnote.number}{footnote.inBody ? '*' : ''}</div>
+            title={footnote.inText ? 'Cited in the running text rather than in a note.'
+              : footnote.inBody ? 'Left in the body text by the PDF conversion; Word does not hold this as a footnote.' : undefined}
+          >{footnote.inText ? '¶' : `${footnote.number}${footnote.inBody ? '*' : ''}`}</div>
           <div className="footnote-content">
             <p>{footnote.text}</p>
             {citations.length ? <div className="citation-chips">
@@ -1081,9 +1193,11 @@ export default function App() {
               already the whole of what `inBody` needs to say here: it is the word that
               distinguishes the two, and the context line below spells it out in full. */}
           {focusedFootnote
-            ? <span className="count label">{focusedFootnote.inBody
-              ? `Note ${focusedFootnote.number}`
-              : `Footnote ${focusedFootnote.number}`}</span>
+            ? <span className="count label">{focusedFootnote.inText
+              ? 'In text'
+              : focusedFootnote.inBody
+                ? `Note ${focusedFootnote.number}`
+                : `Footnote ${focusedFootnote.number}`}</span>
             : strayFootnote && <span className="count label">Selected text</span>}
         </div>
 

@@ -184,3 +184,78 @@ export function startPrefetch(options: {
     finished: Promise.resolve().then(drain),
   };
 }
+
+export type Confirmations<T> = {
+  /**
+   * Ask for this answer again, confirmed, once nothing the reviewer is waiting on is left.
+   * A key already waiting is not queued twice.
+   */
+  add(key: string, item: T): void;
+  /** Stop, and abort whatever is in flight. Called with the warming queue's own `cancel`. */
+  cancel(): void;
+  /** Resolves when nothing is queued or in flight. For tests, and for nothing else. */
+  settled(): Promise<void>;
+};
+
+/**
+ * Confirms, afterwards, what the server answered from a copy it already held.
+ *
+ * A Commission decision Ibid has read before is answered at once, from the text the server
+ * holds, and marked as not yet confirmed. Confirming it first is what used to make that
+ * answer slow: a conditional request the Commission answers `304` costs little in itself,
+ * but it takes a turn at the server's one-at-a-time wire, and a case with several decisions
+ * takes a turn for each. So the reviewer is shown the passage and the confirmation happens
+ * here, behind them.
+ *
+ * Behind the warming queue as well, not merely beside it: a confirmation also takes a turn
+ * at the wire, and every one taken while warming runs pushes back a passage the reviewer has
+ * not been shown at all. The text being confirmed is already on screen, dated when it was
+ * last checked, so it is the one that can wait.
+ *
+ * One at a time, like everything else this pane sends, and for the same reason.
+ */
+export function startConfirmations<T>(options: {
+  /** Resolves once the warming queue has drained or been cancelled. */
+  whenWarm: () => Promise<void>;
+  confirm: (item: T, signal: AbortSignal) => Promise<unknown>;
+}): Confirmations<T> {
+  const waiting = new Map<string, T>();
+  const controller = new AbortController();
+  let cancelled = false;
+  let running: Promise<void> = Promise.resolve();
+  let draining = false;
+
+  async function drain() {
+    draining = true;
+    try {
+      while (waiting.size && !cancelled) {
+        await options.whenWarm();
+        if (cancelled) return;
+        const [key, item] = waiting.entries().next().value!;
+        try {
+          await options.confirm(item, controller.signal);
+        } catch {
+          // Nothing to say: the passage on screen stays as it was, dated when it really was
+          // last confirmed. `confirm` itself decides what a failure leaves behind.
+        }
+        waiting.delete(key);
+      }
+    } finally {
+      draining = false;
+    }
+  }
+
+  return {
+    add(key, item) {
+      if (cancelled || waiting.has(key)) return;
+      waiting.set(key, item);
+      if (!draining) running = drain();
+    },
+    cancel() {
+      cancelled = true;
+      waiting.clear();
+      controller.abort();
+    },
+    settled: () => running,
+  };
+}

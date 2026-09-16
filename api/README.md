@@ -8,7 +8,7 @@ Run it with:
 npm run dev -w api
 ```
 
-The endpoint is `GET /sources?lookup=<JSON>`. During local development, Vite proxies `/api` from the add-in to `http://127.0.0.1:4000`.
+The endpoint is `GET /sources?lookup=<JSON>`, optionally with `confirm=later`: a Commission decision the server already holds is then answered at once and marked `confirmation: 'pending'`, and asking again without it confirms the decision against the Commission (see `ResolveOptions` in `src/index.ts`). During local development, Vite proxies `/api` from the add-in to `http://127.0.0.1:4000`.
 
 EUR-Lex content is retrieved through the configurable CELLAR CELEX endpoint. Requests have a bounded timeout, a minimum interval between lookups (one per second by default), and retries for `429` and transient server failures. CURIA and Commission lookups intentionally return their official case/register records directly instead of scraping search pages.
 
@@ -148,6 +148,7 @@ IBID_EURLEX_MIN_INTERVAL_MS=1000        # between lookups, not between the attem
 IBID_EURLEX_MAX_RETRIES=2
 IBID_CACHE_DIR=/var/cache/ibid          # retrieved documents; defaults outside the repository
 IBID_CACHE_ENTRIES=512                  # 0 disables the disk cache entirely
+IBID_COMMISSION_CASE_DATA=off           # stop reading Commission decisions; link the register instead
 IBID_ALLOWED_ORIGIN=https://your-addin-host.example
 IBID_STATIC_DIR=/srv/ibid/addin/dist    # serve the pane from here too; unset = API only
 IBID_BIND_HOST=127.0.0.1                # 0.0.0.0 on a platform host, which forwards to you

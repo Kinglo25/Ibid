@@ -6,6 +6,12 @@ export type { DocumentStore, StoredDocument } from './document-store.ts';
 export { createStaticFiles, contentTypeFor, resolveWithinRoot } from './static-files.ts';
 export type { StaticAsset } from './static-files.ts';
 
+import type { CommissionCaseIndexLoader, CommissionDecision } from './commission-cases.ts';
+import { extractPdfText, sliceRecitals } from './pdf-text.ts';
+
+export { buildCommissionCaseIndex, createCommissionCaseIndexLoader, COMMISSION_CASE_DATASETS } from './commission-cases.ts';
+export type { CommissionCaseIndex, CommissionCaseIndexLoader, CommissionDecision } from './commission-cases.ts';
+
 export type EuLookup = {
   source: 'curia' | 'eur-lex' | 'commission';
   value: string;
@@ -78,8 +84,14 @@ export type SourcePreview = {
    * that used none of the ones already catalogued, so `'opening'` is a state it can go on
    * arriving in rather than a bug on its way to being finished. What must not happen is a
    * lawyer reading a judgment's catchwords under a heading naming paragraph 46.
+   *
+   * `'unreadable'` is the Commission-decision case, and it is a fact about the file rather
+   * than about retrieval: the decision was published only as a scanned image, so it carries
+   * no text to search. Two of nine decisions sampled across 1977–2020 are images — a 1.99MB
+   * file yielding zero characters. The reviewer is told that, and given the link, rather than
+   * shown an empty passage under their citation.
    */
-  passage?: 'cited' | 'opening' | 'unpublished' | 'summary';
+  passage?: 'cited' | 'opening' | 'unpublished' | 'summary' | 'unreadable';
   /**
    * Where the full text is, when `url` leads to something less than it.
    *
@@ -109,8 +121,36 @@ export type SourcePreview = {
    * statement a `200` makes, and the pane says so as a plain fact rather than as a warning
    * about a cache. Absent on the link-only previews (CURIA case record, Commission
    * register), which retrieve no text and so confirm nothing.
+   *
+   * A Commission decision's text is confirmed against `ec.europa.eu` the same way, and where
+   * `confirmation` is `'pending'` this is the last time it was, not the time of this answer.
    */
   verifiedAt?: string;
+  /**
+   * Set where the answer was given from a decision already held, without first asking the
+   * Commission whether it is still the published text — which is what `confirm: 'later'`
+   * asks for. Asking again without it confirms the decision, and answers from whatever the
+   * Commission now publishes.
+   *
+   * Only a Commission answer carries it. Every passage in the answer is marked, not only the
+   * one whose text was held: which decision carries the cited recital was decided on that
+   * text, so a change to it can change which decision the answer is.
+   */
+  confirmation?: 'pending';
+};
+
+export type ResolveOptions = {
+  /**
+   * When a Commission decision already held is confirmed against the Commission.
+   *
+   * `'first'`, the default, confirms before answering: a conditional request answered `304`,
+   * which costs little in itself but takes a turn at the one-at-a-time wire, and a case with
+   * several decisions takes one turn for each. `'later'` answers from what is held at once
+   * and marks the answer `confirmation: 'pending'`, leaving the caller to ask again once the
+   * reviewer is no longer waiting on the answer. A decision never read is fetched either way,
+   * since there is nothing to answer from.
+   */
+  confirm?: 'first' | 'later';
 };
 
 /**
@@ -199,6 +239,15 @@ export type ResolverOptions = {
    * one, which is where persistence is opted into.
    */
   documentStore?: DocumentStore;
+  /**
+   * Where a Commission decision is published, from the Commission's own open data.
+   *
+   * Absent by default, and that is deliberate rather than cautious for its own sake: supplying
+   * it adds a second outbound host to a service that reaches exactly one today, which is a
+   * statement `docs/DATA-FLOW.md` makes to a reviewer and an operator should be the one to
+   * change. Without it every Commission citation gets the case-register link it gets now.
+   */
+  commissionCases?: CommissionCaseIndexLoader;
   sleep?: (milliseconds: number) => Promise<void>;
   now?: () => number;
 };
@@ -546,7 +595,7 @@ function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly nu
  * `passage` is absent where the citation pinpointed nothing at all. Then the opening is
  * simply what there is to show, and there is nothing to admit.
  */
-type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' | 'unpublished' | 'summary' };
+type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' | 'unpublished' | 'summary' | 'unreadable' };
 
 /** The opening of the document, marked as the fallback it is. */
 function documentOpening(html: string, cited: boolean): Excerpt {
@@ -942,6 +991,34 @@ function curiaUrl(lookup: EuLookup): string {
 
 /** DG Competition's own case numbering: `AT.` antitrust, `SA.` State aid, `M.` merger. */
 const COMMISSION_CASE_NUMBER = /^(?:AT|SA|M)\.\d{3,6}$/i;
+
+/**
+ * How many of a case's decisions are worth reading to find the one that was cited.
+ *
+ * Each is a download, so this bounds what one lookup can cost: a case publishing more
+ * documents than this keeps the link rather than fetching an armful of PDFs to sort out.
+ * Three covers Dow/DuPont and Bayer/Monsanto, which are the shape this was measured on, and
+ * every one read is cached — so the cost falls on the first citation of a case and on no
+ * other.
+ */
+const MAX_DECISION_CANDIDATES = 4;
+
+const PLAIN_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+/**
+ * `2009-05-13` as `13 May 2009`, which is how a decision is referred to in practice.
+ *
+ * The date is what separates one decision in a case from another, so it is read by a lawyer
+ * rather than by a machine. A value that is not a date is returned untouched: showing the
+ * dataset's own string is better than showing `Invalid Date` beside an official source.
+ */
+function asPlainDate(value: string): string {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!parts) return value;
+  const month = PLAIN_MONTHS[Number(parts[2]) - 1];
+  return month ? `${Number(parts[3])} ${month} ${parts[1]}` : value;
+}
 
 /**
  * The case's own page in DG Competition's register.
@@ -1433,16 +1510,192 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     return [resolveCuriaLink(lookup)];
   }
 
-  function resolveCommission(lookup: EuLookup): SourcePreview[] {
+  /**
+   * The text of a published decision, confirmed rather than downloaded again.
+   *
+   * The same bargain the CELLAR path makes, against a different publisher: `ec.europa.eu`
+   * sends an `ETag` and a `Last-Modified` with every decision PDF, so a decision already read
+   * costs a conditional request answered `304` with no body rather than another four
+   * megabytes. What is stored is the *extracted text*, not the PDF — the bytes are of no
+   * further use once read, and a 500-page decision is 1.4MB of text against 1.8MB of file.
+   *
+   * A scan is stored as an empty string deliberately: it records that this decision was
+   * fetched and has no text, so the next citation of it does not download it again to
+   * discover the same thing.
+   *
+   * Never throws. Every failure returns whatever was already held, or nothing — and nothing
+   * means the reviewer gets the link, which is what they had before any of this existed.
+   *
+   * With `confirm: 'later'` a decision already held is returned without going to the wire at
+   * all, marked `pending`. That is the whole of what makes a second look at a decision
+   * instant: the text is already here, and what cost the reviewer a second was the turn at
+   * the wire the confirmation waited for.
+   */
+  async function loadDecisionText(url: string, confirm: ResolveOptions['confirm']): Promise<{ text: string; readable: boolean; verifiedAt: number; pending?: true } | undefined> {
+    const key = `pdf:${url}`;
+    const stored = await documentStore.get(key);
+    const held = stored
+      ? { text: stored.html, readable: stored.html.length > 0, verifiedAt: stored.fetchedAt }
+      : undefined;
+    if (held && confirm === 'later') return { ...held, pending: true };
+    const conditional = stored ? conditionalHeaders(stored) : undefined;
+
+    return onTheWire(async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetcher(url, {
+          headers: { 'User-Agent': userAgent, ...(conditional ?? {}) },
+          signal: controller.signal,
+        });
+        if (stored && response.status === 304) {
+          const verifiedAt = now();
+          await documentStore.set(key, { ...stored, fetchedAt: verifiedAt });
+          return { text: stored.html, readable: stored.html.length > 0, verifiedAt };
+        }
+        if (!response.ok) return held;
+
+        const extracted = await extractPdfText(new Uint8Array(await response.arrayBuffer()));
+        const text = extracted.readable ? extracted.text : '';
+        const verifiedAt = now();
+        await documentStore.set(key, {
+          html: text,
+          etag: response.headers.get('etag') ?? undefined,
+          lastModified: response.headers.get('last-modified') ?? undefined,
+          fetchedAt: verifiedAt,
+        });
+        return { text, readable: extracted.readable, verifiedAt };
+      } catch {
+        return held;
+      } finally {
+        clearTimeout(timer);
+      }
+    });
+  }
+
+  /**
+   * A Commission citation, answered with the decision itself where the register says where
+   * it is.
+   *
+   * What this does *not* do is as much the point as what it does. No PDF is fetched and none
+   * is parsed, so no passage is cut and nothing here can show a lawyer the wrong paragraph:
+   * the improvement is that the link opens the decision instead of a search box. Extracting
+   * the cited recital was measured and refused — a dependency-free extractor recovered the
+   * characters but not the line structure the recital numbers are anchored to, which turns
+   * `(223)` inside a cross-reference into a heading and puts the wrong text on screen.
+   *
+   * Every decision the case has is offered rather than one of them chosen. 52 of the 360
+   * antitrust cases carrying a decision have more than one, and Intel is the shape of the
+   * problem: `AT.37990` was decided on 13 May 2009 and re-adopted on 22 September 2023, both
+   * labelled `Prohibition Decision`, and a footnote citing paragraph 1000 names neither. So
+   * both are returned with their dates, and the reviewer sees the choice instead of a guess.
+   *
+   * Any failure falls back to the register link, which is what Ibid has always shown.
+   *
+   * `confirm` is passed through to each decision read — see `ResolveOptions`. Where any of
+   * them answered from what was held, the whole answer is marked pending, because each of
+   * them took part in deciding which decision carries the recital.
+   */
+  async function resolveCommission(lookup: EuLookup, confirm: ResolveOptions['confirm']): Promise<SourcePreview[]> {
     const locator = locatorLabel(lookup);
-    return [{ title: describeDocument(lookup), source: 'European Commission', url: commissionUrl(lookup), locator,
-      excerpt: `Open the European Commission case register to inspect the published decision and related documents${locator ? `, focusing on ${locator.toLowerCase()}` : ''}.` }];
+    const register: SourcePreview = {
+      title: describeDocument(lookup), source: 'European Commission', url: commissionUrl(lookup), locator,
+      excerpt: `Open the European Commission case register to inspect the published decision and related documents${locator ? `, focusing on ${locator.toLowerCase()}` : ''}.`,
+    };
+    if (!options.commissionCases) return [register];
+
+    let decisions: CommissionDecision[] = [];
+    try {
+      const index = await options.commissionCases.get();
+      decisions = index.find(lookup.caseNumber ?? lookup.value);
+    } catch {
+      return [register];
+    }
+    if (!decisions.length) return [register];
+
+    let pending = false;
+    const marked = (previews: SourcePreview[]): SourcePreview[] => pending
+      ? previews.map((preview) => ({ ...preview, confirmation: 'pending' as const }))
+      : previews;
+
+    // Which decision was meant is settled by which one actually contains the cited recital.
+    //
+    // A case is often decided more than once — 52 of the 360 antitrust cases carrying a
+    // decision, and mergers more often still: Dow/DuPont (`M.7932`) publishes three. Choosing
+    // between them by date would be a guess, and the wrong guess puts the right paragraph of
+    // the wrong decision on screen, which is worse than a link because it looks like an
+    // answer. But the citation does say something after all: a footnote citing "paragraphs
+    // 1975 et seq." names a decision that *has* a recital 1975. Measured on Dow/DuPont, the
+    // decision of 27 March 2017 carries 5,269 recitals including 1975, and neither of the two
+    // of 28 July 2017 carries any. So the candidates are read and the one carrying the recital
+    // answers — decided on evidence rather than on a preference.
+    //
+    // Where two carry it the citation genuinely does not distinguish them, and the reviewer is
+    // shown both rather than handed either.
+    if (lookup.locator?.kind === 'point' && decisions.length <= MAX_DECISION_CANDIDATES) {
+      const cited = lookup.paragraphs?.length
+        ? lookup.paragraphs
+        : expandRange(lookup.locator.start, lookup.locator.end);
+      const runs = contiguousRuns(cited).slice(0, MAX_RUNS);
+
+      const read: Array<{ decision: CommissionDecision; readable: boolean; verifiedAt: number; text: string; passage?: string }> = [];
+      for (const decision of decisions) {
+        const loaded = await loadDecisionText(decision.url, confirm);
+        if (!loaded) continue;
+        if (loaded.pending) pending = true;
+        read.push({
+          decision,
+          readable: loaded.readable,
+          verifiedAt: loaded.verifiedAt,
+          text: loaded.text,
+          passage: loaded.readable ? sliceRecitals(loaded.text, runs, { maxLength: MAX_EXCERPT }) : undefined,
+        });
+        // Two candidates carrying the same recital is an ambiguity, and reading the rest
+        // cannot resolve it — so nothing is gained by downloading them.
+        if (read.filter((candidate) => candidate.passage).length > 1) break;
+      }
+
+      const carrying = read.filter((candidate) => candidate.passage);
+      const previewOf = (candidate: typeof read[number]) => ({
+        title: describeDocument(lookup),
+        source: 'European Commission' as const,
+        url: candidate.decision.url,
+        locator,
+        verifiedAt: new Date(candidate.verifiedAt).toISOString(),
+      });
+
+      if (carrying.length === 1) {
+        return marked([{ ...previewOf(carrying[0]), excerpt: carrying[0].passage as string, passage: 'cited' as const }]);
+      }
+      // Nothing carried it, and there was only ever one decision to look in: this is a
+      // pinpoint that is not there, or a decision that numbers nothing — said as such rather
+      // than left as a bare link, because the document in hand *is* the one cited.
+      if (!carrying.length && read.length === 1 && decisions.length === 1) {
+        const only = read[0];
+        return marked([only.readable
+          ? { ...previewOf(only), excerpt: only.text.slice(0, 900).trim(), passage: 'opening' as const }
+          : { ...previewOf(only), excerpt: '', passage: 'unreadable' as const }]);
+      }
+    }
+
+    const among = decisions.length > 1
+      ? ` One of ${decisions.length} decisions published in this case.`
+      : '';
+    return marked(decisions.map((decision) => ({
+      title: describeDocument(lookup),
+      source: 'European Commission' as const,
+      url: decision.url,
+      locator,
+      excerpt: `${decision.description}${decision.documentDate ? ` of ${asPlainDate(decision.documentDate)}` : ''}`
+        + `${decision.language && decision.language !== 'EN' ? ` (${decision.language})` : ''},`
+        + ` published by the Commission. Open it to read ${locator ? locator.toLowerCase() : 'the decision'}.${among}`,
+    })));
   }
 
   return {
-    async resolve(lookup: EuLookup): Promise<SourcePreview[]> {
+    async resolve(lookup: EuLookup, resolveOptions: ResolveOptions = {}): Promise<SourcePreview[]> {
       if (lookup.source === 'curia') return resolveCuria(lookup);
-      if (lookup.source === 'commission') return resolveCommission(lookup);
+      if (lookup.source === 'commission') return resolveCommission(lookup, resolveOptions.confirm);
       return resolveEurLex(lookup);
     },
     /**

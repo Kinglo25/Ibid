@@ -15,6 +15,12 @@ export type ReviewFootnote = {
   id: string; number: number; text: string;
   /** A note the conversion left in the body text, which Word does not know is a footnote. */
   inBody?: boolean;
+  /**
+   * A citation the drafter put in the running text rather than in a note — the parenthetical
+   * form ("(Case C-293/12, para. 40)"). It carries no number because the document gives it
+   * none: it is a position in the prose, not an entry in a numbered series.
+   */
+  inText?: boolean;
 };
 
 /**
@@ -83,10 +89,19 @@ export function toReviewFootnotes(texts: readonly string[]): ReviewFootnote[] {
  * lower case. On the decision this was built against the rule finds all nine notes and none
  * of the three fragments.
  */
+/**
+ * The shape of a note the conversion left in the body: its number, then a capital or an
+ * opening quotation mark. Shared with `notesInBody` in the pane, which reads the same shape
+ * off Word's paragraphs rather than off the body text, and must agree with this one.
+ */
+export const INLINE_NOTE_SHAPE = /^(\d{1,3})[ \t\u00a0]+([A-Z\u201c\u2018"'][\s\S]*)$/;
+/** How Word separates paragraphs inside `Body.text`. */
+const PARAGRAPH_BREAK = /[\r\n\v\f\u2028\u2029]/;
+
 export function inlineFootnotesInBody(bodyText: string): ReviewFootnote[] {
   const notes: ReviewFootnote[] = [];
-  for (const paragraph of bodyText.split(/[\r\n\v\f\u2028\u2029]/)) {
-    const match = /^(\d{1,3})[ \t\u00a0]+([A-Z\u201c\u2018"'][\s\S]*)$/.exec(paragraph.trim());
+  for (const paragraph of bodyText.split(PARAGRAPH_BREAK)) {
+    const match = INLINE_NOTE_SHAPE.exec(paragraph.trim());
     if (!match) continue;
     const [, number, text] = match;
     // Long enough to be a note rather than a stray numeral with a word after it, short
@@ -97,8 +112,89 @@ export function inlineFootnotesInBody(bodyText: string): ReviewFootnote[] {
   return notes;
 }
 
+/**
+ * The body's own prose \u2014 every paragraph `inlineFootnotesInBody` did not claim as a note.
+ *
+ * The two have to be read off the same text and told apart, or a note that also happens to
+ * contain a parenthesis would be listed twice: once as the note it is, and once as a citation
+ * in the running text. Kept beside the note reader for that reason, sharing its shape.
+ */
+export function bodyProseLines(bodyText: string): string[] {
+  return bodyText.split(PARAGRAPH_BREAK)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph && !INLINE_NOTE_SHAPE.test(paragraph));
+}
+
 export const INLINE_NOTE_FLOOR = 30;
 export const INLINE_NOTE_CEILING = 2000;
+
+/**
+ * Citations a drafter wrote into the running text rather than into a note.
+ *
+ * Footnotes are where EU legal drafting puts its authorities, and everything else the pane
+ * reads assumes it. But the parenthetical form is ordinary in prose \u2014 "the Court has held
+ * otherwise (Case C-293/12, para. 40)" \u2014 and to Ibid those did not exist at all: `Body.text`
+ * was read only to find notes a conversion had flattened into it, and a paragraph that is
+ * genuinely prose was passed over. A reviewer checking such a document saw a clean pane.
+ *
+ * Only what is inside the parentheses is offered, and that bound is the whole of what keeps
+ * this honest. Detection reaches outwards from a citation for its pinpoint and its case name,
+ * so turning it loose on running prose would let a sentence supply a paragraph number to a
+ * citation that never carried one \u2014 a wrong pinpoint shown with full confidence, which is the
+ * failure this tool exists to prevent. A parenthesis is a boundary the drafter themselves
+ * drew, and it is treated exactly as a footnote's text is: the same detection, the same
+ * pinpoint rules, the same refusal to guess.
+ *
+ * Nothing here decides what is a citation \u2014 the spans are handed to the same detector the
+ * footnotes go through, and a span holding no citation is dropped by the pane rather than
+ * listed as an empty entry. So "(see below)" costs a scan and nothing else.
+ */
+export function parentheticalsInBody(paragraphs: readonly string[]): ReviewFootnote[] {
+  const found: ReviewFootnote[] = [];
+  for (const paragraph of paragraphs) {
+    for (const span of parentheticalSpans(paragraph)) {
+      if (span.length < PARENTHETICAL_FLOOR || span.length > PARENTHETICAL_CEILING) continue;
+      // A reference mark or a recital number, not a citation. The guidelines on exclusionary
+      // abuses write their footnote marks `(90)` and a conversion leaves every one of them
+      // in the text; the Intel decision numbers its recitals `(48)`. Both are digits alone,
+      // and both would otherwise be offered to the reviewer as something to inspect.
+      if (!/[A-Za-z]/.test(span)) continue;
+      found.push({ id: `in-text-${found.length + 1}`, number: 0, text: span, inText: true });
+    }
+  }
+  return found;
+}
+
+/**
+ * The parenthesised spans of one paragraph, each read to its own closing bracket.
+ *
+ * Depth is tracked rather than matching to the first `)`, because EU citations carry
+ * parentheses of their own \u2014 "(Regulation (EU) 2016/679, Article 17(1))" is one span, and
+ * cutting it at the first close would hand detection `Regulation (EU` and lose the act. An
+ * opening bracket that never closes \u2014 ordinary in text a PDF conversion has been through \u2014
+ * yields nothing, which is the safe direction to fail in.
+ */
+function parentheticalSpans(text: string): string[] {
+  const spans: string[] = [];
+  let depth = 0;
+  let start = -1;
+  for (let at = 0; at < text.length; at += 1) {
+    if (text[at] === '(') {
+      if (depth === 0) start = at + 1;
+      depth += 1;
+    } else if (text[at] === ')' && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) spans.push(text.slice(start, at).trim());
+    }
+  }
+  return spans;
+}
+
+// Short enough to admit "(C-293/12)", which is the whole citation in nine characters. Long
+// enough that a parenthesis running to a paragraph of its own is prose being quoted, not a
+// reference: past this the span stops being a boundary the drafter drew around an authority.
+export const PARENTHETICAL_FLOOR = 8;
+export const PARENTHETICAL_CEILING = 600;
 
 export function citationKey(citation: CitationContext, footnoteId: string): string {
   return `${footnoteId}-${citation.index}-${citation.value}`;
@@ -274,14 +370,44 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
  * from a store written last week, with nothing left to revalidate it against, would
  * otherwise read as "at 14:32" and be taken for this afternoon.
  */
-export function verificationNote(verifiedAt: string | undefined, now: Date = new Date()): string | undefined {
+export function verificationNote(
+  verifiedAt: string | undefined,
+  now: Date = new Date(),
+  about: { source?: string; checking?: boolean } = {},
+): string | undefined {
   if (!verifiedAt) return undefined;
   const at = new Date(verifiedAt);
   if (Number.isNaN(at.getTime())) return undefined;
 
+  // A Commission decision is confirmed against `ec.europa.eu`, not EUR-Lex, and naming the
+  // wrong publisher is a false statement about where the text was checked.
+  const against = about.source === 'European Commission' ? 'the Commission' : 'EUR-Lex';
+  // Shown while a decision answered from what the server held waits for its confirmation.
+  // The date before it is still the true one — the last time it was confirmed — so this
+  // adds what is happening next rather than qualifying what was said.
+  const checking = about.checking ? '; checking for changes' : '';
+
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
-  if (at.toDateString() === now.toDateString()) return `Verified against EUR-Lex at ${time}`;
+  if (at.toDateString() === now.toDateString()) return `Verified against ${against} at ${time}${checking}`;
 
   const year = at.getFullYear() === now.getFullYear() ? '' : ` ${at.getFullYear()}`;
-  return `Verified against EUR-Lex on ${at.getDate()} ${MONTHS[at.getMonth()]}${year} at ${time}`;
+  return `Verified against ${against} on ${at.getDate()} ${MONTHS[at.getMonth()]}${year} at ${time}${checking}`;
+}
+
+/**
+ * Whether a confirmed answer shows something other than the answer it replaces.
+ *
+ * Compared on what the reviewer reads and follows — the passage, which decision it is from,
+ * and what kind of passage it is — and never on `verifiedAt`, which a confirmation changes
+ * every time. A `304` is the publisher saying nothing changed, and it must not be announced
+ * as though something had.
+ */
+export function sourceChanged(
+  before: readonly { url: string; excerpt: string; passage?: string }[],
+  after: readonly { url: string; excerpt: string; passage?: string }[],
+): boolean {
+  if (before.length !== after.length) return true;
+  return before.some((document, at) => document.url !== after[at].url
+    || document.excerpt !== after[at].excerpt
+    || document.passage !== after[at].passage);
 }

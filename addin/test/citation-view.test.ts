@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { autoSelectable, candidateKey, candidateLabel, confirmationKey, inlineFootnotesInBody, needsReview, officialSourceUrl, resolutionNote, toReviewFootnotes, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
+import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, inlineFootnotesInBody, needsReview, officialSourceUrl, parentheticalsInBody, resolutionNote, sourceChanged, toReviewFootnotes, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -241,6 +241,56 @@ describe('footnotes a PDF conversion left in the body text', () => {
   });
 });
 
+/**
+ * Citations in the running text.
+ *
+ * Footnotes are where EU drafting puts its authorities, and everything the pane read assumed
+ * it. The parenthetical form is ordinary prose all the same, and to Ibid it did not exist:
+ * the body was read only for notes a conversion had flattened into it.
+ */
+describe('citations the drafter wrote into the running text', () => {
+  test('a parenthetical citation in prose is offered for review', () => {
+    const [span] = parentheticalsInBody([
+      'The Court has held otherwise (Case C-293/12 Digital Rights Ireland, para. 40).',
+    ]);
+    assert.equal(span.text, 'Case C-293/12 Digital Rights Ireland, para. 40');
+    assert.equal(span.inText, true, 'and it is marked as text rather than as a note');
+    assert.equal(span.number, 0, 'the document gives it no number of its own');
+  });
+
+  test('an act carrying its own brackets is read to the outer close', () => {
+    // Cutting at the first ")" would hand detection "Regulation (EU" and lose the act.
+    const [span] = parentheticalsInBody(['see (Regulation (EU) 2016/679, Article 17(1))']);
+    assert.equal(span.text, 'Regulation (EU) 2016/679, Article 17(1)');
+  });
+
+  test('a reference mark left in the text is not a citation', () => {
+    // The guidelines on exclusionary abuses write their footnote marks `(90)`, and a
+    // conversion leaves every one behind; the Intel decision numbers its recitals `(48)`.
+    // Digits alone, and both would otherwise be offered to the reviewer to inspect.
+    assert.deepEqual(parentheticalsInBody(['A paragraph of the decision. (90)', '(48)']), []);
+  });
+
+  test('a bracket the conversion never closed yields nothing', () => {
+    assert.deepEqual(parentheticalsInBody(['a conversion left this open (Case C-293/12']), []);
+  });
+
+  test('two parentheses in one paragraph are two spans', () => {
+    const spans = parentheticalsInBody([
+      'compare (Case C-293/12, para. 40) with (Case C-362/14, para. 94) on this point',
+    ]);
+    assert.equal(spans.length, 2);
+    assert.equal(new Set(spans.map((span) => span.id)).size, 2, 'and they are told apart');
+  });
+
+  test('a note flattened into the body is not also read as running text', () => {
+    // Such a note carries parentheses of its own. Reading the same paragraph both ways would
+    // list every citation in it twice — once as the note, once as a citation in the text.
+    const body = '72 See Akzo Nobel and others v Commission (C-97/08 P), paragraph 61.\rOrdinary prose.';
+    assert.deepEqual(parentheticalsInBody(bodyProseLines(body)), []);
+  });
+});
+
 describe('when a passage was last confirmed against EUR-Lex', () => {
   const at = (iso: string) => new Date(iso);
 
@@ -270,6 +320,32 @@ describe('when a passage was last confirmed against EUR-Lex', () => {
     // confirmed nothing and must not appear to have.
     assert.equal(verificationNote(undefined), undefined);
     assert.equal(verificationNote('not a date'), undefined);
+  });
+
+  test('a Commission decision names the Commission, which is who confirmed it', () => {
+    const note = verificationNote(at('2026-08-21T14:32:00').toISOString(), at('2026-08-21T14:35:00'), { source: 'European Commission' });
+    assert.equal(note, 'Verified against the Commission at 14:32');
+  });
+
+  test('a passage waiting for its confirmation says so after the date it really has', () => {
+    const note = verificationNote(at('2026-08-18T09:05:00').toISOString(), at('2026-08-21T14:35:00'),
+      { source: 'European Commission', checking: true });
+    assert.equal(note, 'Verified against the Commission on 18 August at 09:05; checking for changes');
+  });
+});
+
+describe('telling a republished source from a confirmed one', () => {
+  const passage = { url: 'https://ec.europa.eu/x.pdf', excerpt: '(1000) The Commission concludes.', passage: 'cited' };
+
+  test('a confirmation that changed only the date changed nothing', () => {
+    assert.equal(sourceChanged([passage], [{ ...passage, verifiedAt: '2026-09-16T10:00:00Z' } as typeof passage]), false);
+  });
+
+  test('a different passage, decision, or kind of passage is a change', () => {
+    assert.equal(sourceChanged([passage], [{ ...passage, excerpt: '(1000) The Commission finds.' }]), true);
+    assert.equal(sourceChanged([passage], [{ ...passage, url: 'https://ec.europa.eu/y.pdf' }]), true);
+    assert.equal(sourceChanged([passage], [{ ...passage, passage: 'opening' }]), true);
+    assert.equal(sourceChanged([passage], [passage, passage]), true, 'a single answer that became an ambiguity');
   });
 });
 
