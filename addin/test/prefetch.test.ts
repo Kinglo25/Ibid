@@ -243,3 +243,13 @@ describe('what the pane says about it', () => {
     assert.equal(prefetchStatus({ retrieved: 0, attempted: 0, total: 0 }), undefined);
   });
 });
+
+describe('a publication cited by where it appeared', () => {
+  test('is warmed by its Official Journal reference', () => {
+    const targets = prefetchTargets(citations([
+      'Commission Notice on the definition of the relevant market (‘Market Definition Notice’), OJ C/2024/1645, 22.2.2024, paragraph 8.',
+      'See Market Definition Notice, paragraph 17.',
+    ]));
+    assert.deepEqual(targets.map((target) => [target.celex, target.footnotes]), [['C_202401645', [0, 1]]]);
+  });
+});

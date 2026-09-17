@@ -686,6 +686,19 @@ describe('following the cursor', () => {
     await screen.findByText('Ibid., para. 97.');
   });
 
+  test('a short form defined in the body text resolves in the notes', async () => {
+    // The Commission's 2026 draft merger guidelines define "EUMR" in their first paragraph and
+    // cite "EUMR, Article 2" in the notes. Reading notes alone, the pane found nothing there.
+    word = installWordStub(['EUMR, Article 2.'],
+      'Council Regulation (EC) No 139/2004 of 20 January 2004 on the control of concentrations between undertakings (‘EUMR’) requires the Commission to appraise concentrations.');
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(0);
+    await screen.findByText('EUMR', { selector: '.selected-citation' });
+    assert.ok(await screen.findByText('Resolved from the short form this document defines for it.'));
+  });
+
   test('no footnote list while the cursor is being followed', async () => {
     // On a real Commission decision the index is a hundred and twelve entries, and it stood
     // between the reviewer and the one panel they wanted. Three entries were already enough

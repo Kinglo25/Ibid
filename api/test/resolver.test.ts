@@ -2508,3 +2508,86 @@ describe('a document EUR-Lex holds only in summary', () => {
     assert.equal(preview.fullTextUrl, undefined);
   });
 });
+
+/**
+ * A notice, a set of guidelines, or an act or decision cited only by where it was published.
+ * The fixtures are cut from the documents CELLAR served on 2026-09-17 for the references the
+ * Commission's 2026 draft merger guidelines give.
+ */
+describe('an Official Journal publication', () => {
+  const publication = (overrides: Partial<EuLookup> = {}): EuLookup => ({
+    source: 'eur-lex', value: 'OJ C/2024/1645, 22.2.2024', oj: 'C_202401645', ojDate: '22.2.2024', ...overrides,
+  });
+  const formex = () => documentResponse(
+    '<p>Official Journal of the European Union</p><p>EN</p><p>Series C</p><p>C/2024/1645</p><p class="oj-hd-date">22.2.2024</p><p>COMMUNICATION FROM THE COMMISSION</p>'
+    + '<p>Commission Notice on the definition of the relevant market for the purposes of Union competition law</p><p>(C/2024/1645)</p>'
+    + '<p>Contents</p><p>1. INTRODUCTION 3</p>'
+    + '<table><tr><td><p class="oj-normal">16.</p></td><td><span>Fourth, market definition is one step.</span></td></tr>'
+    + '<tr><td><p class="oj-normal">17.</p></td><td><span>Fifth, market definition allows for a distinction.</span></td></tr>'
+    + '<tr><td><p class="oj-normal">18.</p></td><td><span>Sixth.</span></td></tr>'
+    + '<tr><td><p class="oj-normal">19.</p></td><td><span>Seventh.</span></td></tr>'
+    + '<tr><td><p class="oj-normal">20.</p></td><td><span>Eighth.</span></td></tr></table>');
+
+  test('is retrieved by its reference, titled as it titles itself, at the paragraph cited', async () => {
+    const { fetcher, calls } = stubFetcher([formex()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(publication({ locator: { kind: 'point', start: 17 }, paragraphs: [17] }));
+
+    assert.deepEqual(calls.map((call) => call.url), ['https://example.test/oj/C_202401645']);
+    assert.equal(preview.title, 'Commission Notice on the definition of the relevant market for the purposes of Union competition law');
+    assert.equal(preview.passage, 'cited');
+    assert.ok(preview.excerpt.includes('Fifth, market definition allows for a distinction.'), preview.excerpt);
+    assert.ok(!preview.excerpt.includes('Fourth'), preview.excerpt);
+  });
+
+  test('in the classic rendition, a paragraph and not the footnote numbered the same', async () => {
+    // The 2004 Horizontal Merger Guidelines: paragraphs "17. …", footnotes "(17) …" after them.
+    const classic = () => documentResponse(
+      '<p>EUR-Lex - 52004XC0205(02) - EN Avis juridique important | 52004XC0205(02) Guidelines on the assessment of horizontal mergers Official Journal C 031 , 05/02/2004 P. 0005 - 0018</p>'
+      + '<p>16. The overall concentration level.</p><p>17. According to well-established case law, very large market shares.</p><p>18. Next.</p>'
+      + '<p>19. And so on.</p><p>20. To the end.</p>'
+      + `<p>${'x'.repeat(400)}</p>`
+      + '<p>(1) OJ L 24, 29.1.2004, p. 1.</p><p>(16) See, e.g. Case COMP/M.2256.</p><p>(17) See, e.g. Case IV/M.1365.</p>'
+      + '<p>(18) n.</p><p>(19) n.</p><p>(20) n.</p><p>(21) n.</p>');
+    const { fetcher, calls } = stubFetcher([classic()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(publication({
+      value: 'OJ C 31, 5.2.2004, p. 5', oj: 'JOC_2004_031_R_0005', ojDate: '5.2.2004', locator: { kind: 'point', start: 17 }, paragraphs: [17],
+    }));
+    assert.equal(calls[0].url, 'https://example.test/oj/JOC_2004_031_R_0005_01', 'a 2004 reference is tried with its suffix first');
+    assert.equal(preview.title, 'Guidelines on the assessment of horizontal mergers');
+    assert.ok(preview.excerpt.startsWith('17. According to well-established case law'), preview.excerpt);
+  });
+
+  test('a newer reference is tried without the suffix first, and with it only when that is unknown', async () => {
+    const { fetcher, calls } = stubFetcher([noSuchDocument('JOC_2023_160_R_0001'), formex()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    await resolver.resolve(publication({ value: 'OJ C 160, 5.5.2023, p.1', oj: 'JOC_2023_160_R_0001', ojDate: '22.2.2024' }));
+    assert.deepEqual(calls.map((call) => call.url), ['https://example.test/oj/JOC_2023_160_R_0001', 'https://example.test/oj/JOC_2023_160_R_0001_01']);
+  });
+
+  test('a publication not dated as the citation says is not shown', async () => {
+    const { fetcher } = stubFetcher([formex()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(publication({ ojDate: '5.2.2024', locator: { kind: 'point', start: 17 } }));
+    assert.equal(preview.passage, undefined);
+    assert.ok(!preview.excerpt.includes('Fifth'), 'no text of the publication is put under the citation');
+    assert.match(preview.excerpt, /is not dated 5\.2\.2024, so it is not shown/);
+  });
+
+  test('a reference CELLAR holds nothing under says so, and links the issue', async () => {
+    // The Non-Horizontal Merger Guidelines, given as "OJ C 26" for C 265.
+    const { fetcher } = stubFetcher([noSuchDocument('a'), noSuchDocument('b')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    const [preview] = await resolver.resolve(publication({ value: 'OJ C 26, 18.10.2008, p. 6', oj: 'JOC_2008_026_R_0006', ojDate: '18.10.2008' }));
+    assert.match(preview.excerpt, /^The Official Journal holds no publication at OJ C 26, 18\.10\.2008, p\. 6\./);
+    assert.equal(preview.url, 'https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=OJ:C:2008:026:TOC');
+  });
+
+  test('an identifier of any other shape is not requested', async () => {
+    const { fetcher, calls } = stubFetcher([]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+    assert.deepEqual(await resolver.resolve(publication({ oj: '../../etc/passwd' })), []);
+    assert.equal(calls.length, 0);
+  });
+});

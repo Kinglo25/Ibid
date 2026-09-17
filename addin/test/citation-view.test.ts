@@ -436,3 +436,13 @@ describe('a court document that is not what the footnote called it', () => {
     assert.equal(documentTypeNote({ documentType: 'judgment', documentTypeStated: true }, undefined), undefined);
   });
 });
+
+describe('the official link for a publication cited by its Official Journal reference', () => {
+  const link = (text: string) => officialSourceUrl({ ...getCitationContextsForFootnotes([text])[0].find((c) => c.oj)! });
+  test('the publication, or the issue it is in', () => {
+    assert.equal(link('Commission Notice (‘Market Definition Notice’), OJ C/2024/1645, 22.2.2024.'),
+      'https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=OJ:C_202401645');
+    assert.equal(link('Guidelines on the assessment of horizontal mergers, OJ C 31, 5.2.2004, p. 5.'),
+      'https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=OJ:C:2004:031:TOC');
+  });
+});

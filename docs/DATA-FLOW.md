@@ -84,12 +84,20 @@ The `lookup` object contains only these fields, and nothing else:
 | `locator` | `{ kind: 'point', start: 40 }`, or for a Commission decision cited by section `{ kind: 'section', start: 9, sections: [{ from: '9.1.3.3.7' }] }` |
 | `paragraphs` | `[40]` |
 | `alternativeCelexes` | `['62012CJ0594']` |
+| `oj` | `C_202401645` |
+| `ojDate` | `22.2.2024` |
 
 `alternativeCelexes` is present only where the footnote cites a joined case, and carries the
 other case numbers of that same group as CELEX identifiers — CELLAR files a joined judgment
 under one of its numbers and not the others, so this is what lets the passage be found under
 whichever one the drafter wrote. It is the group's own identifiers and nothing else: it can
 never name an authority the footnote did not cite.
+
+`oj` and `ojDate` are present only where the footnote cites a publication by where the
+Official Journal published it — a Commission notice or guidelines ("OJ C/2024/1645,
+22.2.2024"), or an act or decision cited only that way. They are the reference and the date
+the footnote itself gives, rewritten as the identifier CELLAR files the publication under; the
+server fetches the publication by the first and checks it carries the second.
 
 Notably **not** sent: the document, the footnote as written, the citation's surrounding
 context, the file name, the user's identity, or anything about the matter.
@@ -297,7 +305,7 @@ include any request data.
 
 Point 1 means untrusted input can reach the resolver, so the natural next question is what
 that input can make the server fetch. The answer is: only a document on the configured
-host, under one of two fixed paths.
+host, under one of three fixed paths.
 
 The outbound URL is built by `cellarUrl` or `ecliUrl` (`api/src/index.ts`) as a fixed base
 URL plus `encodeURIComponent(identifier)` — the CELEX for the first, the ECLI for the
@@ -307,7 +315,10 @@ query. (An ECLI's own colons are percent-encoded by this, which is what CELLAR e
 The base URL comes from environment configuration, never from the request; `ecliUrl`
 derives its base from the same configured value by replacing a trailing `/celex` segment
 with `/ecli`, and returns nothing at all — so no request is made — if that segment is not
-there to replace. Neither function can be reached with a base the caller supplied.
+there to replace. `ojUrl` does the same with `/oj`, for a publication cited by its Official
+Journal reference, and is reached only with an identifier matching the shape detection builds
+(`C_202401645`, `JOC_2004_031_R_0005`). None of the three can be reached with a base the
+caller supplied.
 
 ## Verifying these claims
 

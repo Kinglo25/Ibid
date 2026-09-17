@@ -20,6 +20,8 @@ const toLookup = (citation: CitationMatch): EuLookup => ({
   celex: citation.celex,
   alternativeCelexes: citation.alternativeCelexes,
   ecli: citation.ecli,
+  oj: citation.oj,
+  ojDate: citation.ojDate,
   caseNumber: citation.caseNumber,
   caseName: citation.caseName,
   documentType: citation.documentType,
@@ -28,6 +30,12 @@ const toLookup = (citation: CitationMatch): EuLookup => ({
 });
 
 describe('the detected-citation to lookup contract', () => {
+  test('a publication cited by its Official Journal reference carries it across', () => {
+    const [citation] = detectCitations('Commission Notice (‘Market Definition Notice’), OJ C/2024/1645, 22.2.2024, paragraph 8.');
+    const lookup = toLookup(citation);
+    assert.deepEqual([lookup.source, lookup.oj, lookup.ojDate, lookup.paragraphs], ['eur-lex', 'C_202401645', '22.2.2024', [8]]);
+  });
+
   test('a detected citation is a valid lookup, field for field', () => {
     const [citation] = detectCitations('Case C-131/12, ECLI:EU:C:2014:317, para. 80.');
     const lookup = toLookup(citation);

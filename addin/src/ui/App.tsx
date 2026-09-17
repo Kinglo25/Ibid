@@ -186,7 +186,7 @@ async function notesInBody(
   }
 }
 
-async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
+async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[]; definitions: string[] }> {
   return Word.run(async (context) => {
     const body = context.document.body;
     const footnotes = body.footnotes;
@@ -198,7 +198,12 @@ async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
 
     const inBody = await notesInBody(context, body);
     const bodyText = body.text.trim();
+    const prose = inBody?.prose ?? bodyProseLines(bodyText);
     return {
+      // The document's own text, read for the short forms it defines — "Council Regulation (EC)
+      // No 139/2004 … (‘EUMR’)" in the first paragraph, cited as "EUMR, Article 2" in the notes.
+      // See `AcrossFootnotesOptions`.
+      definitions: prose,
       footnotes: [
         // Every footnote, empties included: numbering is what back-references count on, and
         // dropping one here shifts every footnote after it. See `toReviewFootnotes`.
@@ -216,7 +221,7 @@ async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
         // Citations the drafter wrote into the running text. Appended after the notes, and
         // for the same reason they are: these carry no number of their own, so they can only
         // ever sit past the end of the numbering rather than anywhere inside it.
-        ...parentheticalsInBody(inBody?.prose ?? bodyProseLines(bodyText)),
+        ...parentheticalsInBody(prose),
       ],
     };
   });
@@ -529,6 +534,9 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
 function lookupFor(citation: CitationContext) {
   return {
     source: citation.source, value: citation.value, celex: citation.celex, ecli: citation.ecli,
+    // A notice or guidelines, and anything else cited only by where the Official Journal
+    // published it: the resolver retrieves it by this, and checks it carries this date.
+    oj: citation.oj, ojDate: citation.ojDate,
     // The other numbers a joined judgment may be filed under. Identifiers the document
     // itself stated, never anything read out of it — see `docs/DATA-FLOW.md`.
     alternativeCelexes: citation.alternativeCelexes,
@@ -779,6 +787,7 @@ function UnresolvedReview({ citation, authorities, onConfirm }: {
 
 export default function App() {
   const [footnotes, setFootnotes] = useState<ReviewFootnote[]>([]);
+  const [definitions, setDefinitions] = useState<string[]>([]);
   const [status, setStatus] = useState('Loading source material…');
   const [selected, setSelected] = useState<{ citation: CitationContext; footnote: ReviewFootnote } | null>(null);
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
@@ -831,6 +840,7 @@ export default function App() {
     setStatus('Reading the document and its footnotes…');
     try {
       const next = await readWordDocument();
+      setDefinitions(next.definitions);
       setFootnotes(next.footnotes);
       setStatus(next.footnotes.length
         ? `${next.footnotes.length} footnote${next.footnotes.length === 1 ? '' : 's'} ready for review.`
@@ -1070,8 +1080,8 @@ export default function App() {
   // detectCitationsAcrossFootnotes. Per-footnote detection alone cannot do this, since it
   // has no memory of what was cited earlier in the document.
   const detected = useMemo(
-    () => getCitationContextsForFootnotes(footnotes.map((footnote) => footnote.text)),
-    [footnotes],
+    () => getCitationContextsForFootnotes(footnotes.map((footnote) => footnote.text), 180, { definitions }),
+    [footnotes, definitions],
   );
 
   // Confirmations are applied on top of detection rather than fed back into it, so the

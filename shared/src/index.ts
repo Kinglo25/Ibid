@@ -90,6 +90,8 @@ export type CitationCandidate = {
   celex?: string;
   ecli?: string;
   documentType?: CuriaDocumentType;
+  oj?: string;
+  ojDate?: string;
 };
 
 export type CitationMatch = {
@@ -151,6 +153,17 @@ export type CitationMatch = {
    * confidently-wrong citation the rest of this module refuses to produce.
    */
   backReference?: { footnote?: number };
+  /**
+   * The identifier CELLAR files an Official Journal publication under, where the citation is
+   * one: `C_202401645` for "OJ C/2024/1645", `JOC_2004_031_R_0005` for "OJ C 31, 5.2.2004, p. 5".
+   *
+   * A Commission notice or set of guidelines is cited by where it was published, not by any
+   * number of its own, and its CELEX cannot be derived from that — `52004XC0205(02)` carries a
+   * sequence number nothing in the citation states. CELLAR answers by the reference itself.
+   */
+  oj?: string;
+  /** The date the reference gives, `d.m.yyyy`, or the year alone where only a year is written, to check the retrieved document against. */
+  ojDate?: string;
 };
 
 export type CitationContext = CitationMatch & { context: string };
@@ -245,7 +258,7 @@ const PINPOINT_PATTERN = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?
  * citation, so a provision belonging to some earlier act in the same sentence
  * can never be attached to this one.
  */
-const PINPOINT_BEFORE = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})\\s*(?:of|de\\s+la|de|du)\\s+$`, 'i');
+const PINPOINT_BEFORE = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?(?:\\([a-z]\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})\\s*(?:of(?:\\s+the)?|de\\s+la|de|du)\\s+(?:(?:Council|Commission|Implementing|Delegated|European\\s+Parliament\\s+and\\s+(?:of\\s+the\\s+)?Council)\\s+)*$`, 'i');
 const PINPOINT_ITEM = /^(\d+)(?:\((\d+)\))?(?:\s*(?:[–—‑-]|\bto\b|à)\s*(\d+))?/i;
 const PINPOINT_SCAN_WINDOW = 160;
 const PINPOINT_BEFORE_WINDOW = 80;
@@ -791,6 +804,15 @@ const TREATY_CELEX_YEAR = '2016';
  * '2016' is the year of the current consolidated republication (OJ C 202,
  * 7.6.2016, after Croatia's accession) — still the version in force.
  */
+const TREATY_NAME = String.raw`TFEU|TFUE|TEU|TUE|CFR|CDFUE|Charter(?:\s+of\s+Fundamental\s+Rights)?|Charte(?:\s+des\s+droits\s+fondamentaux)?`;
+const TREATY_ARTICLE_ITEM = String.raw`\d+(?:\(\d+\))?(?:\([a-z]\))?(?:\s*[-–]\s*\d+)?`;
+const TREATY_ARTICLE_LIST = String.raw`${TREATY_ARTICLE_ITEM}(?:\s*(?:,|\band\b|\bet\b|&)\s*${TREATY_ARTICLE_ITEM})*`;
+const TREATY_ARTICLES = new RegExp(String.raw`\b(?:Articles?|Art\.)\s+(${TREATY_ARTICLE_LIST})\s+(?:of\s+the\s+|de\s+la\s+)?(${TREATY_NAME})\b`, 'gi');
+const TREATY_THEN_ARTICLES = new RegExp(
+  String.raw`\b(Treaty\s+on\s+the\s+Functioning\s+of\s+the\s+European\s+Union|Treaty\s+on\s+European\s+Union)(?:\s*\((?:the\s+)?['‘"“](?:TFEU|TEU)['’"”]\))?\s*,\s*(?:Articles?|Art\.)\s+(${TREATY_ARTICLE_LIST})`,
+  'gi',
+);
+
 function celexForTreatyArticle(treaty: string, articleNumber: string): string {
   const docType = /^(?:TFEU|TFUE)$/i.test(treaty) ? 'E' : /^(?:TEU|TUE)$/i.test(treaty) ? 'M' : 'P';
   return `1${TREATY_CELEX_YEAR}${docType}${articleNumber.padStart(3, '0')}`;
@@ -920,7 +942,10 @@ function commissionCasePinpoint(own: string): ParsedPinpoint | undefined {
  * by the words a title uses to point at another act. Wrong in the safe direction: an act
  * refused here keeps its citation and loses only a pinpoint.
  */
-const TITLE_REFERENCE = /\b(?:implementing|amending|repealing|supplementing|replacing|under|pursuant\s+to)\s+(?:(?:the|Council|Commission|European\s+Parliament\s+and\s+(?:of\s+the\s+)?Council)\s+)*$/i;
+// The verbs lower case, because that is how a title uses them: "Commission Implementing Decision
+// (EU) 2016/1250" is a kind of act, and read as "implementing" it was taken for an act named in
+// another's title and lost its own standing. "Pursuant to" is capitalised in the title of a form.
+const TITLE_REFERENCE = /\b(?:implementing|amending|repealing|supplementing|replacing|under|[Pp]ursuant\s+to)\s+(?:(?:the|Council|Commission|European\s+Parliament\s+and\s+(?:of\s+the\s+)?Council)\s+)*$/;
 
 function namedInAnotherActsTitle(text: string, index: number, segmentStart: number): boolean {
   return TITLE_REFERENCE.test(text.slice(segmentStart, index))
@@ -1123,22 +1148,49 @@ export function detectCitations(text: string): CitationMatch[] {
   // for how the CELEX is derived; a parenthesised number directly after the
   // article number is a paragraph within it, same convention as ordinary
   // legislation locators.
-  for (const match of text.matchAll(/\b(?:Articles?|Art\.)\s+(\d+)(?:\((\d+)\))?\s+(?:of\s+the\s+|de\s+la\s+)?(TFEU|TFUE|TEU|TUE|CFR|CDFUE|Charter(?:\s+of\s+Fundamental\s+Rights)?|Charte(?:\s+des\s+droits\s+fondamentaux)?)\b/gi)) {
+  // A list or a range is each article it names — "Articles 52 and 65 TFEU" is two documents,
+  // since each Treaty article has its own CELEX — and a range is read as the article it opens
+  // with and where it ends. A lettered point after the paragraph ("Article 3(1)(b) of the TFEU")
+  // is the paragraph's. All three shapes are from the Commission's 2026 draft merger guidelines,
+  // and every one was read as no citation at all.
+  const treatyArticles = (list: string, listIndex: number, treaty: string, whole?: { value: string; index: number }) => {
+    const items = [...list.matchAll(/(\d+)(?:\((\d+)\))?(?:\([a-z]\))?(?:\s*[-–]\s*(\d+))?/g)];
+    const label = /^(?:TFEU|TFUE|Treaty\s+on\s+the\s+Functioning)/i.test(treaty) ? 'TFEU article'
+      : /^(?:TEU|TUE|Treaty\s+on\s+European)/i.test(treaty) ? 'TEU article' : 'Charter article';
+    const code = label === 'TFEU article' ? 'TFEU' : label === 'TEU article' ? 'TEU' : treaty;
+    for (const item of items) {
+      const [, articleNumber, paragraph, end] = item;
+      const single = items.length === 1 && whole;
+      add({
+        label, value: single ? whole.value : `Article ${item[0]} ${code}`, index: single ? whole.index : listIndex + (item.index ?? 0),
+        source: 'eur-lex', celex: celexForTreatyArticle(code, articleNumber),
+        locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined, ...(end ? { end: Number(end) } : {}) },
+      });
+    }
+  };
+  for (const match of text.matchAll(TREATY_ARTICLES)) {
     const index = match.index ?? 0;
-    const [, articleNumber, paragraph, treaty] = match;
-    const label = /^(?:TFEU|TFUE)$/i.test(treaty) ? 'TFEU article' : /^(?:TEU|TUE)$/i.test(treaty) ? 'TEU article' : 'Charter article';
-    add({
-      label, value: match[0], index, source: 'eur-lex', celex: celexForTreatyArticle(treaty, articleNumber),
-      locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined },
-    });
+    treatyArticles(match[1], index + match[0].indexOf(match[1]), match[2], { value: match[0], index });
+  }
+  // The Treaty named first and its article after it: "See also the Treaty on the Functioning of
+  // the European Union (‘TFEU’), Article 173". Only with the Treaty's full name, because "Article
+  // 102 TFEU, Article 5" is Article 102 of the Treaty followed by some other act's Article 5.
+  for (const match of text.matchAll(TREATY_THEN_ARTICLES)) {
+    const index = match.index ?? 0;
+    treatyArticles(match[2], index + match[0].lastIndexOf(match[2]), match[1], { value: match[0], index });
   }
 
   // DG Competition's own case-number convention, distinct from the C(yyyy) decision
   // number above and not preceded by "Decision" at all — confirmed against a real
   // citation ("AT.37990, EC Decision of..."). AT. is antitrust, SA. is State aid,
   // M. (optionally "COMP/M.") is merger control.
-  for (const match of text.matchAll(/\b(?:COMP\/)?(AT|SA|M)\.(\d{3,6})\b/g)) {
+  //
+  // A number mistyped with a colon or a space after the letters — "Case M:11246 – Rolex/Bucherer",
+  // "Case M. 8948 – Spirit/Asco", both in the 2026 draft merger guidelines — is still that number,
+  // and is reported as it should have been written.
+  for (const match of text.matchAll(/\b(?:COMP\/)?(AT|SA|M)(?:\.|:|\.\s|:\s)(\d{3,6})\b/g)) {
     const index = match.index ?? 0;
+    const value = /^(?:COMP\/)?(?:AT|SA|M)\.\d/.test(match[0]) ? match[0] : `${match[1]}.${match[2]}`;
     const family = match[1] === 'AT' ? 'antitrust' : match[1] === 'SA' ? 'State aid' : 'merger';
     const caseName = commissionCaseName(text.slice(index + match[0].length, index + match[0].length + COMMISSION_NAME_WINDOW));
     const segment = segmentAt(segments, index);
@@ -1146,13 +1198,74 @@ export function detectCitations(text: string): CitationMatch[] {
     const parsed = parsePinpointBefore(text, index, segment.start) ?? commissionCasePinpoint(own);
     const section = parsed ? undefined : parseSectionPinpoint(own);
     add({
-      label: `Commission ${family} case`, value: match[0], index, source: 'commission',
+      label: `Commission ${family} case`, value, index, source: 'commission',
       ...(caseName ? { caseName } : {}),
       ...(section ? { locator: section } : { locator: parsed?.locator, pinpoint: parsed?.pinpoint }),
     });
   }
 
+  // Official Journal publications. Read last, so the citations before each reference are known:
+  // a reference that follows an act, a judgment or a decision in the same sentence is where
+  // that one was published, and is not a second authority. One that follows only a name —
+  // "Commission Notice on … (‘Market Definition Notice’), OJ C/2024/1645" — or nothing, or an
+  // act named inside the notice's own title, is the citation.
+  for (const reference of officialJournalReferences(text)) {
+    const segment = segmentAt(segments, reference.index);
+    const sentenceStart = Math.max(segment.start, lastSentenceBreak(text, segment.start, reference.index));
+    const cited = matches.filter((citation) => citation.index >= sentenceStart && citation.index < reference.index)
+      .filter((citation) => !/article$/.test(citation.label))
+      .filter((citation) => !(citation.source === 'eur-lex' && namedInAnotherActsTitle(text, citation.index, segment.start)));
+    if (cited.length) continue;
+    // Its pinpoint from its own part of the sentence, as a Commission case's is: "OJ C 364,
+    // 18.12.2000, p. 1. Article 12(1) of the Charter states …" is not a citation of Article 12
+    // of the publication.
+    const parsed = commissionCasePinpoint(commissionCaseTail(text, reference.index + reference.value.length, segment.end));
+    add({
+      label: 'Official Journal publication', value: reference.value, index: reference.index, source: 'eur-lex',
+      oj: reference.oj, ojDate: reference.date, locator: parsed?.locator, pinpoint: parsed?.pinpoint,
+    });
+  }
+
   return matches.sort((a, b) => a.index - b.index);
+}
+
+function lastSentenceBreak(text: string, from: number, to: number): number {
+  let at = from;
+  for (const boundary of text.slice(from, to).matchAll(SENTENCE_BREAK)) at = from + (boundary.index ?? 0) + boundary[0].length;
+  return at;
+}
+
+const OJ_DATED = /\b(OJ|JO)\s+([CL])\s+(\d{1,3})\s*(?:,|du)\s*(\d{1,2})\.(\d{1,2})\.(\d{4})\s*,\s*pp?\.\s*(\d{1,4})/g;
+const OJ_COURT_STYLE = /\bOJ\s+(\d{4})\s+([CL])\s+(\d{1,3})\s*,\s*pp?\.\s*(\d{1,4})/g;
+const OJ_NUMBERED = /\bOJ\s+([CL])(?:\s*,\s*[CL])?\s*\/?\s*(\d{4})\/(\d{1,5})\b(?:\s*,\s*(\d{1,2})\.(\d{1,2})\.(\d{4}))?/g;
+
+/**
+ * The Official Journal references a text makes, each with the identifier CELLAR files that
+ * publication under. Confirmed live on 2026-09-17: `oj/C_202401645` serves the Market
+ * Definition Notice, `oj/JOC_2023_160_R_0001` the Notice on Simplified Procedure, and
+ * `oj/JOC_2004_031_R_0005_01` the 2004 Horizontal Merger Guidelines — the older ones filed with
+ * a sequence suffix the newer ones lack, which the resolver tries both ways.
+ *
+ * Only a reference that states its page, or its number in the numbering begun in October 2023,
+ * is read. "OJ C 259, 21.7.2023" alone names an issue holding several publications, and picking
+ * the first page of it would be a guess.
+ */
+function officialJournalReferences(text: string): Array<{ index: number; value: string; oj: string; date?: string }> {
+  const pad = (value: string, width: number) => value.padStart(width, '0');
+  const found: Array<{ index: number; value: string; oj: string; date?: string }> = [];
+  for (const m of text.matchAll(OJ_DATED)) {
+    const [, , series, issue, day, month, year, page] = m;
+    found.push({ index: m.index ?? 0, value: m[0], oj: `JO${series}_${year}_${pad(issue, 3)}_R_${pad(page, 4)}`, date: `${Number(day)}.${Number(month)}.${year}` });
+  }
+  for (const m of text.matchAll(OJ_COURT_STYLE)) {
+    const [, year, series, issue, page] = m;
+    found.push({ index: m.index ?? 0, value: m[0], oj: `JO${series}_${year}_${pad(issue, 3)}_R_${pad(page, 4)}`, date: year });
+  }
+  for (const m of text.matchAll(OJ_NUMBERED)) {
+    const [, series, year, number, day, month, dateYear] = m;
+    found.push({ index: m.index ?? 0, value: m[0], oj: `${series}_${year}${pad(number, 5)}`, date: day ? `${Number(day)}.${Number(month)}.${dateYear}` : year });
+  }
+  return found.sort((a, b) => a.index - b.index);
 }
 
 function escapeRegExp(value: string): string {
@@ -1192,6 +1305,64 @@ function shortFormPattern(key: string): RegExp {
  */
 const DEFINED_TERM = /\(\s*(?:the\s+)?["“'‘]([^)]{1,80})["”'’]\s*\)/i;
 const DEFINED_TERM_SCAN_WINDOW = 160;
+const TERM_BEFORE_REFERENCE = /\(\s*(?:the\s+)?["“'‘]([^)]{1,80})["”'’]\s*\)\s*,?\s*$/i;
+/**
+ * How far a term may stand from its citation when nothing between them ends a sentence.
+ *
+ * A formal citation of an act carries its whole title and its Official Journal reference
+ * before the term: "Regulation (EU) 2022/1925 of the European Parliament and of the Council
+ * of 14 September 2022 on contestable and fair markets in the digital sector and amending
+ * Directives (EU) 2019/1937 and (EU) 2020/1828, OJ L 265, 12.10.2022, pp. 1-66 (‘Digital
+ * Markets Act’)" puts it about 200 characters on, and "Digital Markets Act, Article 2" in a
+ * later footnote then resolved to nothing. Past the first 160 characters a term is taken only
+ * where no sentence has ended on the way, so the reach grows for a title and not for prose.
+ */
+const DEFINED_TERM_TITLE_WINDOW = 320;
+
+/**
+ * The short form a citation's text declares for it, where it declares one: where the
+ * parenthesis is, and its key if the term is this citation's to take.
+ *
+ * A term belongs to the citation nearest before it, or to nothing. Letting every citation in
+ * reach register it and the latest win came to the same thing until the nearest one is
+ * refused — and then the next one back would inherit a term that was never about it either.
+ */
+function declaredTerm(
+  text: string, citation: CitationMatch, hardMatches: readonly CitationMatch[], segments: Array<{ start: number; end: number }>,
+  { prose = false }: { prose?: boolean } = {},
+): { start: number; end: number; key?: string } | undefined {
+  const windowStart = citation.index + citation.value.length;
+  const segment = segmentAt(segments, citation.index);
+  // A publication reference follows the instrument's name, and the term often comes between
+  // the two: "Commission Notice on the definition of the relevant market … (‘Market Definition
+  // Notice’), OJ C/2024/1645". The term is then directly before the reference.
+  if (citation.oj) {
+    const before = TERM_BEFORE_REFERENCE.exec(text.slice(Math.max(segment.start, citation.index - DEFINED_TERM_SCAN_WINDOW), citation.index));
+    if (before) {
+      const start = citation.index - before[0].length;
+      return { start, end: start + before[0].length, key: before[1].trim().toLowerCase() };
+    }
+  }
+  const window = text.slice(windowStart, Math.min(segment.end, windowStart + DEFINED_TERM_TITLE_WINDOW));
+  const parenthetical = DEFINED_TERM.exec(window);
+  if (!parenthetical) return undefined;
+  const offset = parenthetical.index ?? 0;
+  const crossesSentence = new RegExp(SENTENCE_BREAK.source).test(window.slice(0, offset));
+  if (crossesSentence && (prose || offset >= DEFINED_TERM_SCAN_WINDOW)) return undefined;
+  // In the running text a quoted term is as often a concept as a name: the guidelines on
+  // exclusionary abuses define "(‘objective necessity defence’)" a sentence after citing Article
+  // 102 TFEU, and that became a short form for the Treaty article. A name is capitalised or an
+  // acronym — EUMR, Merger Regulation, Digital Markets Act.
+  if (prose && !/^(?:the\s+)?[\p{Lu}\d]/u.test(parenthetical[1].trim())) return undefined;
+  const start = windowStart + offset;
+  const range = { start, end: start + parenthetical[0].length };
+  const nearer = hardMatches.some((other) => other.index >= windowStart && other.index < start);
+  if (nearer) return range;
+  // A notice, guidelines or communication: detection reads them only by where they were
+  // published, so a term naming one belongs to a publication reference and to nothing else.
+  if (!citation.oj && (UNDETECTED_INSTRUMENT_TERM.test(parenthetical[1]) || citedWithinAnotherInstrument(text, citation, segment.start))) return range;
+  return { ...range, key: parenthetical[1].trim().toLowerCase() };
+}
 const DEFINED_TERMS = new RegExp(DEFINED_TERM.source, 'gi');
 
 /**
@@ -1238,7 +1409,7 @@ function citedWithinAnotherInstrument(text: string, citation: Pick<CitationMatch
   return INSTRUMENT_NOUN.test(before.slice(from));
 }
 
-type RegisteredCitation = Pick<CitationMatch, 'label' | 'source' | 'celex' | 'ecli' | 'caseNumber' | 'caseName' | 'documentType' | 'documentTypeStated'>;
+type RegisteredCitation = Pick<CitationMatch, 'label' | 'source' | 'celex' | 'ecli' | 'caseNumber' | 'caseName' | 'documentType' | 'documentTypeStated' | 'oj' | 'ojDate'>;
 
 type RegistryEntry = {
   key: string;
@@ -1249,7 +1420,7 @@ type RegistryEntry = {
 };
 
 function identityOf(citation: RegisteredCitation): string | undefined {
-  return citation.ecli ?? citation.celex ?? citation.caseNumber ?? citation.caseName;
+  return citation.ecli ?? citation.celex ?? citation.oj ?? citation.caseNumber ?? citation.caseName;
 }
 
 /**
@@ -1289,6 +1460,7 @@ function sameAuthority(a: RegisteredCitation, b: RegisteredCitation): boolean {
   // its CELEX said otherwise — so the reviewer was offered the same judgment twice, one of
   // the two under a name that had lost its suffix.
   if (a.ecli && b.ecli) return a.ecli === b.ecli;
+  if (a.oj && b.oj) return a.oj === b.oj;
   if (a.celex && b.celex) return a.celex === b.celex;
   if (a.caseNumber && b.caseNumber) return caseIdentity(a.caseNumber) === caseIdentity(b.caseNumber);
   return Boolean(a.caseName && b.caseName && a.caseName.toLowerCase() === b.caseName.toLowerCase());
@@ -1343,6 +1515,7 @@ function mergeCitations(a: RegisteredCitation, b: RegisteredCitation): Registere
     caseNumber: a.caseNumber ?? b.caseNumber, caseName: a.caseName ?? b.caseName,
     documentType: a.documentType ?? b.documentType,
     documentTypeStated: a.documentTypeStated || b.documentTypeStated,
+    oj: a.oj ?? b.oj, ojDate: a.ojDate ?? b.ojDate,
   };
 }
 
@@ -1351,6 +1524,7 @@ function toRegistered(citation: CitationMatch): RegisteredCitation {
     label: citation.label, source: citation.source, celex: citation.celex, ecli: citation.ecli,
     caseNumber: citation.caseNumber, caseName: citation.caseName,
     documentType: citation.documentType, documentTypeStated: citation.documentTypeStated,
+    oj: citation.oj, ojDate: citation.ojDate,
   };
 }
 
@@ -1358,6 +1532,7 @@ function toCandidate(citation: RegisteredCitation): CitationCandidate {
   return {
     label: citation.label, source: citation.source, caseName: citation.caseName,
     caseNumber: citation.caseNumber, celex: citation.celex, ecli: citation.ecli, documentType: citation.documentType,
+    oj: citation.oj, ojDate: citation.ojDate,
   };
 }
 
@@ -1483,6 +1658,44 @@ export function shortNameVariants(caseName: string): string[] {
  */
 const ADJACENT_PINPOINT = new RegExp(String.raw`^[\s,;:]*(?:at\s+)?${PINPOINT_KEYWORD}\s*\d`, 'i');
 const ADJACENT_PINPOINT_WINDOW = 40;
+
+/**
+ * The pinpoint a short form carries: written straight after it, or straight before it in the
+ * provision-then-act form.
+ *
+ * Not anywhere later in the footnote, which is what a full citation's scan allows. A full
+ * citation's own text runs on to its pinpoint through a title, a date or an OJ reference; a
+ * short form is a word, and what follows it at any distance is the drafter's sentence. Once
+ * the Merger Regulation's short form defined in the body of the 2026 draft merger guidelines
+ * resolved, three footnotes gave it someone else's pinpoint: "The rules set out in the EUMR are
+ * among the competition rules referred to in Article 3(1)(b) of the TFEU" took the Treaty's
+ * article, "The EUMR contains neither positive nor negative presumptions … (ibid., paragraph
+ * 71)" took CK Telecoms' paragraph, and "Article 21(4) of the EUMR. See, e.g., Case M.2491 –
+ * Sampo/Storebrand, paragraphs 38-39" took Sampo's.
+ *
+ * The words a drafter puts between a short form and its pinpoint to say it was cited before —
+ * "cited above", "op. cit.", "supra note 4" — are allowed.
+ */
+const SHORT_FORM_PINPOINT = new RegExp(
+  String.raw`^[\s,;:]*(?:(?:cited\s+(?:above|supra|in\s+(?:foot)?note\s+\d+(?:\s+above)?)|op\.\s*cit\.|loc\.\s*cit\.|supra(?:,?\s+(?:foot)?note\s+\d+)?)[\s,;:]*)?(?:at\s+)?(?=${PINPOINT_KEYWORD}\s*\d)`,
+  'i',
+);
+
+function shortFormPinpoint(
+  text: string, start: number, end: number, segment: { start: number; end: number }, { act = false }: { act?: boolean } = {},
+): ParsedPinpoint | undefined {
+  const lead = SHORT_FORM_PINPOINT.exec(text.slice(end, segment.end));
+  if (lead) return parsePinpoint(text, end + lead[0].length, segment.end);
+  const before = parsePinpointBefore(text, start, segment.start);
+  if (before || !act) return before;
+  // An act's short form is also written the way a Treaty article is, with nothing between:
+  // "Article 21(4) EUMR", "Recital 29 EUMR". Not a case name's — "in paragraph 40 Akzo Nobel
+  // held" is a sentence, not a pinpoint.
+  const head = text.slice(Math.max(segment.start, start - PINPOINT_BEFORE_WINDOW), start);
+  return fromPinpointMatch(PINPOINT_BARE_BEFORE.exec(head));
+}
+
+const PINPOINT_BARE_BEFORE = new RegExp(String.raw`${PINPOINT_KEYWORD}\s*(\d+(?:\(\d+\))?(?:\([a-z]\))?)\s+$`, 'i');
 
 function hasAdjacentPinpoint(text: string, endIndex: number, limit: number): boolean {
   return ADJACENT_PINPOINT.test(text.slice(endIndex, Math.min(limit, endIndex + ADJACENT_PINPOINT_WINDOW)));
@@ -1646,9 +1859,41 @@ function withoutOverlaps(spans: ShortFormSpan[]): ShortFormSpan[] {
  * A registry entry is only available to footnotes *after* the one that defines it, so a
  * definition is never matched back against its own parenthetical.
  */
-export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[]): CitationMatch[][] {
+export type AcrossFootnotesOptions = {
+  /**
+   * The document's own text, read only for the short forms it defines.
+   *
+   * A document routinely defines its most-cited act in its first paragraph rather than in a
+   * note: the Commission's 2026 draft merger guidelines open "Council Regulation (EC) No
+   * 139/2004 of 20 January 2004 on the control of concentrations between undertakings
+   * (‘EUMR’) requires …" and then cite "EUMR, Article 2" in 26 footnotes. Reading notes alone,
+   * those came out as nothing at all where an article followed, and as a short form the
+   * document never defined where a recital did.
+   *
+   * Only a quoted definition is taken from here, under the same refusals a note's gets, and
+   * nothing else the text cites is reported or registered: a citation in the running text is
+   * the parenthesis reader's to report, and letting prose supply generated case-name variants
+   * would let any sentence decide what a later footnote means. Registered before the first
+   * note, so a term a note defines again is the nearer definition and wins.
+   */
+  definitions?: readonly string[];
+};
+
+export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[], options: AcrossFootnotesOptions = {}): CitationMatch[][] {
   const registry: RegistryEntry[] = [];
   let order = 0;
+  for (const text of options.definitions ?? []) {
+    if (!DEFINED_TERM.test(text)) continue;
+    const hardMatches = detectCitations(text);
+    const segments = citationSegments(text);
+    for (const citation of hardMatches) {
+      const key = declaredTerm(text, citation, hardMatches, segments, { prose: true })?.key;
+      const registered = toRegistered(citation);
+      if (!key || !identityOf(registered)) continue;
+      if (registry.some((entry) => entry.key === key && sameAuthority(entry.citation, registered))) continue;
+      registry.push({ key, method: 'explicit_alias', order: order++, citation: registered });
+    }
+  }
   /**
    * What each footnote established, indexed by its position. Back-references are numbered
    * against this: `footnoteTexts` is the document's own footnote order, so position `i`
@@ -1681,21 +1926,10 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[])
       const registered = toRegistered(citation);
       if (!identityOf(registered)) continue;
 
-      const windowStart = citation.index + citation.value.length;
-      const segment = segmentAt(segments, citation.index);
-      const parenthetical = DEFINED_TERM.exec(text.slice(windowStart, Math.min(segment.end, windowStart + DEFINED_TERM_SCAN_WINDOW)));
-      if (parenthetical) {
-        const start = windowStart + (parenthetical.index ?? 0);
-        declared.push({ start, end: start + parenthetical[0].length });
-        // A term belongs to the citation nearest before it, or to nothing. Letting every
-        // citation in reach register it and the latest win came to the same thing until the
-        // nearest one is refused below — and then the next one back would inherit a term that
-        // was never about it either.
-        const nearer = hardMatches.some((other) => other.index >= windowStart && other.index < start);
-        if (!nearer && !UNDETECTED_INSTRUMENT_TERM.test(parenthetical[1])
-            && !citedWithinAnotherInstrument(text, citation, segment.start)) {
-          newEntries.push({ key: parenthetical[1].trim().toLowerCase(), method: 'explicit_alias', order: order++, citation: registered });
-        }
+      const term = declaredTerm(text, citation, hardMatches, segments);
+      if (term) {
+        declared.push(term);
+        if (term.key) newEntries.push({ key: term.key, method: 'explicit_alias', order: order++, citation: registered });
       }
 
       // Not a Commission case's name. Those are read to check the case number against, and
@@ -1845,9 +2079,15 @@ function resolveShortForms(
     // C-550/07 P, Akzo Nobel … v Commission") — that is one citation, not two, so the
     // short form is dropped when a hard match in the same footnote already names the
     // same authority.
-    if (authorities.some((authority) => hardMatches.some((citation) => sameAuthority(toRegistered(citation), authority.citation)))) continue;
+    //
+    // Not where the full citation is only the act named inside another act's title: "See, e.g.,
+    // EUMR, Article 14. See also Annex I to … Implementing Regulation (EU) 2023/914 … implementing
+    // Council Regulation (EC) No 139/2004" cites the Merger Regulation once, as EUMR, and dropping
+    // that citation for the title's mention of the same act lost Article 14.
+    if (authorities.some((authority) => hardMatches.some((citation) => sameAuthority(toRegistered(citation), authority.citation)
+      && !namedInAnotherActsTitle(text, citation.index, segmentAt(segments, citation.index).start)))) continue;
 
-    const parsed = parsePinpoint(text, spanEnd, segment.end);
+    const parsed = shortFormPinpoint(text, span.index, spanEnd, segment, { act: authorities.every((authority) => authority.citation.source === 'eur-lex') });
     if (authorities.length === 1) {
       const [authority] = authorities;
       resolved.push({
@@ -1889,7 +2129,7 @@ function establishedAuthorities(matches: readonly CitationMatch[], before = Numb
   for (const citation of [...matches].sort((a, b) => a.index - b.index)) {
     if (citation.index >= before || citation.status !== 'resolved') continue;
     const registered = toRegistered(citation);
-    if (!registered.ecli && !registered.celex && !registered.caseNumber) continue;
+    if (!registered.ecli && !registered.celex && !registered.caseNumber && !registered.oj) continue;
 
     const existing = established.findIndex((authority) => sameAuthority(authority.citation, registered));
     const merged = existing === -1 ? registered : mergeCitations(registered, established[existing].citation);
@@ -1930,12 +2170,16 @@ function resolveBackReferences(
 
   for (const segment of segments) {
     // A segment that already names an authority is not making a back-reference; the words
-    // are part of that citation ("Akzo Nobel, supra note 4" is one reference, not two).
-    if (identified.some((citation) => citation.index >= segment.start && citation.index < segment.end)) continue;
+    // are part of that citation ("Akzo Nobel, supra note 4" is one reference, not two). Except
+    // an `Ibid.` opening it, which is only ever a reference of its own, whatever the sentence
+    // goes on to name: "Ibid., paragraph 60, which refers to the Commission decision of 15
+    // December 1982, AROW/BNIC (OJ L 379, 31.12.1982, p. 19)" was dropped once the decision it
+    // mentions became a citation.
     const body = text.slice(segment.start, segment.end);
-
+    const namesAuthority = identified.some((citation) => citation.index >= segment.start && citation.index < segment.end);
     const ibid = IBID_REFERENCE.exec(body);
-    const supra = SUPRA_NOTE_REFERENCE.exec(body);
+    if (namesAuthority && !ibid) continue;
+    const supra = namesAuthority ? null : SUPRA_NOTE_REFERENCE.exec(body);
     if (!ibid && !supra) continue;
 
     // Both spellings in one segment ("Ibid., supra note 4") is not drafting we should
@@ -2093,7 +2337,7 @@ export function citedAuthorities(footnoteMatches: CitationMatch[][]): CitationCa
   for (const citation of footnoteMatches.flat()) {
     if (citation.status !== 'resolved') continue;
     const registered = toRegistered(citation);
-    if (!registered.ecli && !registered.celex && !registered.caseNumber) continue;
+    if (!registered.ecli && !registered.celex && !registered.caseNumber && !registered.oj) continue;
     const existing = authorities.findIndex((authority) => sameAuthority(authority, registered));
     if (existing >= 0) authorities[existing] = mergeCitations(authorities[existing], registered);
     else authorities.push(registered);
@@ -2218,6 +2462,6 @@ export function getCitationContexts(text: string, radius = 180): CitationContext
 }
 
 /** Document-level counterpart of `getCitationContexts` — see `detectCitationsAcrossFootnotes`. */
-export function getCitationContextsForFootnotes(footnoteTexts: readonly string[], radius = 180): CitationContext[][] {
-  return detectCitationsAcrossFootnotes(footnoteTexts).map((matches, i) => toContexts(matches, footnoteTexts[i], radius));
+export function getCitationContextsForFootnotes(footnoteTexts: readonly string[], radius = 180, options: AcrossFootnotesOptions = {}): CitationContext[][] {
+  return detectCitationsAcrossFootnotes(footnoteTexts, options).map((matches, i) => toContexts(matches, footnoteTexts[i], radius));
 }

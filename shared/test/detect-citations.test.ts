@@ -933,10 +933,11 @@ describe('detectCitationsAcrossFootnotes (explicitly defined short forms)', () =
       'See Commission Notice on a simplified treatment for certain concentrations under Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings, OJ C 160, 5.5.2023, p.1 (‘Notice on Simplified Procedure’).',
       'Notice on Simplified Procedure, paragraph 5(d)(bb).',
     ]);
-    assert.deepEqual(first.map((citation) => citation.celex), ['32004R0139'], 'the Regulation is still cited where it is named');
-    // What is left is the ordinary report of a name Ibid cannot place: asked about, not answered.
-    assert.ok(second.length > 0);
-    assert.ok(second.every((citation) => citation.status !== 'resolved' && !citation.celex && !citation.ecli && !citation.caseNumber));
+    assert.deepEqual(first.map((citation) => citation.celex ?? citation.oj), ['32004R0139', 'JOC_2023_160_R_0001'],
+      'the Regulation is still cited where it is named, and the notice by its publication');
+    // The term is the notice's. Before notices were read by their publication, what was left was
+    // a name Ibid could not place; now it is the notice, and never the Regulation its title names.
+    assert.deepEqual(second.map((citation) => [citation.status, citation.oj, citation.celex]), [['resolved', 'JOC_2023_160_R_0001', undefined]]);
   });
 
   test('does not give a term to an act named inside another act’s title', () => {
@@ -1023,5 +1024,207 @@ describe('getCitationContexts', () => {
     const [context] = getCitationContexts('Directive 2002/58/CE, Article 15');
     assert.equal(context.celex, '32002L0058');
     assert.equal(context.source, 'eur-lex');
+  });
+});
+
+/**
+ * The Commission's 2026 draft merger guidelines define their most-cited act in their first
+ * paragraph, not in a note, and cite it as "EUMR, Article 2" in 26 footnotes — which came out
+ * as nothing, or as a short form the document never defined. Found against the answer key in
+ * `scripts/answer-keys/`.
+ */
+describe('a short form the document defines in its own text', () => {
+  const BODY = [
+    'Council Regulation (EC) No 139/2004 of 20 January 2004 on the control of concentrations between undertakings (‘EUMR’) requires the Commission to appraise concentrations.',
+  ];
+  const cite = (notes: string[], definitions: string[] = BODY) => detectCitationsAcrossFootnotes(notes, { definitions });
+
+  test('resolves in the notes, with the provision each one cites', () => {
+    const [article, recital, subparagraph, before, beforeBare] = cite([
+      'EUMR, Article 2(2) and (3).', 'EUMR, recital 28.', 'See also EUMR, Article 2(1) lit. b.',
+      'Article 2(1)(a) of the EUMR.', 'Recital 29 EUMR.',
+    ]);
+    assert.deepEqual(article.map((c) => [c.celex, c.status, c.resolutionMethod, c.locator?.kind, c.locator?.start, c.locator?.paragraph]),
+      [['32004R0139', 'resolved', 'explicit_alias', 'article', 2, 2]]);
+    assert.deepEqual(recital[0].pinpoint, { paragraphs: [28] });
+    assert.equal(subparagraph[0].locator?.paragraph, 1);
+    assert.deepEqual([before[0].locator?.start, before[0].locator?.paragraph], [2, 1]);
+    assert.deepEqual(beforeBare[0].pinpoint, { paragraphs: [29] });
+  });
+
+  test('is not read at all without the text that defines it', () => {
+    assert.equal(cite(['EUMR, Article 2.'], []).flat().filter((c) => c.status === 'resolved').length, 0);
+  });
+
+  test('takes no pinpoint from further on in the sentence (footnotes 21, 63 and 431)', () => {
+    const [rules, presumptions, mirrors] = cite([
+      'The rules set out in the EUMR are among the competition rules referred to in Article 3(1)(b) of the TFEU as necessary for the functioning of the internal market.',
+      'The EUMR contains neither positive nor negative presumptions that a merger is compatible or incompatible with the internal market (ibid., paragraph 71).',
+      'Article 7(1) of Protocol 24 of the EEA Agreement essentially mirrors Article 21(4) of the EUMR. See, e.g., Case M.2491 – Sampo/Storebrand, paragraphs 38-39.',
+    ]);
+    assert.equal(rules.find((c) => c.value === 'EUMR')?.locator, undefined);
+    assert.equal(presumptions.find((c) => c.value === 'EUMR')?.locator, undefined);
+    assert.deepEqual(mirrors.find((c) => c.value === 'EUMR')?.locator, { kind: 'article', start: 21, paragraph: 4, end: undefined });
+  });
+
+  test('a term a note defines again is the nearer definition', () => {
+    const [, later] = cite(['Regulation (EU) 2022/1925 (‘EUMR’).', 'EUMR, Article 6.']);
+    assert.equal(later[0].celex, '32022R1925');
+  });
+
+  test('a quoted concept in the running text is not a name for what was cited before it', () => {
+    // The guidelines on exclusionary abuses, whose text defines two defences a sentence after
+    // citing the Treaty article: "(‘objective necessity defence’)" became a short form for
+    // Article 102 TFEU.
+    const definitions = ['Conduct that distorts effective competition may escape the prohibition laid down in Article 102 TFEU where it is objectively justified (414). To be objectively justified, the conduct must either be objectively necessary (‘objective necessity defence’) or produce efficiencies.'];
+    assert.deepEqual(cite(['On the objective necessity defence, see paragraph 12.'], definitions).flat(), []);
+  });
+});
+
+describe('a short form carries only the pinpoint written beside it', () => {
+  test('after it, before it, or after the words saying it was cited before', () => {
+    const lead = 'Case C-85/76 Hoffmann-La Roche v Commission, EU:C:1979:36 (‘Hoffmann-La Roche’).';
+    const [, before, cited, prose] = detectCitationsAcrossFootnotes([
+      lead,
+      'See, for example, paragraph 97 of Hoffmann-La Roche.',
+      'Hoffmann-La Roche, cited above, paragraph 91.',
+      'Hoffmann-La Roche is often read together with the later judgments, for instance in Case C-413/14 P Intel, paragraph 138.',
+    ]);
+    assert.deepEqual(before[0].pinpoint, { paragraphs: [97] }, 'from AG Wahl in Intel, footnote 35');
+    assert.deepEqual(cited[0].pinpoint, { paragraphs: [91] });
+    assert.equal(prose.find((c) => c.value === 'Hoffmann-La Roche')?.locator, undefined);
+  });
+});
+
+describe('a term defined after a formal title', () => {
+  test('is registered when nothing between them ends a sentence (footnote 278)', () => {
+    const [, later] = detectCitationsAcrossFootnotes([
+      'See Article 2 of Regulation (EU) 2022/1925 of the European Parliament and of the Council of 14 September 2022 on contestable and fair markets in the digital sector and amending Directives (EU) 2019/1937 and (EU) 2020/1828, OJ L 265, 12.10.2022, pp. 1-66 (‘Digital Markets Act’).',
+      'See Digital Markets Act, Article 2.',
+    ]);
+    assert.deepEqual(later.map((c) => [c.celex, c.locator?.start]), [['32022R1925', 2]]);
+  });
+
+  test('is not reached for across the end of a sentence', () => {
+    const [, later] = detectCitationsAcrossFootnotes([
+      `See Regulation (EU) 2022/1925, OJ L 265, 12.10.2022, p. 1. ${'The Commission has since examined the operation of that framework in detail in several reports. '.repeat(2)}The present Guidelines (‘Reform Package’) build on it.`,
+      'Reform Package, Article 2.',
+    ]);
+    assert.equal(later.filter((c) => c.status === 'resolved').length, 0);
+  });
+});
+
+describe('Treaty articles written the other ways the guidelines write them', () => {
+  const articles = (text: string) => detectCitations(text).filter((c) => /article$/.test(c.label))
+    .map((c) => [c.celex, c.locator?.start, c.locator?.paragraph, c.locator?.end]);
+
+  test('a lettered point after the paragraph, and "of the"', () => {
+    assert.deepEqual(articles('competition rules referred to in Article 3(1)(b) of the TFEU as necessary'), [['12016E003', 3, 1, undefined]]);
+  });
+
+  test('a list is each article it names, and a range is read as where it opens and ends', () => {
+    assert.deepEqual(articles('Articles 52 and 65 TFEU respectively.'), [['12016E052', 52, undefined, undefined], ['12016E065', 65, undefined, undefined]]);
+    assert.deepEqual(articles('See in particular Articles 28-37 TFEU (free movement of goods).'), [['12016E028', 28, undefined, 37]]);
+    assert.deepEqual(articles('Articles 7, 8 and 47 of the Charter.').map(([celex]) => celex), ['12016P007', '12016P008', '12016P047']);
+  });
+
+  test('the Treaty named in full before its article', () => {
+    assert.deepEqual(articles('See also the Treaty on the Functioning of the European Union (‘TFEU’), Article 173.'), [['12016E173', 173, undefined, undefined]]);
+    assert.deepEqual(articles('Article 102 TFEU, Article 5 of the Regulation.'), [['12016E102', 102, undefined, undefined]],
+      'an article after a Treaty abbreviation is not taken as the Treaty’s');
+  });
+
+  test('a single article still reads as it always did', () => {
+    const [citation] = detectCitations('This infringes Article 101 TFEU and is void.');
+    assert.equal(citation.value, 'Article 101 TFEU');
+  });
+});
+
+describe('a Commission case number written with a colon or a space', () => {
+  test('is the number it should have been (footnotes 352 and 353)', () => {
+    assert.deepEqual(detectCitations('Case M:11246 – Rolex/Bucherer; Case M. 8948 – Spirit/Asco; Case M.8788 – Apple/Shazam.')
+      .map((c) => [c.value, c.caseName]), [['M.11246', 'Rolex/Bucherer'], ['M.8948', 'Spirit/Asco'], ['M.8788', 'Apple/Shazam']]);
+    assert.equal(find('Commission decision of 27 June 2017 in case AT. 39740 – Google Shopping, paragraph 300.', 'AT.39740')?.locator?.start, 300);
+  });
+});
+
+describe('a provision before an act named with its author and kind', () => {
+  test('is the act’s', () => {
+    assert.equal(find('EUMR, Articles 11-13, and Articles 3, 4 of Commission Implementing Regulation (EU) 2023/914 of 20 April 2023.', 'Regulation (EU) 2023/914')?.locator?.start, 3);
+    assert.deepEqual(find('‘rights of custody’ in Article 2(9) of Council Regulation (EC) No 2201/2003 of 27 November 2003', 'Regulation (EC) No 2201/2003')?.locator,
+      { kind: 'article', start: 2, paragraph: 9, end: undefined });
+  });
+});
+
+describe('a short form cited beside the act it names inside a title', () => {
+  test('is kept (footnote 47)', () => {
+    const [, footnote] = detectCitationsAcrossFootnotes([
+      'Council Regulation (EC) No 139/2004 (‘EUMR’).',
+      'See, e.g., EUMR, Article 14. See also Annex I to the Commission Implementing Regulation (EU) 2023/914 of 20 April 2023 implementing Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings, paragraphs 13-14.',
+    ]);
+    assert.deepEqual(footnote.find((c) => c.value === 'EUMR')?.locator, { kind: 'article', start: 14, paragraph: undefined, end: undefined });
+  });
+});
+
+/**
+ * A Commission notice or set of guidelines is cited by where it was published. Every text below
+ * is from the Commission's 2026 draft merger guidelines, the guidelines on exclusionary abuses,
+ * or the corpus of decisions and opinions, and every identifier was confirmed to serve the
+ * document from CELLAR's `oj` resource on 2026-09-17.
+ */
+describe('an Official Journal publication', () => {
+  const references = (text: string) => detectCitations(text).filter((c) => c.oj).map((c) => [c.oj, c.ojDate, c.locator?.start]);
+
+  test('in every shape its reference is written', () => {
+    assert.deepEqual(references('See Commission Notice on a simplified treatment, OJ C 160, 5.5.2023, p.1 (‘Notice on Simplified Procedure’).'),
+      [['JOC_2023_160_R_0001', '5.5.2023', undefined]]);
+    assert.deepEqual(references('Commission Notice on the definition of the relevant market (‘Market Definition Notice’), OJ C/2024/1645, 22.2.2024, paragraph 8.'),
+      [['C_202401645', '22.2.2024', 8]]);
+    assert.deepEqual(references('(‘Market Definition Notice’), OJ C, C/2024/1645, 22.2.2024, ELI: http://data.europa.eu/eli/C/2024/1645/oj, paragraph 15.'),
+      [['C_202401645', '22.2.2024', 15]]);
+    assert.deepEqual(references('Directive of the European Parliament and of the Council of 24 October 1995 (OJ 1995 L 281, p. 31), as amended.'),
+      [['JOL_1995_281_R_0031', '1995', undefined]]);
+    assert.deepEqual(references('OJ L 24, 29.1.2004, p. 1.'), [['JOL_2004_024_R_0001', '29.1.2004', undefined]]);
+  });
+
+  test('not where it is the publication of an act, judgment or decision cited before it', () => {
+    assert.deepEqual(references('Regulation (EU) 2022/1925 of the European Parliament and of the Council of 14 September 2022 on contestable and fair markets, OJ L 265, 12.10.2022, pp. 1-66.'), []);
+    assert.deepEqual(references('Commission Implementing Decision (EU) 2016/2297 of 16 December 2016 (OJ 2016 L 344, p. 100).'), []);
+  });
+
+  test('but where the act before it is named only in its title', () => {
+    assert.deepEqual(references('Commission Notice on a simplified treatment for certain concentrations under Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings, OJ C 160, 5.5.2023, p.1.').map(([oj]) => oj),
+      ['JOC_2023_160_R_0001']);
+  });
+
+  test('not without a page, which would leave the publication a guess among an issue', () => {
+    assert.deepEqual(references('(‘Horizontal Co-operation Guidelines’), OJ C 259, 21.7.2023, paragraph 578.'), []);
+  });
+
+  test('takes no pinpoint from the next sentence', () => {
+    assert.deepEqual(references('Charter of Fundamental Rights of the European Union, OJ C 364, 18.12.2000, p. 1. Article 12(1) of the Charter states that everyone has the right to freedom of assembly.'),
+      [['JOC_2000_364_R_0001', '18.12.2000', undefined]]);
+  });
+
+  test('and the short form a notice is given resolves to it, before or after the reference (footnotes 100 and 5)', () => {
+    const [, market, , simplified] = detectCitationsAcrossFootnotes([
+      'Commission Notice on the definition of the relevant market for the purposes of Union competition law (‘Market Definition Notice’), OJ C/2024/1645, 22.2.2024, paragraph 8.',
+      'See Market Definition Notice, paragraphs 90-93.',
+      'See Commission Notice on a simplified treatment for certain concentrations under Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings, OJ C 160, 5.5.2023, p.1 (‘Notice on Simplified Procedure’).',
+      'Notice on Simplified Procedure, paragraph 5(d)(bb).',
+    ]);
+    assert.deepEqual(market.map((c) => [c.oj, c.status, c.resolutionMethod, c.pinpoint]), [['C_202401645', 'resolved', 'explicit_alias', { paragraphs: [90, 91, 92, 93] }]]);
+    assert.deepEqual(simplified.map((c) => [c.oj, c.pinpoint]), [['JOC_2023_160_R_0001', { paragraphs: [5] }]]);
+  });
+});
+
+describe('an Ibid. opening a note', () => {
+  test('is a back-reference however the sentence goes on (32003D0707, footnote 80)', () => {
+    const [, ibid] = detectCitationsAcrossFootnotes([
+      'Commission notice on agreements of minor importance, OJ C 265, 22.8.1998, p. 2, paragraph 22.',
+      'Ibid., paragraph 60, which refers to the Commission decision of 15 December 1982, AROW/BNIC (OJ L 379, 31.12.1982, p. 19).',
+    ]);
+    const back = ibid.find((c) => c.value === 'Ibid.');
+    assert.deepEqual([back?.status, back?.oj, back?.pinpoint], ['resolved', 'JOC_1998_265_R_0002', { paragraphs: [60] }]);
   });
 });

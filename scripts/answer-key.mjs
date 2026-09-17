@@ -77,14 +77,17 @@ const MUST_BE_ZERO = new Set(['wrong-document', 'wrong-pinpoint']);
 async function paneReading(path) {
   const notes = await notesFromDocx(path);
   const { footnoteReferences, paragraphs } = await docxBody(path);
-  // The body's own prose is every paragraph that is not one of the notes, which is the split
-  // the pane's paragraph reader makes. Matched on the note's opening, because a note flattened
-  // into the body reaches the list without the number typed in front of it.
+  // The body's own prose is every paragraph that is not part of a note, which is the split the
+  // pane's paragraph reader makes. Asked both ways round: a note flattened into the body reaches
+  // the list without the number typed in front of it, so the paragraph holds the note's opening;
+  // and the remainder of a note broken over a page was joined onto it, so the note holds the
+  // paragraph's.
   const openings = notes.map((note) => note.slice(0, 60));
-  const prose = paragraphs.filter((paragraph) => !openings.some((opening) => paragraph.includes(opening)));
+  const prose = paragraphs.filter((paragraph) => !openings.some((opening) => paragraph.includes(opening))
+    && !notes.some((note) => note.includes(paragraph.slice(0, 60))));
   const inText = parentheticalsInBody(prose).map((span) => span.text);
   const texts = [...notes, ...inText];
-  const citations = reresolveBackReferences(getCitationContextsForFootnotes(texts));
+  const citations = reresolveBackReferences(getCitationContextsForFootnotes(texts, 180, { definitions: prose }));
   return {
     wordFootnotes: Math.min(footnoteReferences, notes.length),
     notes: notes.map((text, index) => ({ text, citations: citations[index] })),
@@ -160,7 +163,8 @@ function align(published, pane) {
 
 /** A key pinpoint, read into what detection could report for it. Anything else cannot be located. */
 function readPin(pin) {
-  let match = /^(?:paras?|points?|recitals?) (\d+)(?:-(\d+))?( et seq\.)?$/.exec(pin);
+  // A point inside a paragraph — "para 5(d)(bb)", "para 23(c)" — is found in that paragraph.
+  let match = /^(?:paras?|points?|recitals?) (\d+)(?:\([a-z]+\))*(?:-(\d+))?( et seq\.)?$/.exec(pin);
   if (match) {
     const from = Number(match[1]);
     const to = Number(match[2] ?? from);
@@ -260,7 +264,10 @@ function names(entry, citation) {
       return reported.some((id) => cited.includes(id)) || Boolean(entry.ecli && ecliId(citation.ecli) === ecliId(entry.ecli));
     }
     case 'legislation':
-      return citation.source === 'eur-lex' && citation.celex === entry.celex;
+      // "OJ L 24, 29.1.2004, p. 1." is the Merger Regulation cited by where it was published.
+      return citation.source === 'eur-lex' && (citation.celex === entry.celex || (entry.via === 'oj' && Boolean(citation.oj)));
+    case 'notice':
+      return citation.source === 'eur-lex' && Boolean(citation.oj) && citation.oj === entry.publication;
     case 'treaty': {
       const letter = { TFEU: 'E', TEU: 'M' }[entry.treaty];
       return citation.source === 'eur-lex' && new RegExp(`^1\\d{4}${letter}\\d+$`).test(citation.celex ?? '')
@@ -285,6 +292,14 @@ function sameDocument(entry, citation) {
   return (citation.documentType ?? 'judgment') === entry.k;
 }
 
+/** The identifier CELLAR files an Official Journal reference under, as the key writes the reference. */
+function publicationOf(reference) {
+  let match = /^([CL]) (\d{1,3}), (\d{1,2})\.(\d{1,2})\.(\d{4}), pp?\. ?(\d+)/.exec(reference ?? '');
+  if (match) return `JO${match[1]}_${match[5]}_${match[2].padStart(3, '0')}_R_${match[6].padStart(4, '0')}`;
+  match = /^([CL])\/(\d{4})\/(\d+)/.exec(reference ?? '');
+  return match ? `${match[1]}_${match[2]}${match[3].padStart(5, '0')}` : undefined;
+}
+
 const identity = (entry) => {
   switch (entry.k) {
     case 'decision': return `${entry.m} ${entry.name ?? ''}`.trim();
@@ -303,7 +318,13 @@ function check(key, published, pane) {
   const add = (note, outcome, what, detail) => outcomes.push({ note, outcome, identity: what, ...(detail ? { detail } : {}) });
 
   const entries = key.filter((line) => 'n' in line);
-  const byPaneNote = new Map();
+  // A notice is identified by where it was published: its own reference, or for a short form the
+  // reference of the footnote that defined it. A reference with no page names no one publication.
+  const noticeAt = new Map(entries.filter((entry) => entry.k === 'notice' && entry.oj).map((entry) => [entry.n, entry]));
+  for (const entry of entries.filter((e) => e.k === 'notice')) entry.publication = publicationOf(entry.oj ?? noticeAt.get(entry.ante)?.oj);
+  // Every note that reached the pane, including the ones citing nothing: what Ibid reports in a
+  // footnote the key says cites nothing is exactly what `unexpected` is for.
+  const byPaneNote = new Map([...new Set(noteOf.values())].map((index) => [index, []]));
   for (const entry of entries) {
     const index = noteOf.get(entry.n);
     if (index === undefined) {
@@ -317,7 +338,7 @@ function check(key, published, pane) {
   for (const index of notAFootnote) add('not a footnote', 'not-a-footnote', pane.notes[index].text.slice(0, 80));
 
   for (const [index, noteEntries] of byPaneNote) {
-    const note = [...new Set(noteEntries.map((entry) => entry.n))].join('+');
+    const note = [...noteOf].filter(([, i]) => i === index).map(([number]) => number).sort((a, b) => a - b).join('+');
     const citations = pane.notes[index].citations;
     const claimed = new Set();
     // One authority cited twice in a note is one authority: its pinpoints are compared together.
@@ -331,11 +352,17 @@ function check(key, published, pane) {
     // 20.12.2006), paragraph 25; Case M.4197 – E.ON/Endesa (decision of 26.09.2006), paragraph
     // 24` — are two authorities that name the same case, so each takes the citation in its turn.
     const turns = new Map();
-    for (const group of groups.values()) {
+    // Cited entries before incidental ones, and an incidental entry takes only what they left:
+    // "See, e.g., EUMR, Article 14. See also Annex I to … implementing Council Regulation (EC) No
+    // 139/2004" cites the Merger Regulation once and names it once, and the citation is the
+    // cited entry's even though both are the same act.
+    const ordered = [...groups.values()].sort((a, b) => Number(a[0].role === 'incidental') - Number(b[0].role === 'incidental'));
+    for (const group of ordered) {
       const [entry] = group;
       const sameCase = [...groups.values()].filter((other) => identity(other[0]) === identity(entry) && (other[0].role ?? '') === (entry.role ?? ''));
       const turn = sameCase.indexOf(group);
       const hits = citations.filter((citation, at) => {
+        if (entry.role === 'incidental' && claimed.has(at)) return false;
         if (!group.some((member) => names(member, citation))) return false;
         if (sameCase.length > 1) {
           const seen = turns.get(identity(entry)) ?? [];
@@ -361,7 +388,8 @@ function check(key, published, pane) {
         if (shortForm >= 0) claimed.add(shortForm);
         if (hits.length || shortForm >= 0) add(note, 'unresolved', what);
         else if (['judgment', 'opinion', 'order', 'decision', 'legislation', 'treaty'].includes(entry.k)) add(note, 'missed', what);
-        else add(note, 'missed', what, `a ${entry.k}, which detection does not read`);
+        else if (entry.k === 'notice') add(note, 'missed', what, 'a notice');
+        else add(note, 'missed', what, 'neither an act, a case nor a publication detection reads');
         continue;
       }
       const other = resolved.filter((citation) => !sameDocument(entry, citation));

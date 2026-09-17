@@ -59,9 +59,9 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 721 tests (311 detection and resolution, 256 resolver, document store and contract, 154 task pane). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
+- `npm run test` passes: 753 tests (333 detection and resolution, 263 resolver, document store and contract, 157 task pane). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
 - `npm run answer-key` passes: the 2026 draft merger guidelines against their answer key (624 citations) — 0 at a wrong document, 4 at a wrong pinpoint each reading so in the .docx itself, and the other known gaps listed with reasons in `scripts/answer-keys/merger-guidelines-2026.known.json`. Outside `verify`: it needs the document, which is not in the repository.
-- `npm run corpus` passes: 21 documents, 17 read, 1,083 citations, 165 identifiers checked against CELLAR, 0 wrong-source. Outside `verify`: it needs the network.
+- `npm run corpus` passes: 21 documents, 17 read, 1,083 citations, 165 identifiers checked against CELLAR, 0 wrong-source. Re-run offline for recall on 2026-09-17 after notices were read by their Official Journal reference: 1,187 citations, 0 candidate misses; the identifiers were not re-checked against CELLAR. Outside `verify`: it needs the network.
 - `npm run word-check` passes: the .docx reader and real Word agree on all 1,991 footnotes of the Intel decision, and on every other sample. Outside `verify`: it needs Word on Windows.
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).

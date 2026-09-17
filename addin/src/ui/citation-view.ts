@@ -223,6 +223,15 @@ export function officialSourceUrl(citation: CitationContext): string {
   // derived from the document type — so an opinion links to the opinion, not to the
   // judgment in the same case.
   if (citation.celex) return `https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:${citation.celex}`;
+  // A publication cited by its Official Journal reference: the publication in the numbering
+  // begun in October 2023, and the issue's contents before it. Must agree with
+  // `publicationUrl` in the resolver.
+  if (citation.oj) {
+    const numbered = /^([CL])_(\d{9})$/.exec(citation.oj);
+    if (numbered) return `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=OJ:${numbered[1]}_${numbered[2]}`;
+    const [, series, year, issue] = /^JO([CL])_(\d{4})_(\d{3})/.exec(citation.oj) ?? [];
+    if (series) return `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=OJ:${series}:${year}:${issue}:TOC`;
+  }
   // The case's own page in DG Competition's register, not a search for its number — see the
   // note on `commissionUrl` in the resolver, which builds the same link and must agree.
   // A `C(yyyy) nnnn` decision number names an act rather than a case file and has no page
@@ -254,6 +263,7 @@ export function officialSourceUrl(citation: CitationContext): string {
  */
 export function candidateKey(candidate: CitationCandidate): string {
   if (candidate.celex) return candidate.celex;
+  if (candidate.oj) return candidate.oj;
   if (candidate.ecli) return candidate.ecli;
   if (candidate.caseNumber) {
     return candidate.documentType ? `${candidate.caseNumber}:${candidate.documentType}` : candidate.caseNumber;

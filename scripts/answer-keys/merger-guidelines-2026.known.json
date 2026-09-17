@@ -116,143 +116,179 @@
    "reason": "an item of a numbered list in the body text, set at the size the notes are set in, which the body-note reader takes for a note the conversion flattened into the body"
   },
   {
-   "note": "5",
+   "note": "432",
    "outcome": "missed",
-   "identity": "Notice on Simplified Procedure",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+   "identity": "M.12052 UniCredit/Banco BPM",
+   "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
   },
   {
-   "note": "47",
+   "note": "432",
    "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+   "identity": "M.5932 News Corp/BSkyB",
+   "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
   },
   {
-   "note": "48",
+   "note": "431",
    "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+   "identity": "EEA Agreement, Protocol 24",
+   "detail": "neither an act, a case nor a publication detection reads",
+   "reason": "neither an act, a case nor a notice (a staff working paper, DG COMP best practices, the EEA Agreement, a Bulletin supplement): out of what detection reads"
   },
   {
-   "note": "48",
-   "outcome": "pinpoint-missing",
-   "identity": "32023R0914 Implementing Regulation (EU) 2023/914",
-   "detail": "article",
-   "reason": "\"Articles 3, 4 of Commission Implementing Regulation (EU) 2023/914\": the provision-before form needs \"of\" directly before the act, and \"Commission Implementing\" stands between"
+   "note": "427",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice",
+   "reason": "\"OJ C 259, 21.7.2023\" gives no page, and an issue without a page names no one publication, so the Guidelines are not read and neither is their short form"
+  },
+  {
+   "note": "425",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice",
+   "reason": "\"OJ C 259, 21.7.2023\" gives no page, and an issue without a page names no one publication, so the Guidelines are not read and neither is their short form"
+  },
+  {
+   "note": "423",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice",
+   "reason": "\"OJ C 259, 21.7.2023\" gives no page, and an issue without a page names no one publication, so the Guidelines are not read and neither is their short form"
+  },
+  {
+   "note": "401",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice",
+   "reason": "\"OJ C 259, 21.7.2023\" gives no page, and an issue without a page names no one publication, so the Guidelines are not read and neither is their short form"
+  },
+  {
+   "note": "400",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice",
+   "reason": "\"OJ C 259, 21.7.2023\" gives no page, and an issue without a page names no one publication, so the Guidelines are not read and neither is their short form"
+  },
+  {
+   "note": "397",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice",
+   "reason": "\"OJ C 259, 21.7.2023\" gives no page, and an issue without a page names no one publication, so the Guidelines are not read and neither is their short form"
   },
   {
    "note": "396",
    "outcome": "missed",
    "identity": "Horizontal Co-operation Guidelines",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+   "detail": "a notice",
+   "reason": "\"OJ C 259, 21.7.2023\" gives no page, and an issue without a page names no one publication, so the Guidelines are not read and neither is their short form"
   },
   {
-   "note": "442",
+   "note": "280+281",
+   "outcome": "pinpoint-missing",
+   "identity": "Market Definition Notice",
+   "detail": "sections 5",
+   "reason": "a section of a notice (\"Section 4.1\", \"Section 5 of the Market Definition Notice\") is not read: sections are read only for Commission decisions"
+  },
+  {
+   "note": "279",
+   "outcome": "pinpoint-missing",
+   "identity": "Market Definition Notice",
+   "detail": "sections 5",
+   "reason": "a section of a notice (\"Section 4.1\", \"Section 5 of the Market Definition Notice\") is not read: sections are read only for Commission decisions"
+  },
+  {
+   "note": "277",
+   "outcome": "pinpoint-missing",
+   "identity": "Market Definition Notice",
+   "detail": "sections 5",
+   "reason": "a section of a notice (\"Section 4.1\", \"Section 5 of the Market Definition Notice\") is not read: sections are read only for Commission decisions"
+  },
+  {
+   "note": "238",
+   "outcome": "unexpected",
+   "identity": "Official Journal publication: Market Definition Notice",
+   "detail": "resolved",
+   "reason": "\"the principles laid out in the Market Definition Notice\" names the defined short form in passing, and a short form the document declares is reported wherever it is written"
+  },
+  {
+   "note": "235+236",
+   "outcome": "pinpoint-missing",
+   "identity": "Market Definition Notice",
+   "detail": "sections 4.4",
+   "reason": "a section of a notice (\"Section 4.1\", \"Section 5 of the Market Definition Notice\") is not read: sections are read only for Commission decisions"
+  },
+  {
+   "note": "189",
+   "outcome": "pinpoint-missing",
+   "identity": "M.10506 Parker/Meggitt",
+   "detail": "sections 4.2.2",
+   "reason": "\"Section 4.2.2. and paragraphs 163, 164 …\": the paragraphs are read, and the section is not"
+  },
+  {
+   "note": "158",
+   "outcome": "pinpoint-missing",
+   "identity": "M.5830 Olympic/Aegean Airlines I",
+   "detail": "paragraphs 554-775",
+   "reason": "\"paragraphs 553-776\" spans more than 200 paragraphs, so it is reported by its endpoints (MAX_RANGE_SPAN)"
+  },
+  {
+   "note": "144+145",
+   "outcome": "pinpoint-missing",
+   "identity": "M.7278 General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)",
+   "detail": "sections 8.7.4",
+   "reason": "\"paragraph 387 and Section 8.7.4\": the paragraph is read, and the section after it is not"
+  },
+  {
+   "note": "118",
+   "outcome": "wrong-pinpoint",
+   "identity": "M.9716 AMS/Osram",
+   "detail": "paragraphs 165170",
+   "reason": "the .docx itself reads \"paragraphs 165170\": the PDF breaks \"165- 170\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text",
+   "reads": "paragraphs 165170"
+  },
+  {
+   "note": "118",
+   "outcome": "pinpoint-missing",
+   "identity": "M.9716 AMS/Osram",
+   "detail": "paragraphs 165-170",
+   "reason": "the .docx itself reads \"paragraphs 165170\": the PDF breaks \"165- 170\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text"
+  },
+  {
+   "note": "104",
+   "outcome": "pinpoint-missing",
+   "identity": "Market Definition Notice",
+   "detail": "sections 4.1",
+   "reason": "a section of a notice (\"Section 4.1\", \"Section 5 of the Market Definition Notice\") is not read: sections are read only for Commission decisions"
+  },
+  {
+   "note": "92",
+   "outcome": "wrong-pinpoint",
+   "identity": "M.308 Kali+Salz/MdK/Treuhand",
+   "detail": "paragraphs 7077",
+   "reason": "the .docx itself reads \"paragraphs 7077\": the PDF breaks \"70- 77\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text",
+   "reads": "paragraphs 7077"
+  },
+  {
+   "note": "92",
+   "outcome": "pinpoint-missing",
+   "identity": "M.308 Kali+Salz/MdK/Treuhand",
+   "detail": "paragraphs 70-77",
+   "reason": "the .docx itself reads \"paragraphs 7077\": the PDF breaks \"70- 77\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text"
+  },
+  {
+   "note": "69",
    "outcome": "missed",
-   "identity": "Community Merger Control Law, Bulletin Supplement 2/90, Notes on Council Regulation 4064/89",
-   "detail": "a other, which detection does not read",
+   "identity": "DG COMP Best Practices on the conduct of EC merger control proceedings",
+   "detail": "neither an act, a case nor a publication detection reads",
    "reason": "neither an act, a case nor a notice (a staff working paper, DG COMP best practices, the EEA Agreement, a Bulletin supplement): out of what detection reads"
   },
   {
-   "note": "1",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "3",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "4",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "6",
-   "outcome": "unresolved",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "7",
-   "outcome": "missed",
-   "identity": "Horizontal Merger Guidelines",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "8",
-   "outcome": "missed",
-   "identity": "Non-Horizontal Merger Guidelines",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "11",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "12",
-   "outcome": "missed",
-   "identity": "TFEU art 173",
-   "reason": "\"(‘TFEU’), Article 173\": a Treaty article is read only in the \"Article N TFEU\" order"
-  },
-  {
-   "note": "14",
+   "note": "63",
    "outcome": "pinpoint-missing",
-   "identity": "judgment C-413/06 P Impala",
-   "detail": "paragraphs 48",
-   "reason": "\"See also paragraph 48\" follows a quotation, and the pinpoint scan takes the first paragraph only"
-  },
-  {
-   "note": "15",
-   "outcome": "unresolved",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "16",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "17",
-   "outcome": "unresolved",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "21+22",
-   "outcome": "missed",
-   "identity": "TFEU art 3(1)(b)",
-   "reason": "\"Article 3(1)(b) of the TFEU\": the definite article, and a point after the paragraph, are not in the Treaty-article pattern"
-  },
-  {
-   "note": "21+22",
-   "outcome": "unresolved",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "23",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "37",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+   "identity": "judgment C-376/20 P CK Telecoms",
+   "detail": "paragraphs 71, 78",
+   "reason": "\"(ibid., paragraph 71)\" inside the text of a footnote is not read as a back-reference"
   },
   {
    "note": "40",
@@ -265,6 +301,55 @@
    "outcome": "missed",
    "identity": "judgment T-342/07 Ryanair",
    "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
+  },
+  {
+   "note": "14",
+   "outcome": "pinpoint-missing",
+   "identity": "judgment C-413/06 P Impala",
+   "detail": "paragraphs 48",
+   "reason": "\"See also paragraph 48\" follows a quotation, and the pinpoint scan takes the first paragraph only"
+  },
+  {
+   "note": "8",
+   "outcome": "missed",
+   "identity": "Non-Horizontal Merger Guidelines",
+   "detail": "a notice",
+   "reason": "the reference as written — \"OJ C 31, 5.2.2024\" for 2004, \"OJ C 26\" for C 265 — names no publication CELLAR holds; Ibid reads the reference as written, and retrieval reports that the Official Journal holds nothing there"
+  },
+  {
+   "note": "8",
+   "outcome": "unexpected",
+   "identity": "Official Journal publication: OJ C 26, 18.10.2008, p. 6",
+   "detail": "resolved",
+   "reason": "the reference as the footnote writes it (\"OJ C 31, 5.2.2024\" for the 2004 guidelines; \"OJ C 26\" for C 265) is reported as written; retrieval finds no publication there and says to check the reference"
+  },
+  {
+   "note": "7",
+   "outcome": "missed",
+   "identity": "Horizontal Merger Guidelines",
+   "detail": "a notice",
+   "reason": "the reference as written — \"OJ C 31, 5.2.2024\" for 2004, \"OJ C 26\" for C 265 — names no publication CELLAR holds; Ibid reads the reference as written, and retrieval reports that the Official Journal holds nothing there"
+  },
+  {
+   "note": "7",
+   "outcome": "unexpected",
+   "identity": "Official Journal publication: OJ C 31, 5.2.2024, p. 5",
+   "detail": "resolved",
+   "reason": "the reference as the footnote writes it (\"OJ C 31, 5.2.2024\" for the 2004 guidelines; \"OJ C 26\" for C 265) is reported as written; retrieval finds no publication there and says to check the reference"
+  },
+  {
+   "note": "2",
+   "outcome": "unexpected",
+   "identity": "EU regulation: EUMR",
+   "detail": "resolved",
+   "reason": "\"The term ‘concentration’ used in the EUMR covers … under the EUMR\" names the defined short form in passing, and a short form the document declares is reported wherever it is written, with or without a pinpoint — as a short form declared in a note always was"
+  },
+  {
+   "note": "2",
+   "outcome": "unexpected",
+   "identity": "EU regulation: EUMR",
+   "detail": "resolved",
+   "reason": "\"The term ‘concentration’ used in the EUMR covers … under the EUMR\" names the defined short form in passing, and a short form the document declares is reported wherever it is written, with or without a pinpoint — as a short form declared in a note always was"
   },
   {
    "note": "49",
@@ -285,40 +370,22 @@
    "note": "56",
    "outcome": "missed",
    "identity": "Best Practices for the Submission of Economic Evidence",
-   "detail": "a other, which detection does not read",
+   "detail": "neither an act, a case nor a publication detection reads",
    "reason": "neither an act, a case nor a notice (a staff working paper, DG COMP best practices, the EEA Agreement, a Bulletin supplement): out of what detection reads"
   },
   {
-   "note": "63",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+   "note": "56",
+   "outcome": "unexpected",
+   "identity": "TFEU article: Article 101 TFEU",
+   "detail": "resolved",
+   "reason": "\"Best Practices for the Submission of Economic Evidence and Data Collection in Cases Concerning the Application of Articles 101 and 102 TFEU and in Merger Cases\" names the Treaty articles inside the title of a staff working paper; a Treaty article is reported wherever it is written"
   },
   {
-   "note": "63",
-   "outcome": "pinpoint-missing",
-   "identity": "judgment C-376/20 P CK Telecoms",
-   "detail": "paragraphs 71, 78",
-   "reason": "\"(ibid., paragraph 71)\" inside the text of a footnote is not read as a back-reference"
-  },
-  {
-   "note": "65",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "66",
-   "outcome": "unresolved",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "69",
-   "outcome": "missed",
-   "identity": "DG COMP Best Practices on the conduct of EC merger control proceedings",
-   "detail": "a other, which detection does not read",
-   "reason": "neither an act, a case nor a notice (a staff working paper, DG COMP best practices, the EEA Agreement, a Bulletin supplement): out of what detection reads"
+   "note": "56",
+   "outcome": "unexpected",
+   "identity": "TFEU article: Article 102 TFEU",
+   "detail": "resolved",
+   "reason": "\"Best Practices for the Submission of Economic Evidence and Data Collection in Cases Concerning the Application of Articles 101 and 102 TFEU and in Merger Cases\" names the Treaty articles inside the title of a staff working paper; a Treaty article is reported wherever it is written"
   },
   {
    "note": "75",
@@ -336,353 +403,11 @@
    "reason": "the .docx itself reads \"paragraphs 247263\": the PDF breaks \"247- 263\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text"
   },
   {
-   "note": "79",
+   "note": "442",
    "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "92",
-   "outcome": "wrong-pinpoint",
-   "identity": "M.308 Kali+Salz/MdK/Treuhand",
-   "detail": "paragraphs 7077",
-   "reason": "the .docx itself reads \"paragraphs 7077\": the PDF breaks \"70- 77\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text",
-   "reads": "paragraphs 7077"
-  },
-  {
-   "note": "92",
-   "outcome": "pinpoint-missing",
-   "identity": "M.308 Kali+Salz/MdK/Treuhand",
-   "detail": "paragraphs 70-77",
-   "reason": "the .docx itself reads \"paragraphs 7077\": the PDF breaks \"70- 77\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text"
-  },
-  {
-   "note": "100",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "103",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "104",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "118",
-   "outcome": "wrong-pinpoint",
-   "identity": "M.9716 AMS/Osram",
-   "detail": "paragraphs 165170",
-   "reason": "the .docx itself reads \"paragraphs 165170\": the PDF breaks \"165- 170\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text",
-   "reads": "paragraphs 165170"
-  },
-  {
-   "note": "118",
-   "outcome": "pinpoint-missing",
-   "identity": "M.9716 AMS/Osram",
-   "detail": "paragraphs 165-170",
-   "reason": "the .docx itself reads \"paragraphs 165170\": the PDF breaks \"165- 170\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text"
-  },
-  {
-   "note": "137",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "138",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "139",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "144+145",
-   "outcome": "pinpoint-missing",
-   "identity": "M.7278 General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)",
-   "detail": "sections 8.7.4",
-   "reason": "\"paragraph 387 and Section 8.7.4\": the paragraph is read, and the section after it is not"
-  },
-  {
-   "note": "158",
-   "outcome": "pinpoint-missing",
-   "identity": "M.5830 Olympic/Aegean Airlines I",
-   "detail": "paragraphs 554-775",
-   "reason": "\"paragraphs 553-776\" spans more than 200 paragraphs, so it is reported by its endpoints (MAX_RANGE_SPAN)"
-  },
-  {
-   "note": "168",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "171",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "179",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "180",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "183",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "189",
-   "outcome": "pinpoint-missing",
-   "identity": "M.10506 Parker/Meggitt",
-   "detail": "sections 4.2.2",
-   "reason": "\"Section 4.2.2. and paragraphs 163, 164 …\": the paragraphs are read, and the section is not"
-  },
-  {
-   "note": "190",
-   "outcome": "missed",
-   "identity": "Notice on Simplified Procedure",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "191",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "192",
-   "outcome": "missed",
-   "identity": "Notice on Simplified Procedure",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "192",
-   "outcome": "unexpected",
-   "identity": "Unconfirmed short-form citation: Simplified Procedure",
-   "detail": "unresolved_not_found",
-   "reason": "\"Notice on Simplified Procedure, paragraph 5(d)(bb)\": the notice is not read, and \"Simplified Procedure\" is offered as a short form the document never defined"
-  },
-  {
-   "note": "236",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "267",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "268",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "277",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "279",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "280+281",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "280+281",
-   "outcome": "missed",
-   "identity": "32022R1925 Digital Markets Act",
-   "reason": "\"(‘Digital Markets Act’)\" in footnote 278 sits after the Regulation's full title, more than 160 characters from the citation, so the term is never registered and \"Digital Markets Act, Article 2\" is not recognised"
-  },
-  {
-   "note": "283+284",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "334",
-   "outcome": "missed",
-   "identity": "Market Definition Notice",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "352",
-   "outcome": "missed",
-   "identity": "M.11246 Rolex/Bucherer",
-   "reason": "the case number is written \"M:11246\", with a colon"
-  },
-  {
-   "note": "353",
-   "outcome": "missed",
-   "identity": "M.8948 Spirit/Asco",
-   "reason": "the case number is written \"M. 8948\", with a space"
-  },
-  {
-   "note": "365",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "397",
-   "outcome": "missed",
-   "identity": "Horizontal Co-operation Guidelines",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "400",
-   "outcome": "missed",
-   "identity": "Horizontal Co-operation Guidelines",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "401",
-   "outcome": "missed",
-   "identity": "Horizontal Co-operation Guidelines",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "423",
-   "outcome": "missed",
-   "identity": "Horizontal Co-operation Guidelines",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "425",
-   "outcome": "missed",
-   "identity": "Horizontal Co-operation Guidelines",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "427",
-   "outcome": "missed",
-   "identity": "Horizontal Co-operation Guidelines",
-   "detail": "a notice, which detection does not read",
-   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "431",
-   "outcome": "missed",
-   "identity": "EEA Agreement, Protocol 24",
-   "detail": "a other, which detection does not read",
+   "identity": "Community Merger Control Law, Bulletin Supplement 2/90, Notes on Council Regulation 4064/89",
+   "detail": "neither an act, a case nor a publication detection reads",
    "reason": "neither an act, a case nor a notice (a staff working paper, DG COMP best practices, the EEA Agreement, a Bulletin supplement): out of what detection reads"
-  },
-  {
-   "note": "431",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "432",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "432",
-   "outcome": "missed",
-   "identity": "M.12052 UniCredit/Banco BPM",
-   "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
-  },
-  {
-   "note": "432",
-   "outcome": "missed",
-   "identity": "M.5932 News Corp/BSkyB",
-   "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
-  },
-  {
-   "note": "433",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "434",
-   "outcome": "missed",
-   "identity": "TFEU art 52, art 65",
-   "reason": "\"Articles 52 and 65 TFEU\": a list of Treaty articles is not read"
-  },
-  {
-   "note": "440",
-   "outcome": "pinpoint-missing",
-   "identity": "32024R1083 European Media Freedom Act",
-   "detail": "article",
-   "reason": "\"Article 22 European Media Freedom Act\": an article written before a defined term, with no \"of\", is not attached to it"
-  },
-  {
-   "note": "466",
-   "outcome": "missed",
-   "identity": "TFEU arts 28-37, arts 49-55, arts 63-66",
-   "reason": "\"Articles 28-37 TFEU\": a range of Treaty articles is not read"
-  },
-  {
-   "note": "469+470",
-   "outcome": "pinpoint-missing",
-   "identity": "32024R1083 European Media Freedom Act",
-   "detail": "article",
-   "reason": "\"Article 22 European Media Freedom Act\": an article written before a defined term, with no \"of\", is not attached to it"
-  },
-  {
-   "note": "474+475",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
    "note": "running text",
