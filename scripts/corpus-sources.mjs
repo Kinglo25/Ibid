@@ -181,6 +181,23 @@ const textOf = (xml) => [...xml.matchAll(/<w:t(?: [^>]*)?>([\s\S]*?)<\/w:t>|<\/w
   .join('');
 
 /**
+ * What a .docx holds besides its notes: how many of them are Word's own footnotes, and the text
+ * of every body paragraph.
+ *
+ * `notesFromDocx` lists Word's footnotes first and the notes it finds in the body after them,
+ * as the pane does, so the count says where one ends and the other begins. The paragraphs are
+ * where the pane reads a citation written into the running text.
+ */
+export async function docxBody(path) {
+  const parts = readZip(await readFile(path), ['word/document.xml']);
+  const document = parts.get('word/document.xml') ?? '';
+  return {
+    footnoteReferences: [...document.matchAll(/<w:footnoteReference[^>]*w:id="\d+"/g)].length,
+    paragraphs: [...document.matchAll(/<w:p[ >][\s\S]*?<\/w:p>/g)].map((paragraph) => textOf(paragraph[0]).trim()).filter(Boolean),
+  };
+}
+
+/**
  * Every note a .docx holds, in all three shapes a PDF-converted decision arrives in: Word's own
  * footnotes, body paragraphs opening with a typed superscript number, and body paragraphs
  * whose number Word draws from a list definition. The pane reads exactly these three, so

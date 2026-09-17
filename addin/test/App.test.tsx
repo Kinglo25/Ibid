@@ -454,6 +454,76 @@ describe('a decision answered from what the server holds', () => {
     assert.equal(screen.queryByText(/published a different version/), null);
   });
 
+  test('a footnote citing three passages "et seq." shows each, and says what is not shown', async () => {
+    // Footnote 28 of the Commission's 2026 draft merger guidelines, as it was reported: the
+    // pane showed recital 189 as the whole of a footnote citing 189, 1324 and 1398.
+    const urls = commissionFetch(decision('unused'), () => Promise.resolve([decision(
+      '(189) The Notifying Parties submit.\n\n…\n\n(1324) First, the market investigation.',
+      { unlocated: ['1398'] },
+    )]));
+    word = installWordStub(['See, e.g., Case M.8713 – Tata Steel/thyssenkrupp/JV, paragraphs 189 et seq., 1324 et seq. and 1398 et seq.']);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(0);
+    await screen.findByText('(189) The Notifying Parties submit.');
+    assert.ok(screen.getByText('(1324) First, the market investigation.'), 'a passage of its own, not run into the first');
+    assert.ok(screen.getByText('Paragraph 1398 is not in the retrieved text; the other paragraphs cited are shown.'));
+    assert.ok(screen.getByText('Cited “et seq.”: paragraphs 189 and 1324 are shown, not the paragraphs after each.'));
+    const sent = JSON.parse(decodeURIComponent(urls[0].split('lookup=')[1]));
+    assert.deepEqual(sent.paragraphs, [189, 1324, 1398], 'all three reach the server');
+    assert.equal(sent.following, undefined, '"et seq." stays in the pane');
+  });
+
+  test('a case number that is another case shows the case named, warns first, and links it', async () => {
+    // Footnote 33 of the Commission's 2026 draft merger guidelines.
+    // Ball/Rexam publishes two decisions, and the warning belongs to the citation, not to each.
+    const mismatch = { cited: 'M.7967', citedTitle: 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING', name: 'Ball/Rexam', caseNumber: 'M.7567' };
+    const urls = commissionFetch(decision('unused'), () => Promise.resolve([
+      decision('Decision - web publication of 15 January 2016, published by the Commission.', {
+        title: 'M.7567 – BALL / REXAM', url: 'https://ec.europa.eu/competition/mergers/cases/decisions/m7567_4959_3.pdf', passage: undefined, numberMismatch: mismatch,
+      }),
+      decision('Decision - web publication of 17 June 2016, published by the Commission.', {
+        title: 'M.7567 – BALL / REXAM', url: 'https://ec.europa.eu/competition/mergers/cases/decisions/m7567_5294_5.pdf', passage: undefined, numberMismatch: mismatch,
+      }),
+    ]));
+    word = installWordStub(['See, e.g., Case M.7967 – Ball/Rexam.']);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(0);
+    await screen.findByText(/17 June 2016/);
+    const [warning, ...more] = screen.getAllByRole('alert');
+    assert.equal(more.length, 0, 'said once, not once per decision');
+    assert.match(warning.textContent ?? '', /^Case number corrected\. The footnote cites M\.7967, .* is M\.7567, and that is the case shown here\.$/);
+    assert.equal(screen.getAllByRole('link', { name: 'M.7567 – BALL / REXAM' }).length, 2);
+    assert.equal(screen.getByRole('link', { name: 'Open official source' }).getAttribute('href'),
+      'https://competition-cases.ec.europa.eu/cases/M.7567', 'the register page of the case shown, not of Apax Partners');
+    const sent = JSON.parse(decodeURIComponent(urls[0].split('lookup=')[1]));
+    assert.equal(sent.caseName, 'Ball/Rexam', 'the name travels with the number, so the server can check one against the other');
+  });
+
+  test('an Opinion the footnote calls a judgment is shown as what it is', async () => {
+    // Footnote 460 of the Commission's 2026 draft merger guidelines. The resolver fetches the
+    // document the ECLI names and reports that its heading makes it an Opinion.
+    commissionFetch(decision('unused'), () => Promise.resolve([{
+      title: 'Superleague v FIFA, C-333/21 (opinion)', source: 'CURIA',
+      url: 'https://publications.europa.eu/resource/ecli/ECLI%3AEU%3AC%3A2022%3A993',
+      excerpt: '251 The Advocate General says this.', passage: 'cited', locator: 'Point 251',
+      verifiedAt: '2026-09-17T10:00:00.000Z', documentType: 'opinion',
+    }]));
+    word = installWordStub(['Judgment of 15 December 2002, Superleague v FIFA, C-333/21, EU:C:2022:993, paragraph 251.']);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(0);
+    await screen.findByText('251 The Advocate General says this.');
+    const [warning, ...more] = screen.getAllByRole('alert');
+    assert.equal(more.length, 0);
+    assert.equal(warning.textContent, 'The footnote calls this a judgment, but the document its ECLI names is an Advocate General’s Opinion, and that is what is shown here.');
+    assert.ok(screen.getByRole('link', { name: 'Superleague v FIFA, C-333/21 (opinion)' }));
+  });
+
   test('waits for the sources the reviewer has not been shown yet', async () => {
     // Google Spain is being warmed and has not come back. The Intel passage is already on
     // screen, dated, so its confirmation is the request that waits.
@@ -475,6 +545,113 @@ describe('a decision answered from what the server holds', () => {
     await waitFor(() => assert.equal(
       urls.filter((url) => url.includes('AT.37990') && !url.includes('confirm=later')).length, 1));
   });
+});
+
+/**
+ * An answer that arrives after the reviewer has moved on.
+ *
+ * A Commission decision read cold took 207s and 224s against the draft merger guidelines, so
+ * this is the ordinary case rather than a race: the reviewer does not wait on one footnote for
+ * four minutes. Neither citation below carries a CELEX, so nothing is warmed and every request
+ * is one a selection made.
+ */
+describe('an answer that arrives after the reviewer has moved on', () => {
+  const linkedIn = 'Case M.8124 – Microsoft / LinkedIn, paragraph 350.';
+  const intel = 'AT.37990, EC Decision of 13 May 2009, para. 1000.';
+
+  let word: ReturnType<typeof installWordStub> | undefined;
+  afterEach(() => { word?.remove(); word = undefined; });
+
+  const passage = (excerpt: string) => [{ title: 'Decision', source: 'European Commission', url: `https://ec.europa.eu/${excerpt.length}.pdf`, excerpt, passage: 'cited' }];
+
+  /** LinkedIn answers when released; Intel at once. Records every LinkedIn request sent. */
+  const slowLinkedIn = () => {
+    let settle: { resolve: (documents: unknown[]) => void; reject: (error: Error) => void } = { resolve: () => undefined, reject: () => undefined };
+    const answer = new Promise<unknown[]>((resolve, reject) => { settle = { resolve, reject }; });
+    const linkedInRequests: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      const slow = String(url).includes('M.8124');
+      if (slow) linkedInRequests.push(String(url));
+      const documents = await (slow ? answer : Promise.resolve(passage('(1000) The Intel passage.')));
+      return { ok: true, status: 200, json: () => Promise.resolve({ documents }) } as unknown as Response;
+    }) as typeof fetch;
+    return { settle, linkedInRequests };
+  };
+  const settled = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+  test('stays with the citation it was asked for, and is there on going back', async () => {
+    const { settle, linkedInRequests } = slowLinkedIn();
+    word = installWordStub([linkedIn, intel]);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(0);
+    await screen.findByText('Retrieving the official source passage…');
+    word.putCursorOn(1);
+    await screen.findByText('(1000) The Intel passage.');
+
+    settle.resolve(passage('(350) The LinkedIn passage.'));
+    await settled();
+    assert.ok(screen.getByText('(1000) The Intel passage.'), 'the passage for the footnote the cursor is on stays');
+    assert.equal(screen.queryByText('(350) The LinkedIn passage.'), null, 'not replaced by an answer to another footnote');
+    assert.ok(screen.getByText('Footnote 2 context'));
+
+    word.putCursorOn(0);
+    await screen.findByText('(350) The LinkedIn passage.');
+    assert.equal(linkedInRequests.length, 1, 'held when it arrived, so going back sends nothing');
+  });
+
+  test('a failure arriving late is not shown under another footnote', async () => {
+    const { settle } = slowLinkedIn();
+    word = installWordStub([linkedIn, intel]);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(0);
+    await screen.findByText('Retrieving the official source passage…');
+    word.putCursorOn(1);
+    await screen.findByText('(1000) The Intel passage.');
+
+    settle.reject(new TypeError('Failed to fetch'));
+    await settled();
+    assert.ok(screen.getByText('(1000) The Intel passage.'));
+    assert.equal(screen.queryByText(/could not/), null);
+  });
+
+  test('coming back before it arrives waits for the same request', async () => {
+    const { settle, linkedInRequests } = slowLinkedIn();
+    word = installWordStub([linkedIn, intel]);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(0);
+    await screen.findByText('Retrieving the official source passage…');
+    word.putCursorOn(1);
+    await screen.findByText('(1000) The Intel passage.');
+    word.putCursorOn(0);
+    await screen.findByText('Retrieving the official source passage…');
+
+    settle.resolve(passage('(350) The LinkedIn passage.'));
+    await screen.findByText('(350) The LinkedIn passage.');
+    assert.equal(linkedInRequests.length, 1, 'every decision in the case is not queued for download twice');
+  });
+});
+
+test('a server that cannot be reached is said to be unreachable, not the source', async () => {
+  // Observed in Word with the dev server stopped and the pane still open: every citation not
+  // already retrieved read "The source could not be retrieved", a claim about the authority
+  // made when nothing had been asked of EUR-Lex at all.
+  globalThis.fetch = (() => Promise.reject(new TypeError('Failed to fetch'))) as typeof fetch;
+  const word = installWordStub(['AT.37990, EC Decision of 13 May 2009, para. 1000.']);
+  try {
+    render(<App />);
+    await paneReady();
+    word.putCursorOn(0);
+    await screen.findByText('Ibid could not reach its server, so nothing was retrieved. Open the official record below.');
+    assert.equal(screen.queryByText(/The source could not be retrieved/), null);
+  } finally {
+    word.remove();
+  }
 });
 
 /**

@@ -6,11 +6,11 @@ export type { DocumentStore, StoredDocument } from './document-store.ts';
 export { createStaticFiles, contentTypeFor, resolveWithinRoot } from './static-files.ts';
 export type { StaticAsset } from './static-files.ts';
 
-import type { CommissionCaseIndexLoader, CommissionDecision } from './commission-cases.ts';
-import { extractPdfText, sliceRecitals } from './pdf-text.ts';
+import { identifyCommissionCase, type CommissionCaseIdentity, type CommissionCaseIndexLoader, type CommissionDecision } from './commission-cases.ts';
+import { extractPdfText, locateRecitals, locateSections } from './pdf-text.ts';
 
-export { buildCommissionCaseIndex, createCommissionCaseIndexLoader, COMMISSION_CASE_DATASETS } from './commission-cases.ts';
-export type { CommissionCaseIndex, CommissionCaseIndexLoader, CommissionDecision } from './commission-cases.ts';
+export { buildCommissionCaseIndex, createCommissionCaseIndexLoader, identifyCommissionCase, COMMISSION_CASE_DATASETS } from './commission-cases.ts';
+export type { CommissionCaseIdentity, CommissionCaseIndex, CommissionCaseIndexLoader, CommissionDecision } from './commission-cases.ts';
 
 export type EuLookup = {
   source: 'curia' | 'eur-lex' | 'commission';
@@ -48,7 +48,11 @@ export type EuLookup = {
    * `describeDocument`.
    */
   caseName?: string;
-  locator?: { kind: 'point' | 'article'; start: number; paragraph?: number; end?: number };
+  locator?: {
+    kind: 'point' | 'article' | 'section'; start: number; paragraph?: number; end?: number;
+    /** A Commission decision's numbered sections, as cited: `9.1.3.3.7`, or `7.5` to `7.7`. */
+    sections?: Array<{ from: string; to?: string }>;
+  };
   /**
    * Every paragraph the citation actually names, ranges already expanded — so
    * "paras 40-44, 46 and 48" arrives as [40,41,42,43,44,46,48]. `locator` describes only
@@ -92,6 +96,14 @@ export type SourcePreview = {
    * shown an empty passage under their citation.
    */
   passage?: 'cited' | 'opening' | 'unpublished' | 'summary' | 'unreadable';
+  /**
+   * The paragraphs the citation named that are not in the text, where others it named are.
+   *
+   * Set only alongside `passage: 'cited'`, as the labels a reader would write — `1398`,
+   * `40–44`. A footnote citing three passages of which two are found shows those two, and
+   * without this they would be presented as the whole of what it cites.
+   */
+  unlocated?: string[];
   /**
    * Where the full text is, when `url` leads to something less than it.
    *
@@ -137,6 +149,25 @@ export type SourcePreview = {
    * text, so a change to it can change which decision the answer is.
    */
   confirmation?: 'pending';
+  /**
+   * Set where a Commission citation's number is not the case it names, and what Ibid did.
+   *
+   * `caseNumber` is the case shown instead — the one whose register title is the name the
+   * citation gives — and is absent where no single case carries that name, in which case no
+   * decision is shown at all. `citedTitle` is what the register files the cited number as, and
+   * is absent where the register has no such case. The reviewer is always told: showing a
+   * different case from the number written changes what the citation says.
+   */
+  numberMismatch?: { cited: string; citedTitle?: string; name: string; caseNumber?: string };
+  /**
+   * What the retrieved court document is, as its own heading states — set only where that is
+   * not what the citation called it.
+   *
+   * The document fetched is the one the citation's ECLI names, and a footnote can name an
+   * Advocate General's Opinion while calling it a judgment. The text shown is then the right
+   * text under the wrong description, and the reviewer is told rather than left to find out.
+   */
+  documentType?: 'judgment' | 'opinion' | 'order';
 };
 
 export type ResolveOptions = {
@@ -571,15 +602,21 @@ const MAX_CACHED_PREVIEWS = 512;
  * intervening text had been cited, are both misrepresentations of what was written. The
  * ellipsis is what distinguishes them on screen.
  */
-function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly number[]): string | undefined {
+function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly number[]): Excerpt | undefined {
   const runs = contiguousRuns(paragraphs).slice(0, MAX_RUNS);
   const passages: string[] = [];
+  const unlocated: string[] = [];
   for (const run of runs) {
     const raw = sliceByHeadingAnchor(html, pattern, run.from, { through: run.to });
     if (raw) passages.push(decodeHtml(raw).trim());
+    else unlocated.push(runLabel(run));
   }
   if (!passages.length) return undefined;
-  return passages.join('\n\n…\n\n').slice(0, MAX_EXCERPT);
+  return {
+    excerpt: passages.join('\n\n…\n\n').slice(0, MAX_EXCERPT),
+    passage: 'cited',
+    ...(unlocated.length ? { unlocated } : {}),
+  };
 }
 
 /**
@@ -595,7 +632,7 @@ function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly nu
  * `passage` is absent where the citation pinpointed nothing at all. Then the opening is
  * simply what there is to show, and there is nothing to admit.
  */
-type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' | 'unpublished' | 'summary' | 'unreadable' };
+type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' | 'unpublished' | 'summary' | 'unreadable'; unlocated?: string[] };
 
 /** The opening of the document, marked as the fallback it is. */
 function documentOpening(html: string, cited: boolean): Excerpt {
@@ -604,10 +641,11 @@ function documentOpening(html: string, cited: boolean): Excerpt {
 }
 
 function extractLegislativeLocator(html: string, locator?: EuLookup['locator'], paragraphs?: number[]): Excerpt {
-  if (!locator) return documentOpening(html, false);
+  // Sections are a Commission decision's structure; an act cited by one has no anchor here.
+  if (!locator || locator.kind === 'section') return documentOpening(html, false);
   if (locator.kind !== 'article') {
-    const recitals = extractCitedRuns(html, RECITAL_HEADING, paragraphs?.length ? paragraphs : [locator.start]);
-    return recitals ? { excerpt: recitals, passage: 'cited' } : documentOpening(html, true);
+    return extractCitedRuns(html, RECITAL_HEADING, paragraphs?.length ? paragraphs : [locator.start])
+      ?? documentOpening(html, true);
   }
 
   // A generous cap here only bounds a safety limit on raw HTML scanned, not the
@@ -692,6 +730,30 @@ function isSummaryPublication(html: string): boolean {
   return SUMMARY_PUBLICATION.test(html);
 }
 
+const OPINION_HEADING = /\bOPINION OF (?:MR |MRS |MS )?ADVOCATE[\s-]GENERAL\b|\bCONCLUSIONS DE (?:L['’]|M\. L['’]|MME L['’])AVOCAT/;
+const ORDER_HEADING = /\bORDER OF THE (?:COURT|GENERAL COURT|PRESIDENT|VICE-PRESIDENT)\b|\bORDONNANCE (?:DU|DE LA)\b/;
+const JUDGMENT_HEADING = /\bJUDGMENT OF THE (?:COURT|GENERAL COURT)\b|\bARRÊT (?:DE LA COUR|DU TRIBUNAL)\b/;
+
+/**
+ * The kind of document a CELLAR case-law text is, read from the heading it opens with:
+ * `JUDGMENT OF THE COURT (Grand Chamber)`, `OPINION OF ADVOCATE GENERAL RANTOS delivered on
+ * 15 December 2022`, `ORDER OF THE PRESIDENT OF THE GENERAL COURT`, or the French.
+ *
+ * Capitals only, and the earliest heading wins, because the lower-case phrases turn up in
+ * every judgment's own text ("after hearing the Opinion of the Advocate General"). Checked on
+ * 2026-09-17 against every document in the local cache and the corpus: each heading found
+ * agreed with its CELEX sector. Older documents open with no such heading at all, and for
+ * those this says nothing rather than guessing.
+ */
+export function documentTypeOf(html: string): 'judgment' | 'opinion' | 'order' | undefined {
+  const text = decodeHtml(html.slice(0, 200_000)).slice(0, 30_000);
+  const found = ([['opinion', OPINION_HEADING], ['order', ORDER_HEADING], ['judgment', JUDGMENT_HEADING]] as const)
+    .map(([type, pattern]) => ({ type, at: pattern.exec(text)?.index }))
+    .filter((heading): heading is { type: 'judgment' | 'opinion' | 'order'; at: number } => heading.at !== undefined)
+    .sort((a, b) => a.at - b.at);
+  return found[0]?.type;
+}
+
 function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
   const locator = lookup.locator;
   if (!locator || locator.kind !== 'point') return documentOpening(html, false);
@@ -700,7 +762,7 @@ function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
   const cited = lookup.paragraphs?.length ? lookup.paragraphs : expandRange(locator.start, locator.end);
   for (const pattern of JUDGMENT_POINT_HEADINGS) {
     const result = extractCitedRuns(html, pattern, cited);
-    if (result) return { excerpt: result, passage: 'cited' };
+    if (result) return result;
   }
   const opening = documentOpening(html, true);
   // Summary first: a summary publication has no numbered paragraphs at all, so the gap
@@ -939,13 +1001,22 @@ function fromDocumentContent(text: string): string {
  * disjoint citation reads "Points 62 and 65" rather than implying the span between them —
  * the label and the excerpt have to describe the same thing.
  */
+/** A run as a reader writes it: `1398`, or `40–44`. */
+const runLabel = (run: { from: number; to: number }) => (run.from === run.to ? `${run.from}` : `${run.from}–${run.to}`);
+
 function locatorLabel(lookup: EuLookup): string | undefined {
   const locator = lookup.locator;
   if (!locator) return undefined;
   if (locator.kind === 'article') return `Article ${locator.start}${locator.paragraph ? `(${locator.paragraph})` : ''}${locator.end ? `–${locator.end}` : ''}`;
+  if (locator.kind === 'section') {
+    const sections = (locator.sections ?? []).map((section) => (section.to ? `${section.from}–${section.to}` : section.from));
+    if (!sections.length) return undefined;
+    const listed = sections.length > 1 ? `${sections.slice(0, -1).join(', ')} and ${sections.at(-1)}` : sections[0];
+    return `${sections.length === 1 && !locator.sections?.[0].to ? 'Section' : 'Sections'} ${listed}`;
+  }
 
   const runs = contiguousRuns(lookup.paragraphs?.length ? lookup.paragraphs : expandRange(locator.start, locator.end));
-  const parts = runs.map((run) => (run.from === run.to ? `${run.from}` : `${run.from}–${run.to}`));
+  const parts = runs.map(runLabel);
   const listed = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
   return `${runs.length === 1 && runs[0].from === runs[0].to ? 'Point' : 'Points'} ${listed}`;
 }
@@ -1325,12 +1396,22 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
    * — probing both happen inside one slot: they are one lookup of one document, and item by
    * item is exactly how the interval used to be charged.
    *
-   * Two identifiers are tried, in order, and the second one matters more than it looks.
-   * The CELEX is *derived* — its sector letter comes from the document type, its year from
-   * the case number — whereas the ECLI is quoted verbatim from the footnote. Where CELLAR
-   * has never heard of the derived CELEX, asking it by the identifier the document itself
-   * stated is not a guess at a different document; it is the same document under the name
-   * its own court gave it.
+   * Two identifiers are tried, and the order between them decides which document is shown
+   * when they disagree. The CELEX is *derived* — its sector letter comes from the document
+   * type, its year from the case number — whereas the ECLI is quoted verbatim from the
+   * footnote. So the ECLI is asked first: it is the name the court gave the document the
+   * drafter wrote down, and the CELEX is Ibid's reading of the words around it.
+   *
+   * It used to be the other way round, with the ECLI only a fallback, and the two do
+   * disagree. The Commission's 2026 draft merger guidelines cite `Judgment of 15 December
+   * 2002, Superleague v FIFA, C-333/21, EU:C:2022:993, paragraph 251`; the word "Judgment"
+   * derived `62021CJ0333`, CELLAR served the judgment, and its paragraph 251 went on screen —
+   * but EU:C:2022:993 is Advocate General Rantos's Opinion (confirmed against CELLAR's own
+   * metadata on 2026-09-17), and the date is the Opinion's too. Asking by the ECLI costs the
+   * same one request whenever it answers, which is every time it is well formed.
+   *
+   * Where CELLAR has never heard of the CELEX, asking it by the ECLI is not a guess at a
+   * different document either; it is the same document under the name its own court gave it.
    *
    * This is not a rare corner. Every one of the identifiers the corpus run recorded as
    * "unavailable" — recent orders of the President of the General Court and of the
@@ -1345,9 +1426,10 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
   }
 
   function cellarTargets(celex: string, ecli: string | undefined, alternatives: readonly string[] = []): CellarTarget[] {
-    const targets: CellarTarget[] = [celexTarget(celex)];
+    const targets: CellarTarget[] = [];
     const byEcli = ecli && ecliUrl(ecli, cellarBaseUrl);
     if (ecli && byEcli) targets.push({ id: `ecli:${ecli}`, url: byEcli, year: ecliYear(ecli) });
+    targets.push(celexTarget(celex));
     // Last, and only the well-formed ones: an alternative is a name for the document already
     // being asked for, so it is worth a request once the two identifiers the citation itself
     // carries have produced nothing, and worth nothing before that.
@@ -1361,6 +1443,29 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
   async function loadCellarDocument(celex: string, ecli?: string, alternatives?: readonly string[]): Promise<LoadedDocument> {
     const targets = cellarTargets(celex, ecli, alternatives);
 
+    // Nothing held under a derived identifier is served until the ECLI has been asked. A
+    // store written before the ECLI came first can hold the judgment under `62021CJ0333` for
+    // a footnote whose ECLI names the Opinion, and serving it would put back exactly the
+    // wrong document the order exists to prevent. Once the ECLI answers, its document is held
+    // under its own key and this costs nothing more; an ECLI CELLAR does not know costs one
+    // `404` per lookup, before the held document is confirmed as it always was.
+    const named = targets[0]?.id === `ecli:${ecli}` ? targets[0] : undefined;
+    if (named && !(await isHeld(named))) {
+      const found = await onTheWire(() => probeCellar(named, renditionsFor(named.year)));
+      if (found) return found;
+      return loadHeldOrProbe(targets.slice(1));
+    }
+    return loadHeldOrProbe(targets);
+  }
+
+  async function isHeld(target: CellarTarget): Promise<boolean> {
+    for (const rendition of renditionsFor(target.year)) {
+      if (await documentStore.get(documentKey(target, rendition))) return true;
+    }
+    return false;
+  }
+
+  async function loadHeldOrProbe(targets: readonly CellarTarget[]): Promise<LoadedDocument> {
     for (const target of targets) {
       for (const rendition of renditionsFor(target.year)) {
         const key = documentKey(target, rendition);
@@ -1409,7 +1514,10 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
    * times in a brief is retrieved once.
    */
   function previewKey(celex: string, lookup: EuLookup, source: SourcePreview['source']): string {
-    return [celex, source, lookup.locator?.kind ?? '', lookup.locator?.start ?? '',
+    // The ECLI too, because it is retrieved first and can name a different document from the
+    // CELEX sent beside it: a judgment and the Opinion in the same case share `62021CJ0333`
+    // wherever a footnote calls the Opinion a judgment.
+    return [celex, lookup.ecli ?? '', source, lookup.locator?.kind ?? '', lookup.locator?.start ?? '',
       lookup.locator?.paragraph ?? '', lookup.locator?.end ?? '', (lookup.paragraphs ?? []).join('.')].join(':');
   }
 
@@ -1434,9 +1542,15 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     // markup (see sliceByHeadingAnchor), so they need different extraction —
     // both run on the raw HTML, before it is decoded.
     const caseLaw = source === 'CURIA' ? extractJudgmentPoint(html, lookup) : undefined;
+    // What the document says it is, where that is not what the citation called it — which is
+    // how a footnote calling an Opinion a judgment reaches the pane, now that the ECLI decides
+    // which document is fetched. Titled as what it is, and the reviewer told.
+    const retrieved = caseLaw ? documentTypeOf(html) : undefined;
+    const differs = retrieved && retrieved !== (lookup.documentType ?? 'judgment') ? retrieved : undefined;
     const base: SourcePreview = caseLaw
       ? {
-          title: describeDocument(lookup), ...caseLaw, url, source, locator: locatorLabel(lookup), language,
+          title: describeDocument(differs ? { ...lookup, documentType: differs } : lookup), ...caseLaw,
+          ...(differs ? { documentType: differs } : {}), url, source, locator: locatorLabel(lookup), language,
           // The grounds this document does not contain, on the service that has them. Only
           // here: everywhere else `url` already leads to the whole text, and a second link
           // beside it would say there is more to find when there is not.
@@ -1598,25 +1712,46 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
    */
   async function resolveCommission(lookup: EuLookup, confirm: ResolveOptions['confirm']): Promise<SourcePreview[]> {
     const locator = locatorLabel(lookup);
-    const register: SourcePreview = {
-      title: describeDocument(lookup), source: 'European Commission', url: commissionUrl(lookup), locator,
-      excerpt: `Open the European Commission case register to inspect the published decision and related documents${locator ? `, focusing on ${locator.toLowerCase()}` : ''}.`,
+    // The case as the register titles it where that is known, and otherwise as the citation
+    // wrote it: "M.8713 – TATA STEEL / THYSSENKRUPP / JV", not the bare number.
+    const titled = (identity?: CommissionCaseIdentity) => identity?.caseNumber && identity.title
+      ? `${identity.caseNumber} – ${identity.title}`
+      : lookup.caseName ? `${lookup.value} – ${lookup.caseName}` : describeDocument(lookup);
+    const registerFor = (identity?: CommissionCaseIdentity): SourcePreview => {
+      // A number known to be wrong, with no case carrying the name, has no page of its own
+      // worth opening: the register's search for the name is the useful link.
+      if (identity?.numberMismatch && !identity.caseNumber) {
+        return {
+          title: titled(), source: 'European Commission', locator,
+          url: `https://competition-cases.ec.europa.eu/search?query=${encodeURIComponent(identity.numberMismatch.name)}`,
+          excerpt: `Search the European Commission case register for ${identity.numberMismatch.name}.`,
+        };
+      }
+      return {
+        title: titled(identity), source: 'European Commission', url: commissionUrl({ ...lookup, value: identity?.caseNumber ?? lookup.value }), locator,
+        excerpt: `Open the European Commission case register to inspect the published decision and related documents${locator ? `, focusing on ${locator.toLowerCase()}` : ''}.`,
+      };
     };
-    if (!options.commissionCases) return [register];
+    if (!options.commissionCases) return [registerFor()];
 
+    let identity: CommissionCaseIdentity;
     let decisions: CommissionDecision[] = [];
     try {
       const index = await options.commissionCases.get();
-      decisions = index.find(lookup.caseNumber ?? lookup.value);
+      identity = identifyCommissionCase(index, lookup.caseNumber ?? lookup.value, lookup.caseName);
+      decisions = identity.caseNumber ? index.find(identity.caseNumber) : [];
     } catch {
-      return [register];
+      return [registerFor()];
     }
-    if (!decisions.length) return [register];
 
     let pending = false;
-    const marked = (previews: SourcePreview[]): SourcePreview[] => pending
-      ? previews.map((preview) => ({ ...preview, confirmation: 'pending' as const }))
-      : previews;
+    const mismatch = identity.numberMismatch
+      ? { numberMismatch: { ...identity.numberMismatch, ...(identity.caseNumber ? { caseNumber: identity.caseNumber } : {}) } }
+      : {};
+    const marked = (previews: SourcePreview[]): SourcePreview[] => previews.map((preview) => ({
+      ...preview, ...mismatch, ...(pending ? { confirmation: 'pending' as const } : {}),
+    }));
+    if (!decisions.length) return marked([registerFor(identity)]);
 
     // Which decision was meant is settled by which one actually contains the cited recital.
     //
@@ -1632,32 +1767,48 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     //
     // Where two carry it the citation genuinely does not distinguish them, and the reviewer is
     // shown both rather than handed either.
-    if (lookup.locator?.kind === 'point' && decisions.length <= MAX_DECISION_CANDIDATES) {
-      const cited = lookup.paragraphs?.length
-        ? lookup.paragraphs
-        : expandRange(lookup.locator.start, lookup.locator.end);
-      const runs = contiguousRuns(cited).slice(0, MAX_RUNS);
+    const pinpointed = lookup.locator?.kind === 'point' || (lookup.locator?.kind === 'section' && lookup.locator.sections?.length);
+    if (lookup.locator && pinpointed && decisions.length <= MAX_DECISION_CANDIDATES) {
+      // Recitals or numbered sections: the same reading of every candidate, anchored differently.
+      const sections = lookup.locator.kind === 'section' ? (lookup.locator.sections ?? []).slice(0, MAX_RUNS) : [];
+      const runs = lookup.locator.kind === 'point'
+        ? contiguousRuns(lookup.paragraphs?.length ? lookup.paragraphs : expandRange(lookup.locator.start, lookup.locator.end)).slice(0, MAX_RUNS)
+        : [];
+      const wanted = sections.length ? sections.map((section) => (section.to ? `${section.from}–${section.to}` : section.from)) : runs.map(runLabel);
+      const locate = (text: string) => {
+        if (sections.length) return locateSections(text, sections, { maxLength: MAX_EXCERPT });
+        const located = locateRecitals(text, runs, { maxLength: MAX_EXCERPT });
+        return { excerpt: located.excerpt, unlocated: located.unlocated.map(runLabel) };
+      };
 
-      const read: Array<{ decision: CommissionDecision; readable: boolean; verifiedAt: number; text: string; passage?: string }> = [];
+      const read: Array<{ decision: CommissionDecision; readable: boolean; verifiedAt: number; text: string; passage?: string; unlocated: string[] }> = [];
       for (const decision of decisions) {
         const loaded = await loadDecisionText(decision.url, confirm);
         if (!loaded) continue;
         if (loaded.pending) pending = true;
+        const located = loaded.readable ? locate(loaded.text) : undefined;
         read.push({
           decision,
           readable: loaded.readable,
           verifiedAt: loaded.verifiedAt,
           text: loaded.text,
-          passage: loaded.readable ? sliceRecitals(loaded.text, runs, { maxLength: MAX_EXCERPT }) : undefined,
+          passage: located?.excerpt,
+          unlocated: located ? located.unlocated : wanted,
         });
-        // Two candidates carrying the same recital is an ambiguity, and reading the rest
+        // Two candidates carrying every cited recital is an ambiguity, and reading the rest
         // cannot resolve it — so nothing is gained by downloading them.
-        if (read.filter((candidate) => candidate.passage).length > 1) break;
+        if (read.filter((candidate) => candidate.passage && !candidate.unlocated.length).length > 1) break;
       }
 
-      const carrying = read.filter((candidate) => candidate.passage);
+      // Where the citation names several recitals, the decisions carrying the most of them. A
+      // footnote citing recitals 189, 1324 and 1398 is not citing a short procedural decision
+      // in the same case that happens to reach 189: that one lacks two passages the footnote
+      // says are in the decision it means. With a single recital this is exactly "carries it".
+      const found = (candidate: typeof read[number]) => wanted.length - candidate.unlocated.length;
+      const most = Math.max(0, ...read.filter((candidate) => candidate.passage).map(found));
+      const carrying = read.filter((candidate) => candidate.passage && found(candidate) === most);
       const previewOf = (candidate: typeof read[number]) => ({
-        title: describeDocument(lookup),
+        title: titled(identity),
         source: 'European Commission' as const,
         url: candidate.decision.url,
         locator,
@@ -1665,7 +1816,11 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       });
 
       if (carrying.length === 1) {
-        return marked([{ ...previewOf(carrying[0]), excerpt: carrying[0].passage as string, passage: 'cited' as const }]);
+        const [chosen] = carrying;
+        return marked([{
+          ...previewOf(chosen), excerpt: chosen.passage as string, passage: 'cited' as const,
+          ...(chosen.unlocated.length ? { unlocated: chosen.unlocated } : {}),
+        }]);
       }
       // Nothing carried it, and there was only ever one decision to look in: this is a
       // pinpoint that is not there, or a decision that numbers nothing — said as such rather
@@ -1682,7 +1837,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       ? ` One of ${decisions.length} decisions published in this case.`
       : '';
     return marked(decisions.map((decision) => ({
-      title: describeDocument(lookup),
+      title: titled(identity),
       source: 'European Commission' as const,
       url: decision.url,
       locator,

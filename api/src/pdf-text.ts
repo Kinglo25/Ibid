@@ -223,7 +223,7 @@ const RECITAL_ANCHOR = /^[ \t]*\((\d{1,4})\)/gm;
 export type RecitalRun = { from: number; to: number };
 
 /**
- * The text of the recitals a citation actually named.
+ * The text of the recitals a citation actually named, and the ones it named that are not there.
  *
  * A run is sliced from its first recital to the first anchor numbered past its last, rather
  * than to a specific closing number, so a citation whose final recital is missing or
@@ -231,32 +231,126 @@ export type RecitalRun = { from: number; to: number };
  * the way the HTML path joins them, so a disjoint citation reads as two passages with the gap
  * marked rather than as the span between them.
  *
- * Returns `undefined` when the first recital of every run is absent — which is the honest
+ * `excerpt` is absent when the first recital of every run is absent — which is the honest
  * answer for a decision that numbers nothing (one of the eleven sampled has 7,564 characters
  * of text and no numbered recitals at all) and for a pinpoint that is simply not there.
+ * `unlocated` is every run whose first recital is not there, so that a footnote citing three
+ * passages and finding two is shown as two of three rather than as the whole of it.
  */
-export function sliceRecitals(
+export function locateRecitals(
   text: string,
   runs: readonly RecitalRun[],
   options: { maxLength?: number } = {},
-): string | undefined {
+): { excerpt?: string; unlocated: RecitalRun[] } {
   const maxLength = options.maxLength ?? 20_000;
   const anchors: Array<{ number: number; index: number }> = [];
   for (const match of text.matchAll(RECITAL_ANCHOR)) {
     anchors.push({ number: Number(match[1]), index: match.index });
   }
-  if (!anchors.length) return undefined;
 
   const passages: string[] = [];
+  const unlocated: RecitalRun[] = [];
   for (const run of runs) {
     const start = anchors.find((anchor) => anchor.number === run.from);
-    if (!start) continue;
+    if (!start) {
+      unlocated.push(run);
+      continue;
+    }
     // The first anchor that begins after this one and is numbered beyond the run. Position is
     // checked as well as number because a decision's numbering is not globally ascending —
     // annexes restart it — and an earlier `(1)` must not be mistaken for this run's end.
     const end = anchors.find((anchor) => anchor.index > start.index && anchor.number > run.to);
     passages.push(text.slice(start.index, end ? end.index : undefined).trim());
   }
-  if (!passages.length) return undefined;
-  return passages.join('\n\n…\n\n').slice(0, maxLength);
+  return passages.length
+    ? { excerpt: passages.join('\n\n…\n\n').slice(0, maxLength), unlocated }
+    : { unlocated };
+}
+
+/** `locateRecitals`, for a caller that needs only the text. */
+export function sliceRecitals(
+  text: string,
+  runs: readonly RecitalRun[],
+  options: { maxLength?: number } = {},
+): string | undefined {
+  return locateRecitals(text, runs, options).excerpt;
+}
+
+export type SectionRun = { from: string; to?: string };
+
+/** `9.1.3.3.7` as its components, for ordering one section against another. */
+const components = (section: string) => section.split('.').map(Number);
+
+/** Whether `a` comes after `b` in a decision's numbering: `9.1.4` after `9.1.3.3.7`. */
+function after(a: number[], b: number[]): boolean {
+  for (let at = 0; at < Math.min(a.length, b.length); at += 1) {
+    if (a[at] !== b[at]) return a[at] > b[at];
+  }
+  return false;
+}
+
+/** Whether `a` is `b` or one of its subsections: `9.1.3.3.7.2` is within `9.1.3.3.7`. */
+function within(a: number[], b: number[]): boolean {
+  return a.length >= b.length && b.every((part, at) => a[at] === part);
+}
+
+/**
+ * A line opening with a section number, and what follows it. `(299)` is a recital and never
+ * matches; a table of contents' entry does, and is told apart by its dot leaders below.
+ */
+const SECTION_HEADING = /^[ \t]*(\d+(?:\.\d+)*)\.?[ \t]+(?=[\p{Lu}‘“"'[(])/gmu;
+
+/**
+ * The text of the numbered sections a citation named, and the ones it named that are not there.
+ *
+ * A section runs from its heading to the next heading that is neither inside it nor before it
+ * in the numbering. Both conditions are needed. "Inside" keeps `9.1.3.3.7.1` within
+ * `9.1.3.3.7`. "Before" keeps a wrapped line that happens to open with a number — `1.5
+ * million tonnes`, `2019 The` — from ending the section, since no real heading after
+ * `9.1.3.3.7` is numbered below it. Measured on Norsk Hydro/Alumetal (M.10658), section
+ * 9.1.3.3.7 is recitals (299) to (321) and ends at 9.1.3.3.8.
+ *
+ * The table of contents repeats every heading first, with dot leaders on the entry's line or,
+ * where a long title wraps, on the line after. Those are skipped, so a section is found where
+ * the decision sets it out and not where it lists it.
+ */
+export function locateSections(
+  text: string,
+  runs: readonly SectionRun[],
+  options: { maxLength?: number } = {},
+): { excerpt?: string; unlocated: string[] } {
+  const maxLength = options.maxLength ?? 20_000;
+  const headings: Array<{ number: string; parts: number[]; index: number }> = [];
+  for (const match of text.matchAll(SECTION_HEADING)) {
+    const lineEnd = text.indexOf('\n', match.index);
+    const nextEnd = lineEnd < 0 ? -1 : text.indexOf('\n', lineEnd + 1);
+    const entry = text.slice(match.index, nextEnd < 0 ? undefined : nextEnd);
+    if (/\.{4,}|…{2,}/.test(entry)) continue;
+    headings.push({ number: match[1], parts: components(match[1]), index: match.index });
+  }
+
+  const passages: string[] = [];
+  const unlocated: string[] = [];
+  for (const run of runs) {
+    const label = run.to ? `${run.from}–${run.to}` : run.from;
+    const start = headings.find((heading) => heading.number === run.from);
+    if (!start) {
+      unlocated.push(label);
+      continue;
+    }
+    const last = run.to ? headings.find((heading) => heading.index > start.index && heading.number === run.to) : start;
+    if (!last) unlocated.push(run.to as string);
+    const through = last ?? start;
+    const end = headings.find((heading) => heading.index > through.index
+      && !within(heading.parts, through.parts) && after(heading.parts, through.parts));
+    passages.push(text.slice(start.index, end ? end.index : undefined).trim());
+  }
+  if (!passages.length) return { unlocated };
+  const joined = passages.join('\n\n…\n\n');
+  // A section can run to tens of thousands of characters. Cut where a line ends and say so,
+  // rather than stopping mid-word as though that were where the section stops.
+  const excerpt = joined.length > maxLength
+    ? `${joined.slice(0, joined.lastIndexOf('\n', maxLength) > 0 ? joined.lastIndexOf('\n', maxLength) : maxLength).trimEnd()}\n[…]`
+    : joined;
+  return { excerpt, unlocated };
 }

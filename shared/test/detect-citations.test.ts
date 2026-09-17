@@ -615,6 +615,187 @@ describe('Commission case locators', () => {
   });
 });
 
+describe('the name a Commission case is cited under', () => {
+  // Kept to check the number against: the Commission's 2026 draft merger guidelines cite
+  // `M.7967 – Ball/Rexam`, and M.7967 is another case. Every shape below is from those
+  // guidelines or the guidelines on exclusionary abuses.
+  const nameOf = (text: string, value: string) => find(text, value)?.caseName;
+
+  test('after a dash, up to where the citation moves on', () => {
+    assert.equal(nameOf('See, e.g., Case M.7967 – Ball/Rexam; and Case M.8713 – Tata Steel/thyssenkrupp/JV, paragraphs 1318 et seq.', 'M.7967'), 'Ball/Rexam');
+    assert.equal(nameOf('See, e.g., Case M.7967 – Ball/Rexam; and Case M.8713 – Tata Steel/thyssenkrupp/JV, paragraphs 1318 et seq.', 'M.8713'), 'Tata Steel/thyssenkrupp/JV');
+    assert.equal(nameOf('Case M.10301 – CVC/Ethniki (patients’ health data)', 'M.10301'), 'CVC/Ethniki');
+    assert.equal(nameOf('Case M.7932 – Dow/DuPont and Case M.7278 – General Electric/Alstom (Thermal Power), paragraph 3.', 'M.7932'), 'Dow/DuPont');
+    assert.equal(nameOf('Case M.1616 – BSCH/Champalimaud. The Commission also adopted decisions.', 'M.1616'), 'BSCH/Champalimaud');
+    assert.equal(nameOf('Case M.12052 – UniCredit/Banco BPM.', 'M.12052'), 'UniCredit/Banco BPM');
+    assert.equal(nameOf('Case M.9728 –Altice/Omers/Allianz/Covage, paragraph 12.', 'M.9728'), 'Altice/Omers/Allianz/Covage');
+    assert.equal(nameOf('Case AT.40437 – Apple – App Store (music streaming), paragraph 7.', 'AT.40437'), 'Apple – App Store');
+  });
+
+  test('without a dash only where it is a merger’s Party/Party', () => {
+    assert.equal(nameOf('Case M.6461 Outokumpu/Inoxum, paragraphs 496-510.', 'M.6461'), 'Outokumpu/Inoxum');
+    assert.equal(nameOf('AT.37990, EC Decision of 22 September 2023, para. 1(c).', 'AT.37990'), undefined);
+    assert.equal(nameOf('Case AT.39740 Google Shopping, paragraph 12.', 'AT.39740'), undefined, 'no slash and no dash: not taken as a name');
+  });
+
+  test('is not turned loose as a short form for the rest of the document', () => {
+    const [, later] = getCitationContextsForFootnotes([
+      'Case M.8713 – Tata Steel/thyssenkrupp/JV, paragraph 189.',
+      'Tata Steel/thyssenkrupp/JV, paragraph 12.',
+    ]);
+    assert.deepEqual(later, []);
+  });
+});
+
+describe('a Commission decision cited by its numbered sections', () => {
+  // Every shape from the Commission's two 2026 sets of guidelines.
+  const locatorOf = (text: string, value: string) => find(text, value)?.locator;
+
+  test('one section, a range, and a list', () => {
+    assert.deepEqual(locatorOf('See, e.g., Case M.10658 – Norsk Hydro/Alumetal, section 9.1.3.3.7.', 'M.10658'),
+      { kind: 'section', start: 9, sections: [{ from: '9.1.3.3.7' }] });
+    assert.deepEqual(locatorOf('Case M.11071 – Lufthansa/MEF/ITA, Sections 7.5-7.7.', 'M.11071'),
+      { kind: 'section', start: 7, sections: [{ from: '7.5', to: '7.7' }] });
+    assert.deepEqual(locatorOf('Case AT.40670 – Google - Adtech and Data-related practices, sections 8.3.4.1 and 8.4.4.1.', 'AT.40670'),
+      { kind: 'section', start: 8, sections: [{ from: '8.3.4.1' }, { from: '8.4.4.1' }] });
+  });
+
+  test('each case keeps its own section, and one without takes none', () => {
+    const text = 'Case M.11793 – Mytheresa/YNAP, Section 6.2.7, and Case M.10615 – Booking/eTraveli, Section 6.4.';
+    assert.deepEqual(locatorOf(text, 'M.11793')?.sections, [{ from: '6.2.7' }]);
+    assert.deepEqual(locatorOf(text, 'M.10615')?.sections, [{ from: '6.4' }]);
+    assert.equal(locatorOf('Case M.7967 – Ball/Rexam and Case M.8713 – Tata Steel, section 5.', 'M.7967'), undefined);
+  });
+
+  test("an annex's section is not the decision's", () => {
+    assert.equal(locatorOf('Case M.7932 – Dow/DuPont, Annex 5, Section 6.', 'M.7932'), undefined);
+  });
+
+  test('a paragraph pinpoint is still a paragraph pinpoint', () => {
+    assert.equal(locatorOf('Case M.8713 – Tata Steel/thyssenkrupp/JV, paragraphs 189 et seq.', 'M.8713')?.kind, 'point');
+  });
+});
+
+/**
+ * Every text below is a footnote of the Commission's 2026 draft merger guidelines, and every
+ * one put a passage the drafter never cited on screen under a case they did cite. Found by
+ * comparing detection against an answer key built from the published PDF without reference
+ * to what detection reported — `scripts/answer-keys/`.
+ */
+describe('a Commission case takes only its own pinpoint', () => {
+  const citation = (text: string, value: string) => find(text, value);
+
+  test('not the paragraph of the case cited after it in the same sentence (footnote 143)', () => {
+    const text = 'See, e.g., Case M.7278 – General Electric/Alstom (Thermal Power - Renewable Power & Grid Business), Section 8.7.3 and Case M.11177 – Pfizer/Seagen, paragraph 183.';
+    assert.deepEqual(citation(text, 'M.7278')?.locator, { kind: 'section', start: 8, sections: [{ from: '8.7.3' }] });
+    assert.equal(citation(text, 'M.7278')?.pinpoint, undefined);
+    assert.deepEqual(citation(text, 'M.11177')?.pinpoint, { paragraphs: [183] });
+  });
+
+  test('a case with no pinpoint of its own takes none from the next (footnote 144)', () => {
+    const text = 'See, e.g., Cases M.7932 - Dow/DuPont and Case M.7278 – General Electric/Alstom (Thermal Power - Renewable Power & Grid Business), paragraph 387 and Section 8.7.4.';
+    assert.equal(citation(text, 'M.7932')?.locator, undefined);
+    assert.deepEqual(citation(text, 'M.7278')?.pinpoint, { paragraphs: [387] });
+  });
+
+  test('nor from a judgment cited after it', () => {
+    const text = 'See, e.g., Case M.7612 – Hutchison 3G UK/Telefonica UK, and Judgment of 13 July 2023, European Commission v CK Telecoms UK Investments Ltd, C-376/20 P, EU:C:2023:561, paragraph 165.';
+    assert.equal(citation(text, 'M.7612')?.locator, undefined);
+  });
+
+  test('a parenthesis describing which decision is meant is not a pinpoint (footnote 472)', () => {
+    const text = 'Case M.1616 –  BSCH/Champalimaud (Article 21(3) decision of 20.07.1999), paragraphs 65-67; Case M.10494 – VIG/AEGON CEE, paragraph 32.';
+    const bsch = citation(text, 'M.1616');
+    assert.equal(bsch?.locator?.kind, 'point');
+    assert.deepEqual(bsch?.pinpoint, { paragraphs: [65, 66, 67] });
+    assert.deepEqual(citation('Case M.4197 – E.ON/Endesa (decision of 20.12.2006), paragraph 25.', 'M.4197')?.pinpoint, { paragraphs: [25] });
+  });
+
+  test('nor from the sentence after it (footnote 432)', () => {
+    const text = 'See Case M.1346 – EDF / London Electricity; Case M.567 – Lyonnaise des Eaux / Northumbrian Water. The application of Article 21 EUMR has also been considered in a number of other cases.';
+    assert.equal(citation(text, 'M.567')?.locator, undefined);
+    assert.deepEqual(citation('Case M.8124 – Microsoft/LinkedIn, para. 350. See also recital 12.', 'M.8124')?.pinpoint, { paragraphs: [350] },
+      'an abbreviation before the pinpoint is not the end of the sentence');
+  });
+
+  test("an annex's paragraph is not the decision's", () => {
+    assert.equal(citation('See, e.g., Case M.9730 – FCA/PSA, Economic Annex, paragraph 45.', 'M.9730')?.locator, undefined);
+    assert.equal(citation('See, e.g., Case M.10896 – Orange/MásMóvil, Annex A, paragraph 5 et seq.', 'M.10896')?.locator, undefined);
+    assert.equal(citation('See, e.g., Case M.7612 – H3G UK/Telefónica UK, Annex A, paragraphs 96-100 and Section 3.1.', 'M.7612')?.locator, undefined);
+    assert.deepEqual(citation('See, e.g., Case M.7932 – Dow/DuPont, paragraphs 2337–2352 and Annex 5.', 'M.7932')?.locator,
+      { kind: 'point', start: 2337, paragraph: undefined, end: 2352 }, 'an annex named after the pinpoint takes nothing from it');
+  });
+});
+
+describe('a lettered paragraph is not the paragraph its number names', () => {
+  // Orange/MásMóvil numbers paragraphs inserted into its decision `1605a` and `1694b`; the
+  // guidelines cite three of them. Read as 1605, the pane showed the paragraph before the one
+  // cited.
+  test('refused, rather than read as its number', () => {
+    assert.equal(find('See, e.g., Case M.10896 – Orange/MásMóvil, paragraph 1605a.', 'M.10896')?.locator, undefined);
+    assert.equal(find('Case M.10896 – Orange/MásMóvil, paragraph 1694b; Case M.7000 – Liberty Global/Ziggo, paragraph 373.', 'M.10896')?.locator, undefined);
+    assert.equal(find('Directive 2002/58/EC, Article 15a', 'Directive 2002/58/EC')?.locator, undefined);
+  });
+
+  test('the forms that only look similar still read', () => {
+    assert.deepEqual(find('Case C-131/12, ECLI:EU:C:2014:317, para. 1(c).', 'ECLI:EU:C:2014:317')?.locator,
+      { kind: 'point', start: 1, paragraph: undefined, end: undefined });
+    assert.equal(find('Regulation (EU) 2016/679, Article 17(1)(b)', 'Regulation (EU) 2016/679')?.locator?.start, 17);
+    assert.equal(find('Case M.10896 – Orange/MásMóvil, paragraph 1605 and 1606.', 'M.10896')?.locator?.start, 1605);
+  });
+});
+
+describe('an act named in the title of another act', () => {
+  // Footnote 47 of the 2026 draft merger guidelines. The paragraphs are the Form's, in Annex I
+  // to Regulation 2023/914; the acts the title names were given them.
+  const text = 'See also Annex I to the Commission Implementing Regulation (EU) 2023/914 of 20 April 2023 implementing Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings and repealing Commission Regulation (EC) No 802/2004, Form Relating to the Notification of a Concentration Pursuant to Council Regulation (EC) No 139/2004, paragraphs 13-14.';
+
+  test('takes no pinpoint that belongs to the act whose title it is in', () => {
+    const acts = detectCitations(text).filter((citation) => citation.source === 'eur-lex');
+    assert.deepEqual(acts.map((citation) => citation.celex), ['32023R0914', '32004R0139', '32004R0802', '32004R0139']);
+    assert.deepEqual(acts.map((citation) => citation.locator), [undefined, undefined, undefined, undefined]);
+  });
+
+  test('an act cited for itself keeps its pinpoint', () => {
+    assert.equal(find('See Regulation (EU) 2022/1925, Article 6(5).', 'Regulation (EU) 2022/1925')?.locator?.start, 6);
+    assert.equal(find('Undertakings operating under Regulation (EU) 2022/1925, Article 6(5), must comply.', 'Regulation (EU) 2022/1925')?.locator?.start, 6,
+      '"under" alone is prose; it is a title only where an instrument was named before it');
+  });
+});
+
+describe('pinpoints cited "et seq."', () => {
+  // From the Commission's 2026 draft merger guidelines, footnote 28. The list stopped at the
+  // first "et seq.", so the pane showed recital 189 as all of what this footnote cites.
+  test('keeps every paragraph of a list whose items are each "et seq."', () => {
+    const [citation] = detectCitations('See, e.g., Case M.8713 – Tata Steel/thyssenkrupp/JV, paragraphs 189 et seq., 1324 et seq. and 1398 et seq.');
+    assert.deepEqual(citation.pinpoint, { paragraphs: [189, 1324, 1398], following: [189, 1324, 1398] });
+    assert.equal(citation.locator?.start, 189);
+  });
+
+  test('and does not reach across the semicolon into the next case', () => {
+    // Footnote 30 of the same guidelines.
+    const text = 'See, e.g., Case M.7932 – Dow/DuPont, paragraphs 1975 et seq.; Case M.8084 – Bayer/Monsanto, paragraphs 61 et seq., 1004 et seq.; and Case M.11177 – Pfizer/Seagen, paragraphs 18-20, 179-185.';
+    assert.deepEqual(find(text, 'M.7932')?.pinpoint, { paragraphs: [1975], following: [1975] });
+    assert.deepEqual(find(text, 'M.8084')?.pinpoint, { paragraphs: [61, 1004], following: [61, 1004] });
+    assert.deepEqual(find(text, 'M.11177')?.pinpoint, { paragraphs: [18, 19, 20, 179, 180, 181, 182, 183, 184, 185] },
+      'a list with no "et seq." carries no `following`');
+  });
+
+  test('reads the other spellings: ff., et seqq., and the French et s. and et suiv.', () => {
+    assert.deepEqual(detectCitations('Case M.8124, paragraph 350 ff.')[0].pinpoint, { paragraphs: [350], following: [350] });
+    assert.deepEqual(detectCitations('Case M.8124, paragraphs 350 et seqq.')[0].pinpoint, { paragraphs: [350], following: [350] });
+    // French "et" is also a joiner, which is exactly what the list used to be split on.
+    assert.deepEqual(detectCitations('Affaire AT.39740, points 40 et s. et 52 et suiv.')[0].pinpoint,
+      { paragraphs: [40, 52], following: [40, 52] });
+    assert.deepEqual(detectCitations('Affaire AT.39740, points 40 et 52.')[0].pinpoint, { paragraphs: [40, 52] });
+  });
+
+  test('marks only the items that say so', () => {
+    const [citation] = detectCitations('Case C-413/14 P, paras 40–44, 46 et seq. and 48.');
+    assert.deepEqual(citation.pinpoint, { paragraphs: [40, 41, 42, 43, 44, 46, 48], following: [46] });
+  });
+});
+
 describe('result set', () => {
   test('returns citations in document order', () => {
     const text = 'Directive 2002/58/CE, then Case C-293/12, then C(2019) 3288.';

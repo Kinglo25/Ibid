@@ -1,0 +1,695 @@
+{
+ "about": "Gaps already known in how Ibid reads the 2026 draft merger guidelines, each with the reason it is accepted for now. Written from the run of 2026-09-17, after the fixes that run prompted. See scripts/answer-key.mjs: anything not listed here fails the check, and so does anything listed that no longer happens.",
+ "accepted": [
+  {
+   "note": "22",
+   "outcome": "merged",
+   "identity": "read as part of footnote 21",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "68",
+   "outcome": "merged",
+   "identity": "read as part of footnote 67",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "145",
+   "outcome": "merged",
+   "identity": "read as part of footnote 144",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "236",
+   "outcome": "merged",
+   "identity": "read as part of footnote 235",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "281",
+   "outcome": "merged",
+   "identity": "read as part of footnote 280",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "284",
+   "outcome": "merged",
+   "identity": "read as part of footnote 283",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "325",
+   "outcome": "merged",
+   "identity": "read as part of footnote 324",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "342",
+   "outcome": "merged",
+   "identity": "read as part of footnote 341",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "379",
+   "outcome": "merged",
+   "identity": "read as part of footnote 378",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "393",
+   "outcome": "merged",
+   "identity": "read as part of footnote 392",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "410",
+   "outcome": "merged",
+   "identity": "read as part of footnote 409",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "420",
+   "outcome": "merged",
+   "identity": "read as part of footnote 419",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "430",
+   "outcome": "merged",
+   "identity": "read as part of footnote 429",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "439",
+   "outcome": "merged",
+   "identity": "read as part of footnote 438",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "470",
+   "outcome": "merged",
+   "identity": "read as part of footnote 469",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "475",
+   "outcome": "merged",
+   "identity": "read as part of footnote 474",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": "temporary market distortions or shocks due to cyclical peaks, downturns or crise",
+   "reason": "an item of a numbered list in the body text, set at the size the notes are set in, which the body-note reader takes for a note the conversion flattened into the body"
+  },
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": "effects due to the initiation, negotiation, or conclusion of a merger or a merge",
+   "reason": "an item of a numbered list in the body text, set at the size the notes are set in, which the body-note reader takes for a note the conversion flattened into the body"
+  },
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": "pre-existing agreements between the merging parties, in which case the Commissio",
+   "reason": "an item of a numbered list in the body text, set at the size the notes are set in, which the body-note reader takes for a note the conversion flattened into the body"
+  },
+  {
+   "note": "5",
+   "outcome": "missed",
+   "identity": "Notice on Simplified Procedure",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "47",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "48",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "48",
+   "outcome": "pinpoint-missing",
+   "identity": "32023R0914 Implementing Regulation (EU) 2023/914",
+   "detail": "article",
+   "reason": "\"Articles 3, 4 of Commission Implementing Regulation (EU) 2023/914\": the provision-before form needs \"of\" directly before the act, and \"Commission Implementing\" stands between"
+  },
+  {
+   "note": "396",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "442",
+   "outcome": "missed",
+   "identity": "Community Merger Control Law, Bulletin Supplement 2/90, Notes on Council Regulation 4064/89",
+   "detail": "a other, which detection does not read",
+   "reason": "neither an act, a case nor a notice (a staff working paper, DG COMP best practices, the EEA Agreement, a Bulletin supplement): out of what detection reads"
+  },
+  {
+   "note": "1",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "3",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "4",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "6",
+   "outcome": "unresolved",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "7",
+   "outcome": "missed",
+   "identity": "Horizontal Merger Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "8",
+   "outcome": "missed",
+   "identity": "Non-Horizontal Merger Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "11",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "12",
+   "outcome": "missed",
+   "identity": "TFEU art 173",
+   "reason": "\"(‘TFEU’), Article 173\": a Treaty article is read only in the \"Article N TFEU\" order"
+  },
+  {
+   "note": "14",
+   "outcome": "pinpoint-missing",
+   "identity": "judgment C-413/06 P Impala",
+   "detail": "paragraphs 48",
+   "reason": "\"See also paragraph 48\" follows a quotation, and the pinpoint scan takes the first paragraph only"
+  },
+  {
+   "note": "15",
+   "outcome": "unresolved",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "16",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "17",
+   "outcome": "unresolved",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "21+22",
+   "outcome": "missed",
+   "identity": "TFEU art 3(1)(b)",
+   "reason": "\"Article 3(1)(b) of the TFEU\": the definite article, and a point after the paragraph, are not in the Treaty-article pattern"
+  },
+  {
+   "note": "21+22",
+   "outcome": "unresolved",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "23",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "37",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "40",
+   "outcome": "missed",
+   "identity": "judgment T-175/12 Deutsche Börse",
+   "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
+  },
+  {
+   "note": "40",
+   "outcome": "missed",
+   "identity": "judgment T-342/07 Ryanair",
+   "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
+  },
+  {
+   "note": "49",
+   "outcome": "wrong-pinpoint",
+   "identity": "judgment C-581/22 P thyssenkrupp",
+   "detail": "paragraphs 9799",
+   "reason": "the .docx itself reads \"paragraphs 9799\": the PDF breaks \"97- 99\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text",
+   "reads": "paragraphs 9799"
+  },
+  {
+   "note": "49",
+   "outcome": "pinpoint-missing",
+   "identity": "judgment C-581/22 P thyssenkrupp",
+   "detail": "paragraphs 97-99",
+   "reason": "the .docx itself reads \"paragraphs 9799\": the PDF breaks \"97- 99\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text"
+  },
+  {
+   "note": "56",
+   "outcome": "missed",
+   "identity": "Best Practices for the Submission of Economic Evidence",
+   "detail": "a other, which detection does not read",
+   "reason": "neither an act, a case nor a notice (a staff working paper, DG COMP best practices, the EEA Agreement, a Bulletin supplement): out of what detection reads"
+  },
+  {
+   "note": "63",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "63",
+   "outcome": "pinpoint-missing",
+   "identity": "judgment C-376/20 P CK Telecoms",
+   "detail": "paragraphs 71, 78",
+   "reason": "\"(ibid., paragraph 71)\" inside the text of a footnote is not read as a back-reference"
+  },
+  {
+   "note": "65",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "66",
+   "outcome": "unresolved",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "69",
+   "outcome": "missed",
+   "identity": "DG COMP Best Practices on the conduct of EC merger control proceedings",
+   "detail": "a other, which detection does not read",
+   "reason": "neither an act, a case nor a notice (a staff working paper, DG COMP best practices, the EEA Agreement, a Bulletin supplement): out of what detection reads"
+  },
+  {
+   "note": "75",
+   "outcome": "wrong-pinpoint",
+   "identity": "judgment T-102/96 Gencor",
+   "detail": "paragraphs 247263",
+   "reason": "the .docx itself reads \"paragraphs 247263\": the PDF breaks \"247- 263\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text",
+   "reads": "paragraphs 247263"
+  },
+  {
+   "note": "75",
+   "outcome": "pinpoint-missing",
+   "identity": "judgment T-102/96 Gencor",
+   "detail": "paragraphs 247-263",
+   "reason": "the .docx itself reads \"paragraphs 247263\": the PDF breaks \"247- 263\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text"
+  },
+  {
+   "note": "79",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "92",
+   "outcome": "wrong-pinpoint",
+   "identity": "M.308 Kali+Salz/MdK/Treuhand",
+   "detail": "paragraphs 7077",
+   "reason": "the .docx itself reads \"paragraphs 7077\": the PDF breaks \"70- 77\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text",
+   "reads": "paragraphs 7077"
+  },
+  {
+   "note": "92",
+   "outcome": "pinpoint-missing",
+   "identity": "M.308 Kali+Salz/MdK/Treuhand",
+   "detail": "paragraphs 70-77",
+   "reason": "the .docx itself reads \"paragraphs 7077\": the PDF breaks \"70- 77\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text"
+  },
+  {
+   "note": "100",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "103",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "104",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "118",
+   "outcome": "wrong-pinpoint",
+   "identity": "M.9716 AMS/Osram",
+   "detail": "paragraphs 165170",
+   "reason": "the .docx itself reads \"paragraphs 165170\": the PDF breaks \"165- 170\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text",
+   "reads": "paragraphs 165170"
+  },
+  {
+   "note": "118",
+   "outcome": "pinpoint-missing",
+   "identity": "M.9716 AMS/Osram",
+   "detail": "paragraphs 165-170",
+   "reason": "the .docx itself reads \"paragraphs 165170\": the PDF breaks \"165- 170\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text"
+  },
+  {
+   "note": "137",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "138",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "139",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "144+145",
+   "outcome": "pinpoint-missing",
+   "identity": "M.7278 General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)",
+   "detail": "sections 8.7.4",
+   "reason": "\"paragraph 387 and Section 8.7.4\": the paragraph is read, and the section after it is not"
+  },
+  {
+   "note": "158",
+   "outcome": "pinpoint-missing",
+   "identity": "M.5830 Olympic/Aegean Airlines I",
+   "detail": "paragraphs 554-775",
+   "reason": "\"paragraphs 553-776\" spans more than 200 paragraphs, so it is reported by its endpoints (MAX_RANGE_SPAN)"
+  },
+  {
+   "note": "168",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "171",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "179",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "180",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "183",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "189",
+   "outcome": "pinpoint-missing",
+   "identity": "M.10506 Parker/Meggitt",
+   "detail": "sections 4.2.2",
+   "reason": "\"Section 4.2.2. and paragraphs 163, 164 …\": the paragraphs are read, and the section is not"
+  },
+  {
+   "note": "190",
+   "outcome": "missed",
+   "identity": "Notice on Simplified Procedure",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "191",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "192",
+   "outcome": "missed",
+   "identity": "Notice on Simplified Procedure",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "192",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Simplified Procedure",
+   "detail": "unresolved_not_found",
+   "reason": "\"Notice on Simplified Procedure, paragraph 5(d)(bb)\": the notice is not read, and \"Simplified Procedure\" is offered as a short form the document never defined"
+  },
+  {
+   "note": "236",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "267",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "268",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "277",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "279",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "280+281",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "280+281",
+   "outcome": "missed",
+   "identity": "32022R1925 Digital Markets Act",
+   "reason": "\"(‘Digital Markets Act’)\" in footnote 278 sits after the Regulation's full title, more than 160 characters from the citation, so the term is never registered and \"Digital Markets Act, Article 2\" is not recognised"
+  },
+  {
+   "note": "283+284",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "334",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "352",
+   "outcome": "missed",
+   "identity": "M.11246 Rolex/Bucherer",
+   "reason": "the case number is written \"M:11246\", with a colon"
+  },
+  {
+   "note": "353",
+   "outcome": "missed",
+   "identity": "M.8948 Spirit/Asco",
+   "reason": "the case number is written \"M. 8948\", with a space"
+  },
+  {
+   "note": "365",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "397",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "400",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "401",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "423",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "425",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "427",
+   "outcome": "missed",
+   "identity": "Horizontal Co-operation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
+  },
+  {
+   "note": "431",
+   "outcome": "missed",
+   "identity": "EEA Agreement, Protocol 24",
+   "detail": "a other, which detection does not read",
+   "reason": "neither an act, a case nor a notice (a staff working paper, DG COMP best practices, the EEA Agreement, a Bulletin supplement): out of what detection reads"
+  },
+  {
+   "note": "431",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "432",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "432",
+   "outcome": "missed",
+   "identity": "M.12052 UniCredit/Banco BPM",
+   "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
+  },
+  {
+   "note": "432",
+   "outcome": "missed",
+   "identity": "M.5932 News Corp/BSkyB",
+   "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
+  },
+  {
+   "note": "433",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "434",
+   "outcome": "missed",
+   "identity": "TFEU art 52, art 65",
+   "reason": "\"Articles 52 and 65 TFEU\": a list of Treaty articles is not read"
+  },
+  {
+   "note": "440",
+   "outcome": "pinpoint-missing",
+   "identity": "32024R1083 European Media Freedom Act",
+   "detail": "article",
+   "reason": "\"Article 22 European Media Freedom Act\": an article written before a defined term, with no \"of\", is not attached to it"
+  },
+  {
+   "note": "466",
+   "outcome": "missed",
+   "identity": "TFEU arts 28-37, arts 49-55, arts 63-66",
+   "reason": "\"Articles 28-37 TFEU\": a range of Treaty articles is not read"
+  },
+  {
+   "note": "469+470",
+   "outcome": "pinpoint-missing",
+   "identity": "32024R1083 European Media Freedom Act",
+   "detail": "article",
+   "reason": "\"Article 22 European Media Freedom Act\": an article written before a defined term, with no \"of\", is not attached to it"
+  },
+  {
+   "note": "474+475",
+   "outcome": "missed",
+   "identity": "32004R0139 EUMR",
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+  },
+  {
+   "note": "running text",
+   "outcome": "unexpected",
+   "identity": "EU regulation: European Media Freedom Act",
+   "detail": "(e.g., national law implementing the European Media Freedom A)",
+   "reason": "\"(e.g., national law implementing the European Media Freedom Act)\" names the Act in passing, and the parenthesis reader reports it as a citation"
+  }
+ ]
+}

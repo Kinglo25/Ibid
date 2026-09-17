@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, inlineFootnotesInBody, needsReview, officialSourceUrl, parentheticalsInBody, resolutionNote, sourceChanged, toReviewFootnotes, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
+import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, documentTypeNote, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, parentheticalsInBody, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -365,5 +365,74 @@ describe('what Word hands back as a footnote', () => {
     assert.equal(note.text, 'Ibid.');
     const [split] = toReviewFootnotes(['Judgment of 13 May 2014,' + String.fromCharCode(11) + 'Google Spain.']);
     assert.equal(split.text, 'Judgment of 13 May 2014, Google Spain.', 'and words are not run together');
+  });
+});
+
+describe('a passage citing several paragraphs, or "et seq."', () => {
+  test('an excerpt of disjoint passages is set as those passages', () => {
+    assert.deepEqual(excerptPassages('(189) First.\n\n…\n\n(1324) Second.\n\n…\n\n(1398) Third.'),
+      ['(189) First.', '(1324) Second.', '(1398) Third.']);
+    assert.deepEqual(excerptPassages('(189) One passage,\nwrapped over two lines.'), ['(189) One passage,\nwrapped over two lines.']);
+    assert.deepEqual(excerptPassages(''), [], 'a scan shows no empty paragraph');
+  });
+
+  test('a cited paragraph the text does not have is named', () => {
+    assert.equal(unlocatedNote(['1398']), 'Paragraph 1398 is not in the retrieved text; the other paragraphs cited are shown.');
+    assert.equal(unlocatedNote(['1324', '1398–1400']), 'Paragraphs 1324 and 1398–1400 are not in the retrieved text; the other paragraphs cited are shown.');
+    assert.equal(unlocatedNote(['8.4.4.1'], 'Sections 8.3.4.1 and 8.4.4.1'), 'Section 8.4.4.1 is not in the retrieved text; the other sections cited are shown.');
+    assert.equal(unlocatedNote(undefined), undefined);
+    assert.equal(unlocatedNote([]), undefined);
+  });
+
+  test('"et seq." says that the paragraphs after the one named are not shown', () => {
+    assert.equal(followingNote([189]), 'Cited “et seq.”: paragraph 189 is shown, not the paragraphs after it.');
+    assert.equal(followingNote([189, 1324, 1398]), 'Cited “et seq.”: paragraphs 189, 1324 and 1398 are shown, not the paragraphs after each.');
+    assert.equal(followingNote(undefined), undefined);
+  });
+
+  test('and leaves out a paragraph that is not shown at all', () => {
+    assert.equal(followingNote([189, 1398], ['1398']), 'Cited “et seq.”: paragraph 189 is shown, not the paragraphs after it.');
+    assert.equal(followingNote([1398], ['1398']), undefined);
+  });
+});
+
+describe('a case number that is another case', () => {
+  test('a corrected number says what was written, what that is, and what is shown', () => {
+    assert.equal(numberMismatchNote({
+      cited: 'M.7967', citedTitle: 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING', name: 'Ball/Rexam', caseNumber: 'M.7567',
+    }), 'Case number corrected. The footnote cites M.7967, which the Commission’s register files as APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING. '
+      + 'The case it names, Ball/Rexam, is M.7567, and that is the case shown here.');
+  });
+
+  test('a number the register has never used says so', () => {
+    assert.equal(numberMismatchNote({ cited: 'M.9376', name: 'Siemens/Alstom', caseNumber: 'M.8677' }),
+      'Case number corrected. The footnote cites M.9376, which is not in the Commission’s case data. '
+      + 'The case it names, Siemens/Alstom, is M.8677, and that is the case shown here.');
+  });
+
+  test('where no case carries the name, it says that nothing is shown', () => {
+    assert.equal(numberMismatchNote({ cited: 'M.7967', citedTitle: 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING', name: 'Nonexistent/Parties' }),
+      'Check the case number. The footnote cites M.7967, which the Commission’s register files as APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING, not Nonexistent/Parties. '
+      + 'No single case in the register is titled Nonexistent/Parties, so no decision is shown.');
+    assert.equal(numberMismatchNote(undefined), undefined);
+  });
+});
+
+describe('a court document that is not what the footnote called it', () => {
+  // Footnote 460 of the 2026 draft merger guidelines cites Advocate General Rantos's Opinion
+  // as "Judgment of 15 December 2002 … EU:C:2022:993". The resolver shows the Opinion the ECLI
+  // names and reports what its heading says it is.
+  test('says what the footnote called it and what is shown', () => {
+    assert.equal(documentTypeNote({ documentType: 'judgment', documentTypeStated: true }, 'opinion'),
+      'The footnote calls this a judgment, but the document its ECLI names is an Advocate General’s Opinion, and that is what is shown here.');
+  });
+
+  test('does not put words in the footnote’s mouth where it named no kind of document', () => {
+    assert.equal(documentTypeNote({ documentType: 'judgment' }, 'order'), 'The document this citation names is an order.');
+  });
+
+  test('says nothing where the two agree, or where the document said nothing', () => {
+    assert.equal(documentTypeNote({ documentType: 'opinion', documentTypeStated: true }, 'opinion'), undefined);
+    assert.equal(documentTypeNote({ documentType: 'judgment', documentTypeStated: true }, undefined), undefined);
   });
 });

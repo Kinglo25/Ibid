@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCommissionCaseIndex, createCommissionCaseIndexLoader } from '../src/commission-cases.ts';
+import { buildCommissionCaseIndex, caseNamesAgree, createCommissionCaseIndexLoader, identifyCommissionCase } from '../src/commission-cases.ts';
 
 /**
  * Fixtures in the shape the Commission actually publishes, which is the point of them.
@@ -93,6 +93,108 @@ describe('the decision a Commission case number names', () => {
     })]);
 
     assert.deepEqual(index.find('M.9000'), [], 'neither is offered, because the number does not say which');
+  });
+});
+
+/**
+ * Cases as the register titles them, which is what a citation's name is checked against.
+ *
+ * Titles and numbers from the merger dataset as measured on 2026-09-16. `metadata` is a plain
+ * object there; one case here carries it encoded, since other fields of the same files arrive
+ * that way.
+ */
+const titledDataset = (cases: Record<string, { title: string; decided?: boolean }>) => JSON.stringify(
+  Object.fromEntries(Object.entries(cases).map(([number, { title, decided }], at) => [number, {
+    metadata: at === 0 ? JSON.stringify({ caseTitle: [title] }) : { caseTitle: [title] },
+    decisions: decided === false ? [] : [{ decisionAttachments: [attachment({
+      link: `https://ec.europa.eu/competition/mergers/cases/decisions/${number.toLowerCase()}.pdf`,
+      category: ['DocumentCategory0587', 'Decision - web publication'],
+    })] }],
+  }])),
+);
+
+const REGISTER = titledDataset({
+  'M.7967': { title: 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING' },
+  'M.7567': { title: 'BALL / REXAM' },
+  'M.8048': { title: 'ARDAGH / BALL REXAM DIVESTMENT BUSINESS' },
+  'M.8677': { title: 'SIEMENS / ALSTOM' },
+  'M.3148': { title: 'SIEMENS / ALSTOM GAS AND STEAM TURBINES' },
+  'M.9596': { title: 'ENGIE / PREDICA / OMNES / LANGA', decided: false },
+  'M.9569': { title: 'ESSILORLUXOTTICA / GRANDVISION' },
+  'M.1616': { title: 'ANTONIO DE SOMMER CHAMPALIMAUD / BANCO SANTANDER CENTRAL HISPANOAMERICANO' },
+  'M.12052.AP': { title: 'UNICREDIT / BANCO BPM (Art. 21(4))', decided: false },
+  'M.4005': { title: 'OTHER / PARTIES' },
+  'M.4004': { title: 'ACME / WIDGETS' },
+  'M.4006': { title: 'ACME / WIDGETS' },
+});
+
+describe('the case a citation names, when its number is another', () => {
+  test('the register title is kept for every case, decided or not', () => {
+    const index = buildCommissionCaseIndex([REGISTER]);
+    assert.equal(index.title('M.7567'), 'BALL / REXAM');
+    assert.equal(index.title('COMP/M.7967'), 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING', 'the encoded metadata too');
+    assert.equal(index.title('M.9596'), 'ENGIE / PREDICA / OMNES / LANGA', 'a case with no decision still has a title');
+    assert.equal(index.title('M.12052'), 'UNICREDIT / BANCO BPM (Art. 21(4))', 'and a case filed only under a qualified number');
+    assert.equal(index.title('M.1'), undefined);
+  });
+
+  test('a name agrees with its title on one word, which is what a shortened or misspelt name keeps', () => {
+    assert.equal(caseNamesAgree('BSCH/Champalimaud', 'ANTONIO DE SOMMER CHAMPALIMAUD / BANCO SANTANDER CENTRAL HISPANOAMERICANO'), true);
+    assert.equal(caseNamesAgree('Boeing/Sprit', 'BOEING / SPIRIT'), true);
+    assert.equal(caseNamesAgree('Telefónica UK/Vodafone UK/Everything Everywhere/JV', 'TELEFONICA UK / VODAFONE UK / EVERYTHING EVERYWHERE / JV'), true);
+    assert.equal(caseNamesAgree('Essilorluxottica/Grandvision', 'ESSILOR LUXOTTICA / GRAND VISION'), true, 'written run together');
+    assert.equal(caseNamesAgree('Ball/Rexam', 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING'), false);
+    assert.equal(caseNamesAgree('JV', 'ANYTHING'), true, 'a name with nothing comparable in it is no evidence against the number');
+  });
+
+  test('a number filed as another case is taken for the case the citation names, and says so', () => {
+    // Footnote 33 of the Commission's 2026 draft merger guidelines.
+    const index = buildCommissionCaseIndex([REGISTER]);
+    assert.deepEqual(identifyCommissionCase(index, 'M.7967', 'Ball/Rexam'), {
+      caseNumber: 'M.7567', title: 'BALL / REXAM',
+      numberMismatch: { cited: 'M.7967', citedTitle: 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING', name: 'Ball/Rexam' },
+    });
+  });
+
+  test('the case whose title is the name, not one whose title merely contains it', () => {
+    const index = buildCommissionCaseIndex([REGISTER]);
+    assert.equal(identifyCommissionCase(index, 'M.7967', 'Ball/Rexam').caseNumber, 'M.7567', 'not ARDAGH / BALL REXAM DIVESTMENT BUSINESS');
+    // Footnote 108: a number the register has never used. SIEMENS / ALSTOM, not the 2003 turbines case.
+    assert.deepEqual(identifyCommissionCase(index, 'M.9376', 'Siemens/Alstom'), {
+      caseNumber: 'M.8677', title: 'SIEMENS / ALSTOM', numberMismatch: { cited: 'M.9376', name: 'Siemens/Alstom' },
+    });
+  });
+
+  test('a number filed as a case with no decision is corrected all the same', () => {
+    const index = buildCommissionCaseIndex([REGISTER]);
+    assert.equal(identifyCommissionCase(index, 'M.9596', 'Essilorluxottica/Grandvision').caseNumber, 'M.9569');
+  });
+
+  test('where no single case carries the name, nothing is offered in its place', () => {
+    const index = buildCommissionCaseIndex([REGISTER]);
+    assert.deepEqual(identifyCommissionCase(index, 'M.7967', 'Nonexistent/Parties'), {
+      numberMismatch: { cited: 'M.7967', citedTitle: 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING', name: 'Nonexistent/Parties' },
+    });
+    // Two cases titled alike, equally far from the number cited: which one is not the index's to say.
+    const tied = identifyCommissionCase(index, 'M.4005', 'Acme/Widgets');
+    assert.equal(tied.caseNumber, undefined);
+    assert.equal(tied.numberMismatch?.citedTitle, 'OTHER / PARTIES');
+    // A number the register does not hold, and a name no single case carries, is not evidence
+    // of a mistake: the data can simply be behind. Taken as cited, as it always was.
+    assert.deepEqual(identifyCommissionCase(index, 'M.4999', 'Acme/Widgets'), { caseNumber: 'M.4999' });
+  });
+
+  test('a name that agrees, or no name at all, is the case as cited', () => {
+    const index = buildCommissionCaseIndex([REGISTER]);
+    assert.deepEqual(identifyCommissionCase(index, 'M.1616', 'BSCH/Champalimaud'),
+      { caseNumber: 'M.1616', title: 'ANTONIO DE SOMMER CHAMPALIMAUD / BANCO SANTANDER CENTRAL HISPANOAMERICANO' });
+    assert.deepEqual(identifyCommissionCase(index, 'M.12052', 'UniCredit/Banco BPM'), { caseNumber: 'M.12052', title: 'UNICREDIT / BANCO BPM (Art. 21(4))' });
+    assert.deepEqual(identifyCommissionCase(index, 'M.7967', undefined), { caseNumber: 'M.7967', title: 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING' });
+  });
+
+  test('a case the index has decisions for but no title is taken as cited, having nothing to check against', () => {
+    const index = buildCommissionCaseIndex([dataset({ 'AT.37990': [{ link: 'https://ec.europa.eu/competition/antitrust/intel.pdf', category: PROHIBITION }] })]);
+    assert.deepEqual(identifyCommissionCase(index, 'AT.37990', 'Intel'), { caseNumber: 'AT.37990', title: undefined });
   });
 });
 

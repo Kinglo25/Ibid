@@ -34,9 +34,13 @@ export type PrefetchTarget = {
 /**
  * The distinct documents a resolved document cites, in reading order.
  *
- * Deduplicated by CELEX, which is what identifies a document: twenty footnotes citing
- * different paragraphs of one judgment are one entry here and one retrieval, because the
- * resolver now caches the document and cuts each excerpt out of it locally.
+ * Deduplicated by what the resolver retrieves by: the ECLI where the citation states one, and
+ * the CELEX otherwise. Twenty footnotes citing different paragraphs of one judgment are one
+ * entry here and one retrieval, because the resolver caches the document and cuts each
+ * excerpt out of it locally. The ECLI rather than the CELEX, because two citations can derive
+ * the same CELEX and name different documents: a footnote calling Advocate General Rantos's
+ * Opinion in Superleague a judgment derives the judgment's `62021CJ0333`, and keyed by that it
+ * was folded into the judgment and never warmed.
  *
  * Only `resolved` citations are included, and only those carrying a CELEX. An unresolved
  * short form has nothing to look up — resolving it is a decision the reviewer has not made
@@ -55,12 +59,13 @@ export function prefetchTargets(citationsByFootnote: readonly (readonly Citation
   citationsByFootnote.forEach((citations, index) => {
     for (const citation of citations) {
       if (citation.status !== 'resolved' || !citation.celex) continue;
-      const held = byCelex.get(citation.celex);
+      const document = citation.ecli ?? citation.celex;
+      const held = byCelex.get(document);
       if (held) {
         if (!held.footnotes.includes(index)) held.footnotes.push(index);
         continue;
       }
-      byCelex.set(citation.celex, { celex: citation.celex, footnote: index, footnotes: [index], citation });
+      byCelex.set(document, { celex: citation.celex, footnote: index, footnotes: [index], citation });
     }
   });
   return [...byCelex.values()];

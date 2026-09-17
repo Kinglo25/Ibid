@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { citedAuthorities, getCitationContextsForFootnotes, reresolveBackReferences, PREVIEW_FOOTNOTES, type CitationCandidate, type CitationContext } from '../../../shared/src';
 import { prefetchStatus, prefetchTargets, startConfirmations, startPrefetch, type Confirmations, type PrefetchProgress, type Prefetcher } from './prefetch';
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
   autoSelectable, bodyProseLines, inlineFootnotesInBody, INLINE_NOTE_CEILING, INLINE_NOTE_FLOOR, INLINE_NOTE_SHAPE, needsReview, officialSourceUrl, parentheticalsInBody,
-  resolutionNote, sourceChanged, toReviewFootnotes,
+  documentTypeNote, excerptPassages, followingNote, numberMismatchNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
   unresolvedMessage, verificationNote, type ReviewFootnote,
 } from './citation-view';
 
@@ -14,6 +14,12 @@ type ReviewDocument = {
   locator?: string;
   /** Whether the excerpt is that passage, the document's opening standing in for it, the opening of a judgment the Court published only in part, a summary published in place of the text, or a decision published only as a scan with no text in it to read. */
   passage?: 'cited' | 'opening' | 'unpublished' | 'summary' | 'unreadable';
+  /** Paragraphs the citation named that the text does not have, where the others were found: `1398`, `40–44`. */
+  unlocated?: string[];
+  /** A Commission case number that is not the case the citation names, and the case shown instead where one is. */
+  numberMismatch?: NumberMismatch;
+  /** What a court document is by its own heading, where the citation called it something else. */
+  documentType?: 'judgment' | 'opinion' | 'order';
   /** Where the grounds are, when EUR-Lex published only a summary of them. Set with `passage: 'summary'` and never otherwise. */
   fullTextUrl?: string;
   language?: 'en' | 'fr';
@@ -541,8 +547,9 @@ function lookupFor(citation: CitationContext) {
  * Only messages written here are ever put on screen. `fetch` rejects with a `TypeError`
  * reading "Failed to fetch" when the server is unreachable — which is exactly the failure a
  * hosted deployment produces when its API is down, and exactly the wrong thing to show a
- * lawyer. Locally the Vite proxy hides that behind a `500`, so the raw browser message is a
- * production-only path and would not have been seen in dev.
+ * lawyer. Locally the Vite proxy hides a stopped API behind a `500`, but not a stopped dev
+ * server: the pane stays open in Word after `npm run dev` ends, and every citation not
+ * already retrieved then fails this way.
  */
 class RetrievalError extends Error {}
 
@@ -550,6 +557,16 @@ class RetrievalError extends Error {}
 const lookupKey = (citation: CitationContext) => JSON.stringify(lookupFor(citation));
 
 const RETRIEVAL_FAILED = 'The source could not be retrieved. Open the official record below.';
+
+/**
+ * Said when the request never reached Ibid's server, rather than `RETRIEVAL_FAILED`.
+ *
+ * "The source could not be retrieved" is a statement about the authority, and it is untrue
+ * here: nothing was asked of EUR-Lex or the Commission at all. Observed in Word with the dev
+ * server stopped — every judgment in a footnote read as unretrievable, including ones
+ * retrieved a minute earlier. The same distinction `prefetchStatus` already draws.
+ */
+const SERVER_UNREACHABLE = 'Ibid could not reach its server, so nothing was retrieved. Open the official record below.';
 
 /**
  * `confirm` is `'later'` for every lookup the reviewer or the warming queue makes: a decision
@@ -564,7 +581,14 @@ async function resolveSource(citation: CitationContext, signal?: AbortSignal, co
   // untested. Optional-chaining here costs nothing in the browser and makes the pane
   // runnable wherever it is imported.
   const apiBase = import.meta.env?.VITE_IBID_API_BASE_URL?.replace(/\/$/, '') ?? '/api';
-  const response = await fetch(`${apiBase}/sources?${confirm === 'later' ? 'confirm=later&' : ''}lookup=${encodeURIComponent(JSON.stringify(lookupFor(citation)))}`, { signal });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase}/sources?${confirm === 'later' ? 'confirm=later&' : ''}lookup=${encodeURIComponent(JSON.stringify(lookupFor(citation)))}`, { signal });
+  } catch (error) {
+    // An abandoned request is the caller's decision, and it goes back to the caller as one.
+    if (signal?.aborted) throw error;
+    throw new RetrievalError(SERVER_UNREACHABLE);
+  }
   if (!response.ok) throw new RetrievalError(`The source could not be retrieved (${response.status}). Open the official record below.`);
   const payload = await response.json() as { documents?: ReviewDocument[] };
   return payload.documents ?? [];
@@ -633,6 +657,52 @@ function VerificationNote({ document }: { document: ReviewDocument }) {
  * published only in summary. Only the last has somewhere else to send them, so only the
  * last carries a link.
  */
+/**
+ * What a passage found as cited still leaves out: a cited paragraph the text does not have,
+ * and the paragraphs after one cited "et seq.". Both read from what the reviewer can check —
+ * the first from the resolver, the second from the footnote itself, which never leaves the
+ * pane.
+ */
+function CitedScopeNotes({ document, citation }: { document: ReviewDocument; citation: CitationContext }) {
+  if (document.passage !== 'cited') return null;
+  const missing = unlocatedNote(document.unlocated, document.locator);
+  const following = followingNote(citation.pinpoint?.following, document.unlocated);
+  return <>
+    {missing && <p className="source-note">{missing}</p>}
+    {following && <p className="source-note">{following}</p>}
+  </>;
+}
+
+/**
+ * Says that the case shown is not the number the footnote wrote.
+ *
+ * Said once for the citation, however many of the case's decisions are offered beneath it:
+ * Ball/Rexam publishes two, and repeating the warning on each read as two different problems.
+ */
+function CaseNumberWarning({ documents }: { documents: ReviewDocument[] }) {
+  const note = numberMismatchNote(documents.find((document) => document.numberMismatch)?.numberMismatch);
+  return note ? <p className="source-warning" role="alert">{note}</p> : null;
+}
+
+/** Says that the court document shown is not the kind the footnote called it — see `documentTypeNote`. */
+function DocumentTypeWarning({ document, citation }: { document: ReviewDocument; citation: CitationContext }) {
+  const note = documentTypeNote(citation, document.documentType);
+  return note ? <p className="source-warning" role="alert">{note}</p> : null;
+}
+
+/**
+ * The official record for the citation on screen — for the case actually shown, where its
+ * number turned out to be another case's. Linking the number as written would open Apax
+ * Partners' case under a source panel reading Ball/Rexam.
+ */
+function officialLink(citation: CitationContext, review: ReviewState): string {
+  const mismatch = review.kind === 'success' ? review.documents.find((document) => document.numberMismatch) : undefined;
+  if (!mismatch?.numberMismatch) return officialSourceUrl(citation);
+  return mismatch.numberMismatch.caseNumber
+    ? officialSourceUrl({ ...citation, value: mismatch.numberMismatch.caseNumber })
+    : mismatch.url;
+}
+
 function ExcerptScopeNote({ document }: { document: ReviewDocument }) {
   const what = document.locator ?? 'The cited passage';
   // The Court published this judgment in extract, and the cited paragraph is one it kept
@@ -780,15 +850,42 @@ export default function App() {
    */
   const alreadyRetrieved = (citation: CitationContext) => retrieved.current.get(lookupKey(citation));
 
-  const retrieve = async (citation: CitationContext): Promise<ReviewDocument[]> => {
+  /**
+   * A lookup already on its way is joined rather than sent again. A Commission decision read
+   * cold takes minutes — measured at 207s and 224s on the draft merger guidelines, most of it
+   * the case index being built — and a reviewer who moves away and comes back in that time
+   * would otherwise queue a second download of every decision in the case behind the first.
+   */
+  const retrieve = (citation: CitationContext): Promise<ReviewDocument[]> => {
     const held = alreadyRetrieved(citation);
-    if (held) return held;
-    const documents = await resolveSource(citation);
-    hold(citation, documents);
-    return documents;
+    if (held) return Promise.resolve(held);
+    const key = lookupKey(citation);
+    const pending = inFlight.current.get(key);
+    if (pending) return pending;
+    const request = resolveSource(citation)
+      .then((documents) => {
+        hold(citation, documents);
+        return documents;
+      })
+      .finally(() => { if (inFlight.current.get(key) === request) inFlight.current.delete(key); });
+    inFlight.current.set(key, request);
+    return request;
   };
 
+  /**
+   * Which selection an answer arriving now belongs to.
+   *
+   * Every selection bumps it, and an answer is put on screen only if no selection has been
+   * made since it was asked for. Without this the last answer to *arrive* won, not the last
+   * one asked for: a Commission citation read cold answers minutes later, by which time the
+   * reviewer is on another footnote — and its decision, or its failure, replaced that
+   * footnote's passage under that footnote's context. The answer is not lost: `retrieve` has
+   * already held it, so going back opens it at once.
+   */
+  const selection = useRef(0);
+
   const selectCitation = async (citation: CitationContext, footnote: ReviewFootnote) => {
+    const turn = ++selection.current;
     setSelected({ citation, footnote });
     // A short form Ibid could not tie to a specific authority has nothing to look up.
     // Attempting a lookup anyway would either fail or, worse, retrieve whichever
@@ -809,15 +906,18 @@ export default function App() {
       // Read back rather than taken as returned: a confirmation quick enough to land during
       // the await has already replaced it, and would find nothing on screen to replace.
       const returned = await retrieve(citation);
+      if (turn !== selection.current) return;
       const documents = alreadyRetrieved(citation) ?? returned;
       setReview(documents.length ? { kind: 'success', documents } : { kind: 'empty' });
     } catch (error) {
+      if (turn !== selection.current) return;
       setReview({ kind: 'error', message: error instanceof RetrievalError ? error.message : RETRIEVAL_FAILED });
     }
   };
 
   const confirmCitation = async (candidate: CitationCandidate) => {
     if (!selected) return;
+    const turn = ++selection.current;
     setConfirmations((current) => ({ ...current, [confirmationKey(selected.citation, selected.footnote.id)]: candidate }));
     const confirmed: CitationContext = {
       ...selected.citation, ...candidate, status: 'resolved', resolutionMethod: 'user_confirmed', candidates: undefined,
@@ -826,9 +926,11 @@ export default function App() {
     setReview({ kind: 'loading' });
     try {
       const returned = await retrieve(confirmed);
+      if (turn !== selection.current) return;
       const documents = alreadyRetrieved(confirmed) ?? returned;
       setReview(documents.length ? { kind: 'success', documents } : { kind: 'empty' });
     } catch (error) {
+      if (turn !== selection.current) return;
       setReview({ kind: 'error', message: error instanceof RetrievalError ? error.message : RETRIEVAL_FAILED });
     }
   };
@@ -846,6 +948,8 @@ export default function App() {
    * unexamined reuse that confirmations are deliberately not persisted across.
    */
   const retrieved = useRef(new Map<string, ReviewDocument[]>());
+  /** Lookups a selection has sent and not yet had answered, under the same key. Emptied with it. */
+  const inFlight = useRef(new Map<string, Promise<ReviewDocument[]>>());
   /** The running queue, so the cursor can reorder what it has not reached yet. */
   const warming = useRef<Prefetcher | null>(null);
   /** Answers the server gave from a decision it held, waiting to be confirmed. */
@@ -1010,6 +1114,7 @@ export default function App() {
    */
   useEffect(() => {
     retrieved.current = new Map();
+    inFlight.current = new Map();
     setPrefetching(null);
     // Started before either early return: a click retrieves in the browser preview too, and
     // what it is answered with needs confirming there just the same.
@@ -1248,13 +1353,20 @@ export default function App() {
               : `Footnote ${selected.footnote.number} context`}</p>
           <blockquote>{selected.citation.context}</blockquote>
           {review.kind === 'loading' && <p>Retrieving the official source passage…</p>}
+          {/* Once, above every decision offered: the number is the citation's, not any one decision's. */}
+          {review.kind === 'success' && <CaseNumberWarning documents={review.documents} />}
           {review.kind === 'success' && <div className="source-results">{review.documents.map((document) =>
             <article key={document.url}>
               <p className="source-provider">{document.source}</p>
               <a href={document.url} target="_blank" rel="noreferrer">{document.title}</a>
+              <DocumentTypeWarning document={document} citation={selected.citation} />
               <SourceLanguageNote document={document} />
               <ExcerptScopeNote document={document} />
-              <p>{document.excerpt}</p>
+              <CitedScopeNotes document={document} citation={selected.citation} />
+              {excerptPassages(document.excerpt).map((passage, at) => <Fragment key={at}>
+                {at > 0 && <p className="passage-gap">…</p>}
+                <p>{passage}</p>
+              </Fragment>)}
               <VerificationNote document={document} />
             </article>)}</div>}
           {review.kind === 'empty' && <p>No official source passage was found for this reference. You can open the official record directly.</p>}
@@ -1265,7 +1377,7 @@ export default function App() {
           />}
           {review.kind === 'error' && <p className="error">{review.message}</p>}
           {selected.citation.status === 'resolved' &&
-            <a className="source-link" href={officialSourceUrl(selected.citation)} target="_blank" rel="noreferrer">Open official source</a>}
+            <a className="source-link" href={officialLink(selected.citation, review)} target="_blank" rel="noreferrer">Open official source</a>}
         </>}
       </section>
 

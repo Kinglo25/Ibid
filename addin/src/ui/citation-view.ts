@@ -411,3 +411,102 @@ export function sourceChanged(
     || document.excerpt !== after[at].excerpt
     || document.passage !== after[at].passage);
 }
+
+/** "189", "189 and 1324", "189, 1324 and 1398". */
+function listed(items: readonly (string | number)[]): string {
+  return items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items.at(-1)}` : `${items[0]}`;
+}
+
+/** The separator the resolver puts between the disjoint passages of one citation. */
+const PASSAGE_GAP = '\n\n…\n\n';
+
+/**
+ * An excerpt as the passages it is made of.
+ *
+ * A citation naming 189, 1324 and 1398 is three passages, joined by the resolver with a
+ * marked gap. The pane sets each in a paragraph of its own: shown as one, the line breaks
+ * that separate them collapse, and three recitals read as a single run of text.
+ */
+export function excerptPassages(excerpt: string): string[] {
+  return excerpt.split(PASSAGE_GAP).map((passage) => passage.trim()).filter(Boolean);
+}
+
+/**
+ * Says which cited paragraphs are not in the text, where the others are shown.
+ *
+ * Without it, two passages found of three cited are shown as the passage cited, and the
+ * reader has no way to know one is missing.
+ */
+export function unlocatedNote(unlocated: readonly string[] | undefined, locator?: string): string | undefined {
+  if (!unlocated?.length) return undefined;
+  // The resolver's label says what was cited: "Sections 7.5–7.7", "Points 189, 1324 and 1398".
+  const [one, many] = locator?.startsWith('Section') ? ['Section', 'sections'] : ['Paragraph', 'paragraphs'];
+  return unlocated.length === 1
+    ? `${one} ${unlocated[0]} is not in the retrieved text; the other ${many} cited are shown.`
+    : `${one === 'Section' ? 'Sections' : 'Paragraphs'} ${listed(unlocated)} are not in the retrieved text; the other ${many} cited are shown.`;
+}
+
+/**
+ * Says so when the drafter cited a paragraph "et seq.".
+ *
+ * Where "et seq." stops is the drafter's judgment and is written nowhere, so Ibid shows the
+ * paragraph named and not the ones after it. That is the right amount to show and the wrong
+ * amount to leave unexplained: a reader told nothing takes the passage on screen for all of
+ * what the footnote points them to. Paragraphs the text does not have are left out, since
+ * nothing of them is shown.
+ */
+export function followingNote(following: readonly number[] | undefined, unlocated: readonly string[] = []): string | undefined {
+  const shown = (following ?? []).filter((paragraph) => !unlocated.includes(String(paragraph)));
+  if (!shown.length) return undefined;
+  return shown.length === 1
+    ? `Cited “et seq.”: paragraph ${shown[0]} is shown, not the paragraphs after it.`
+    : `Cited “et seq.”: paragraphs ${listed(shown)} are shown, not the paragraphs after each.`;
+}
+
+type CourtDocumentType = 'judgment' | 'opinion' | 'order';
+
+const DOCUMENT_NAMES: Record<CourtDocumentType, string> = {
+  judgment: 'a judgment', opinion: 'an Advocate General’s Opinion', order: 'an order',
+};
+
+/**
+ * Says that the court document shown is not the kind the citation called it.
+ *
+ * The resolver fetches the document the footnote's ECLI names and reports what that document's
+ * own heading says it is. Where the footnote wrote "Judgment of 15 December 2002 … EU:C:2022:993",
+ * the text shown is Advocate General Rantos's Opinion, which is what the ECLI names — and a
+ * reviewer reading it under a chip reading "CJEU judgment" would take the Advocate General's
+ * view for the Court's. Where the footnote never said what it was citing, Ibid's own default
+ * was the thing that was wrong, so the reviewer is told what the document is without being
+ * told the footnote said otherwise.
+ */
+export function documentTypeNote(citation: Pick<CitationContext, 'documentType' | 'documentTypeStated'>, shown: CourtDocumentType | undefined): string | undefined {
+  if (!shown || shown === (citation.documentType ?? 'judgment')) return undefined;
+  const what = DOCUMENT_NAMES[shown];
+  return citation.documentTypeStated
+    ? `The footnote calls this ${DOCUMENT_NAMES[citation.documentType ?? 'judgment']}, but the document its ECLI names is ${what}, and that is what is shown here.`
+    : `The document this citation names is ${what}.`;
+}
+
+export type NumberMismatch = { cited: string; citedTitle?: string; name: string; caseNumber?: string };
+
+/**
+ * Says that the case shown is not the number the citation wrote, or that no case is shown.
+ *
+ * Never left to the title to imply. Showing M.7567 under a footnote that reads M.7967 changes
+ * what the citation says, which is the one thing this pane does not do quietly, so the number
+ * written, what the register files it as, and the case named are all put in front of the
+ * reader in one place.
+ */
+export function numberMismatchNote(mismatch: NumberMismatch | undefined): string | undefined {
+  if (!mismatch) return undefined;
+  const filed = mismatch.citedTitle
+    ? `which the Commission’s register files as ${mismatch.citedTitle}`
+    : 'which is not in the Commission’s case data';
+  if (mismatch.caseNumber) {
+    return `Case number corrected. The footnote cites ${mismatch.cited}, ${filed}. `
+      + `The case it names, ${mismatch.name}, is ${mismatch.caseNumber}, and that is the case shown here.`;
+  }
+  return `Check the case number. The footnote cites ${mismatch.cited}, ${filed}, not ${mismatch.name}. `
+    + `No single case in the register is titled ${mismatch.name}, so no decision is shown.`;
+}

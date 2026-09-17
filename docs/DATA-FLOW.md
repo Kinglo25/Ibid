@@ -34,7 +34,9 @@ network is reached only at the last step, to fetch a public EU document by its i
 
 **Stated precisely, because a reviewer will check it:** two of the fields below are
 substrings of the footnote — `value`, the citation exactly as written (`C-293/12`), and
-`caseName`, the case name where one was recognised (`Digital Rights Ireland`). Those are
+`caseName`, the case name where one was recognised (`Digital Rights Ireland`, or for a
+Commission case the name written beside its number, `Ball/Rexam`, which the server checks
+the number against). Those are
 the citation itself, which is the thing being looked up; a lookup cannot happen without
 them. What never crosses the wire is everything *around* the citation — the sentence it
 sits in, the argument it supports, the rest of the footnote, the rest of the document.
@@ -79,7 +81,7 @@ The `lookup` object contains only these fields, and nothing else:
 | `caseNumber` | `C-293/12` |
 | `caseName` | `Digital Rights Ireland` |
 | `documentType` | `judgment` |
-| `locator` | `{ kind: 'point', start: 40 }` |
+| `locator` | `{ kind: 'point', start: 40 }`, or for a Commission decision cited by section `{ kind: 'section', start: 9, sections: [{ from: '9.1.3.3.7' }] }` |
 | `paragraphs` | `[40]` |
 | `alternativeCelexes` | `['62012CJ0594']` |
 

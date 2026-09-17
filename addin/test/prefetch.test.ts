@@ -64,6 +64,20 @@ describe('which documents are worth warming', () => {
     assert.equal(targets.length, 1, 'the back-reference is the same authority, not a second one');
     assert.equal(targets[0].celex, '62012CJ0293');
   });
+  test('two documents deriving one CELEX are two documents', () => {
+    // Footnotes 39 and 460 of the 2026 draft merger guidelines. The second calls Advocate
+    // General Rantos's Opinion a judgment, so both derive 62021CJ0333, and the resolver fetches
+    // each by its ECLI. Keyed by the CELEX, the Opinion was folded into the judgment and never
+    // warmed.
+    const targets = prefetchTargets(citations([
+      'Judgment of 21 December 2023, European Superleague Company SL v FIFA, C-333/21, EU:C:2023:1011, paragraph 202.',
+      'Judgment of 15 December 2002, Superleague v FIFA, C-333/21, EU:C:2022:993, paragraph 251.',
+    ]));
+    assert.deepEqual(targets.map((target) => [target.celex, target.citation.ecli]), [
+      ['62021CJ0333', 'ECLI:EU:C:2023:1011'],
+      ['62021CJ0333', 'ECLI:EU:C:2022:993'],
+    ]);
+  });
 });
 
 const target = (celex: string, footnote: number): PrefetchTarget => ({

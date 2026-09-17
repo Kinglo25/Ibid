@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { bodyTextOf, extractPdfText, sliceRecitals } from '../src/pdf-text.ts';
+import { bodyTextOf, extractPdfText, locateRecitals, locateSections, sliceRecitals } from '../src/pdf-text.ts';
 
 /**
  * A decision's text, in the shape a real one comes out in.
@@ -135,6 +135,14 @@ describe('the recital a Commission citation names', () => {
     assert.ok(!passage!.includes('(350)'), 'what was not cited is not shown');
   });
 
+  test('a run the decision does not have is reported alongside the ones it does', () => {
+    const located = locateRecitals(DECISION, [{ from: 349, to: 349 }, { from: 1324, to: 1324 }, { from: 352, to: 353 }]);
+
+    assert.match(located.excerpt!, /^\(349\)/);
+    assert.match(located.excerpt!, /\(353\) Fifth/);
+    assert.deepEqual(located.unlocated, [{ from: 1324, to: 1324 }]);
+  });
+
   test('a recital the decision does not have yields nothing', () => {
     // Not an error and not an empty string: `undefined` is what tells the resolver to say so
     // rather than present the opening of the document as the cited passage.
@@ -217,5 +225,71 @@ describe('reading a PDF', () => {
       Object.assign(console, original);
     }
     assert.deepEqual(printed, []);
+  });
+});
+
+/**
+ * A decision cited by its numbered sections. Shaped on Norsk Hydro/Alumetal (M.10658), cited
+ * by the Commission's 2026 draft merger guidelines as "section 9.1.3.3.7": the table of
+ * contents lists the headings first with dot leaders, a long entry wraps with its leaders on
+ * the next line, and the section itself runs from recital (299) to (321).
+ */
+describe('a decision’s numbered sections', () => {
+  const DECISION = [
+    '9.1.3.3. The Commission’s assessment.................................... 49',
+    '9.1.3.3.7. The Parties are not close competitors regarding their respective low-carbon',
+    'solid advanced AFA offerings ............................................. 60',
+    '9.1.4. Alumetal as an important competitive force .......................... 62',
+    '9.1.3.3. The Commission’s assessment',
+    '(239) The analysis of closeness of competition.',
+    '9.1.3.3.6. The Parties are geographically close to each other',
+    '(290) Geographic closeness does not indicate close competition.',
+    '9.1.3.3.7. The Parties are not close competitors regarding their respective low-carbon',
+    'solid advanced AFA offerings',
+    '(299) The Commission considers that the Parties have differentiated offerings, for',
+    '1.5 million tonnes of reasons wrapped onto a line of their own.',
+    '9.1.3.3.7.1. A subsection of it',
+    '(321) Based on the above, the Parties are not close.',
+    '9.1.3.3.8. Conclusion as regards closeness of competition',
+    '(322) Based on the analysis of the evidence described in this Section.',
+    '9.1.4. Alumetal as an important competitive force',
+    '(330) Alumetal is an important competitive force.',
+  ].join('\n');
+
+  test('from its heading to the next heading after it, subsections and all', () => {
+    const { excerpt, unlocated } = locateSections(DECISION, [{ from: '9.1.3.3.7' }]);
+    assert.match(excerpt!, /^9\.1\.3\.3\.7\. The Parties are not close competitors/);
+    assert.match(excerpt!, /\(299\)/);
+    assert.match(excerpt!, /9\.1\.3\.3\.7\.1\. A subsection of it\n\(321\)/, 'its subsections are part of it');
+    assert.match(excerpt!, /1\.5 million tonnes/, 'a wrapped line opening with a number does not end it');
+    assert.ok(!excerpt!.includes('(322)'), 'and it stops at 9.1.3.3.8');
+    assert.deepEqual(unlocated, []);
+  });
+
+  test('where the decision sets it out, not where its table of contents lists it', () => {
+    const { excerpt } = locateSections(DECISION, [{ from: '9.1.3.3' }]);
+    assert.match(excerpt!, /^9\.1\.3\.3\. The Commission’s assessment\n\(239\)/);
+    assert.ok(!excerpt!.includes('....'), 'no dot leaders: not the contents entry');
+    assert.ok(excerpt!.includes('(322)') && !excerpt!.includes('(330)'), 'a parent runs to the next heading outside it');
+  });
+
+  test('a range runs through its last section; a list is passages with the gap marked', () => {
+    const range = locateSections(DECISION, [{ from: '9.1.3.3.6', to: '9.1.3.3.7' }]).excerpt!;
+    assert.match(range, /^9\.1\.3\.3\.6\./);
+    assert.ok(range.includes('(321)') && !range.includes('(322)'));
+    const list = locateSections(DECISION, [{ from: '9.1.3.3.6' }, { from: '9.1.4' }]).excerpt!;
+    assert.match(list, /\(290\)[^]*\n\n…\n\n9\.1\.4\. Alumetal/);
+    assert.ok(!list.includes('(299)'));
+  });
+
+  test('a section the decision does not have is reported', () => {
+    assert.deepEqual(locateSections(DECISION, [{ from: '9.1.3.3.7' }, { from: '12.4' }]).unlocated, ['12.4']);
+    assert.deepEqual(locateSections(DECISION, [{ from: '12.4' }]), { unlocated: ['12.4'] });
+  });
+
+  test('a section longer than the cap is cut at a line, and says so', () => {
+    const { excerpt } = locateSections(DECISION, [{ from: '9.1.3.3' }], { maxLength: 120 });
+    assert.ok(excerpt!.endsWith('\n[…]'));
+    assert.ok(excerpt!.length <= 125);
   });
 });

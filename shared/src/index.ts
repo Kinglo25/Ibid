@@ -57,10 +57,29 @@ export type ResolutionMethod = 'explicit_alias' | 'generated_variant' | 'fallbac
  * is one retrieval anchored at 40, with the rest reported to the reader through
  * `pinpoint`.
  */
-export type CitationLocator = { kind: 'point' | 'article'; start: number; paragraph?: number; end?: number };
+export type CitationLocator = {
+  kind: 'point' | 'article' | 'section';
+  start: number;
+  paragraph?: number;
+  end?: number;
+  /**
+   * The numbered sections a Commission decision is cited by — `section 9.1.3.3.7`, `Sections
+   * 7.5-7.7`, `sections 8.3.4.1 and 8.4.4.1` — as written, since `9.1.3.3.7` is not a number.
+   * Set only with `kind: 'section'`, whose `start` is then the leading component.
+   */
+  sections?: Array<{ from: string; to?: string }>;
+};
 
-/** Every paragraph the span actually pinpoints, ranges expanded. */
-export type Pinpoint = { paragraphs: number[] };
+/**
+ * Every paragraph the span actually pinpoints, ranges expanded.
+ *
+ * `following` is the paragraphs the drafter cited "et seq." — the passage they point the
+ * reader to begins there and runs on for as long as the drafter judged it to. Where it ends
+ * is not written down, so nothing fetches past the named paragraph on the strength of it;
+ * it is kept so the reviewer can be told that what they are shown is where the passage
+ * starts, not all of it. It stays in the pane and is not part of any lookup.
+ */
+export type Pinpoint = { paragraphs: number[]; following?: number[] };
 
 /** One of the authorities a short form could be referring to; only populated for `unresolved_ambiguous`. */
 export type CitationCandidate = {
@@ -200,7 +219,17 @@ function segmentAt(segments: Array<{ start: number; end: number }>, index: numbe
  */
 const PINPOINT_KEYWORD = String.raw`(?:\b(?:points?|paragraphs?|paras\.?|para\.|pt\.?|articles?|art\.|recitals?|consid[ée]rants?)|§{1,2}|¶{1,2})`;
 const PINPOINT_RANGE = String.raw`(?:\s*(?:[–—‑-]|\bto\b|à)\s*\d+)?`;
-const PINPOINT_JOINER = String.raw`(?:\s*(?:,|\band\b|\bet\b|&)\s*\d+${PINPOINT_RANGE})*`;
+/**
+ * "et seq." after a paragraph, and the forms it takes: `et seqq.`, `ff.`, and the French
+ * `et s.` and `et suiv.`. It has to be part of the list grammar rather than something read
+ * afterwards, because it sits *between* the items: "paragraphs 189 et seq., 1324 et seq. and
+ * 1398 et seq." was read as paragraph 189 alone, the list stopping at the first "et seq.",
+ * and the pane put recital 189 on screen as the whole of what a footnote citing three
+ * passages of Tata Steel/thyssenkrupp had cited.
+ */
+const FOLLOWING_WORDS = String.raw`\s*(?:\bet\s+seqq?\b\.?|\bet\s+s(?:uiv)?\.|\bff\b\.?)`;
+const PINPOINT_FOLLOWING = `(?:${FOLLOWING_WORDS})?`;
+const PINPOINT_JOINER = String.raw`(?:\s*(?:,|\band\b|\bet\b|&)\s*\d+${PINPOINT_RANGE}${PINPOINT_FOLLOWING})*`;
 /**
  * Real pinpoints are lists, not single numbers: "paras 40–44, 46 and 48",
  * "§§ 40-44, 46". Parsing only the first number reports one paragraph as the
@@ -208,7 +237,7 @@ const PINPOINT_JOINER = String.raw`(?:\s*(?:,|\band\b|\bet\b|&)\s*\d+${PINPOINT_
  * list needs its own small grammar — a number, an optional range, joined by
  * commas and/or "and".
  */
-const PINPOINT_PATTERN = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_JOINER})`, 'i');
+const PINPOINT_PATTERN = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})`, 'i');
 /**
  * The other half of how legislation is actually cited: the provision comes
  * first and the act follows it ("Article 6(5) of Regulation (EU) 2022/1925",
@@ -216,7 +245,7 @@ const PINPOINT_PATTERN = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?
  * citation, so a provision belonging to some earlier act in the same sentence
  * can never be attached to this one.
  */
-const PINPOINT_BEFORE = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_JOINER})\\s*(?:of|de\\s+la|de|du)\\s+$`, 'i');
+const PINPOINT_BEFORE = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})\\s*(?:of|de\\s+la|de|du)\\s+$`, 'i');
 const PINPOINT_ITEM = /^(\d+)(?:\((\d+)\))?(?:\s*(?:[–—‑-]|\bto\b|à)\s*(\d+))?/i;
 const PINPOINT_SCAN_WINDOW = 160;
 const PINPOINT_BEFORE_WINDOW = 80;
@@ -224,13 +253,21 @@ const PINPOINT_BEFORE_WINDOW = 80;
 /** Guards against a mistyped or malformed range expanding into an absurd list. */
 const MAX_RANGE_SPAN = 200;
 
-function expandPinpointList(list: string): number[] {
+/** One item of a pinpoint list: a number, a sub-paragraph or a range, and an "et seq.". */
+const PINPOINT_LIST_ITEM = new RegExp(String.raw`(\d+)(?:\((\d+)\))?(?:\s*(?:[–—‑-]|\bto\b|à)\s*(\d+))?(${FOLLOWING_WORDS})?`, 'gi');
+
+/**
+ * The list read item by item rather than split on its joiners, because French "et" is both
+ * a joiner ("points 40 et 45") and the start of "et s." — splitting on it left "s." and
+ * "seq." as items of their own and lost which paragraph they belonged to.
+ */
+function expandPinpointList(list: string): Pinpoint {
   const paragraphs: number[] = [];
-  for (const part of list.split(/\s*(?:,|\band\b|\bet\b|&)\s*/i)) {
-    const item = PINPOINT_ITEM.exec(part.trim());
-    if (!item) continue;
+  const following: number[] = [];
+  for (const item of list.matchAll(PINPOINT_LIST_ITEM)) {
     const from = Number(item[1]);
     const to = item[3] ? Number(item[3]) : from;
+    if (item[4]?.trim()) following.push(to);
     if (to < from || to - from > MAX_RANGE_SPAN) {
       paragraphs.push(from);
       if (item[3]) paragraphs.push(to);
@@ -238,7 +275,9 @@ function expandPinpointList(list: string): number[] {
     }
     for (let paragraph = from; paragraph <= to; paragraph += 1) paragraphs.push(paragraph);
   }
-  return [...new Set(paragraphs)];
+  const pinpoint: Pinpoint = { paragraphs: [...new Set(paragraphs)] };
+  if (following.length) pinpoint.following = [...new Set(following)];
+  return pinpoint;
 }
 
 /**
@@ -250,7 +289,25 @@ export type ParsedPinpoint = { locator: CitationLocator; pinpoint?: Pinpoint };
 
 export function parsePinpoint(text: string, index: number, limit = text.length): ParsedPinpoint | undefined {
   const tail = text.slice(index, Math.min(limit, index + PINPOINT_SCAN_WINDOW));
-  return fromPinpointMatch(PINPOINT_PATTERN.exec(tail));
+  const match = PINPOINT_PATTERN.exec(tail);
+  if (match && endsOnLetteredNumber(tail, match)) return undefined;
+  return fromPinpointMatch(match);
+}
+
+/**
+ * Whether the list a pinpoint pattern matched stops on a number that carries a letter.
+ *
+ * `paragraph 1605a` is its own paragraph, inserted between 1605 and 1606 when a decision was
+ * amended, and `Article 8a` is its own article. The pattern reads digits only, so it matched
+ * `paragraph 1605` and the pane would have put paragraph 1605 on screen as the passage cited —
+ * the Commission's 2026 draft merger guidelines cite Orange/MásMóvil this way three times.
+ * Refused rather than read, because nothing downstream can locate a lettered paragraph: a
+ * missing pinpoint shows the document, a wrong one shows the wrong passage.
+ *
+ * Lower case and alone, so `Article 101TFEU` written without its space still reads.
+ */
+function endsOnLetteredNumber(tail: string, match: RegExpExecArray): boolean {
+  return /^[a-z](?![A-Za-z])/.test(tail.slice((match.index ?? 0) + match[0].length));
 }
 
 /** See `PINPOINT_BEFORE`: the provision-then-act form, e.g. "Article 6(5) of Regulation (EU) 2022/1925". */
@@ -278,10 +335,69 @@ function fromPinpointMatch(match: RegExpExecArray | null): ParsedPinpoint | unde
   };
   // An article locator's own sub-numbering is already carried by `paragraph`;
   // `pinpoint` is the judgment-paragraph list, so it would be meaningless here.
-  return { locator, pinpoint: kind === 'point' ? { paragraphs: expandPinpointList(match[1]) } : undefined };
+  return { locator, pinpoint: kind === 'point' ? expandPinpointList(match[1]) : undefined };
 }
 
 const CURIA_FOUNDING_YEAR = 1952;
+
+const COMMISSION_NAME_WINDOW = 160;
+
+const SECTION_NUMBER = String.raw`\d+(?:\.\d+)*`;
+const SECTION_ITEM = String.raw`${SECTION_NUMBER}(?:\s*[–—‑-]\s*${SECTION_NUMBER})?`;
+const SECTION_PINPOINT = new RegExp(
+  String.raw`\b(Annex\s+[\w.]+\s*,?\s*)?sections?\s+(${SECTION_ITEM}(?:\s*(?:,|\band\b|\bet\b|&)\s*${SECTION_ITEM})*)`,
+  'i',
+);
+
+/**
+ * A Commission decision cited by its numbered sections rather than its recitals.
+ *
+ * Merger decisions are structured into numbered sections, and a drafter pointing at an
+ * argument rather than a sentence cites the section: 13 of the 385 case pinpoints across the
+ * Commission's two 2026 sets of guidelines do, as `section 9.1.3.3.7`, `Sections 7.5-7.7` and
+ * `sections 8.3.4.1 and 8.4.4.1`. Read only as far as the next case the text cites, so one
+ * case never takes another's section.
+ *
+ * An annex's section is refused: `Annex 5, Section 6` is section 6 of an annex, and the
+ * decision's own section 6 is a different passage that would be shown under it.
+ */
+function parseSectionPinpoint(own: string): CitationLocator | undefined {
+  const window = own.slice(0, 160);
+  const match = SECTION_PINPOINT.exec(window);
+  // An annex anywhere before the section, not only directly before it: in `Annex A,
+  // paragraphs 96-100 and Section 3.1` the section is the annex's as much as the paragraphs are.
+  if (!match || match[1] || /\bannex\b/i.test(window.slice(0, match.index))) return undefined;
+  const sections = [...match[2].matchAll(new RegExp(String.raw`(${SECTION_NUMBER})(?:\s*[–—‑-]\s*(${SECTION_NUMBER}))?`, 'g'))]
+    .map((item) => (item[2] ? { from: item[1], to: item[2] } : { from: item[1] }));
+  if (!sections.length) return undefined;
+  return { kind: 'section', start: Number(sections[0].from.split('.')[0]), sections };
+}
+
+/**
+ * The name a citation gives a Commission case, as the drafter wrote it: `Ball/Rexam` in
+ * `Case M.7967 – Ball/Rexam, paragraph 12`.
+ *
+ * Kept because the number is not always right, and the name is the check on it. The
+ * Commission's 2026 draft merger guidelines cite `M.7967 – Ball/Rexam`, and M.7967 is Apax
+ * Partners / Neuberger Berman / Engineering; Ball/Rexam is M.7567. Five of their 204 case
+ * citations carry a number of another case or of none, and every one of them names the case
+ * correctly.
+ *
+ * Read as those guidelines write it, measured across both sets: a dash and the name (460 of
+ * 466, one with no space after the dash), or the name straight after the number (5, every one
+ * a merger's `Party/Party`, so without a dash a name is only taken where it has a slash). It
+ * ends where the citation moves on — a comma or semicolon, a bracket, a full stop ending the
+ * sentence, `and Case …`, or the pinpoint.
+ */
+function commissionCaseName(tail: string): string | undefined {
+  const match = /^(?:\s*[–—-]\s*|\s+)([^,;()\n]+?)(?=\s*(?:[,;()\n]|\.(?:\s|$)|$)|\s+(?:and|et)\s+(?:Cases?\b|(?:COMP\/)?(?:AT|SA|M)\.\d)|\s+(?:paragraphs?|paras?\.?|recitals?|points?|sections?|footnotes?|considérants?)\b)/i.exec(tail);
+  if (!match) return undefined;
+  const dashed = /^\s*[–—-]/.test(tail);
+  const name = match[1].trim().replace(/\.$/, '');
+  if (!/\p{L}/u.test(name) || name.length > 100) return undefined;
+  if (!dashed && !name.includes('/')) return undefined;
+  return name;
+}
 
 /**
  * Case numbers carry a two-digit year with no century marker. The Court has
@@ -721,6 +837,96 @@ function parseActNumbers(kind: string, hasSuffix: boolean, hasNo: boolean, first
 }
 
 /** Detects EU legal references and attaches the official-source identifier where it can be derived safely. */
+/**
+ * Where the next authority begins: another Commission case, a court citation, or an act.
+ *
+ * Built here rather than beside `SECTION_PINPOINT` because the patterns it is made of are
+ * declared further down the module than that.
+ */
+const NEXT_AUTHORITY = new RegExp(
+  String.raw`\b(?:COMP\/)?(?:AT|SA|M)[.:]\s?\d{3,6}\b|${CASE_NUMBER_INLINE}|\b(?:ECLI:)?EU:[CT]:\d{4}:\d+\b|\b(?:${ACT_KEYWORDS})\s*(?:\((?:EU|EC|CE|EEC|UE|CEE)\)\s*)?(?:No\.?\s*)?\d{1,4}\/\d{1,4}`,
+  'i',
+);
+
+/**
+ * The part of a footnote that belongs to one Commission case: from its number to wherever the
+ * next authority starts, with the parentheses that qualify it blanked out.
+ *
+ * Both halves were found in the Commission's 2026 draft merger guidelines, and both put a
+ * passage the drafter never cited on screen under a case they did cite.
+ *
+ * `Case M.7278 – General Electric/Alstom (…), Section 8.7.3 and Case M.11177 – Pfizer/Seagen,
+ * paragraph 183.` A footnote holding no semicolon is one segment, so GE/Alstom's scan ran on
+ * into Pfizer/Seagen's `paragraph 183` and took it, before its own section was ever read.
+ * The section reader already stopped at the next case; the paragraph reader did not.
+ *
+ * `Case M.1616 – BSCH/Champalimaud (Article 21(3) decision of 20.07.1999), paragraphs 65-67.`
+ * The parenthesis says which of the case's decisions is meant, and `Article 21(3)` in it is
+ * the Merger Regulation's — but it was the first locator after the number, so the decision
+ * was to be searched for an Article 21(3) and the paragraphs cited were dropped. A
+ * parenthesis after a case describes the case: its sector, its date, its kind of decision.
+ * Blanked rather than cut out, so every index inside the tail stays the index it was.
+ */
+function commissionCaseTail(text: string, from: number, limit: number): string {
+  const rest = text.slice(from, limit);
+  const next = rest.search(NEXT_AUTHORITY);
+  const own = next >= 0 ? rest.slice(0, next) : rest;
+  let depth = 0;
+  let blanked = '';
+  for (const character of own) {
+    if (character === '(') depth += 1;
+    blanked += depth > 0 ? ' ' : character;
+    if (character === ')' && depth > 0) depth -= 1;
+  }
+  // And no further than the sentence: `Case M.567 – Lyonnaise des Eaux / Northumbrian Water.
+  // The application of Article 21 EUMR has also been considered …` gave the 1995 decision the
+  // Merger Regulation's Article 21. Read after the blanking, so a date inside a parenthesis
+  // (`decision of 20.07.1999`) does not end it.
+  const sentence = blanked.search(new RegExp(SENTENCE_BREAK.source));
+  return sentence >= 0 ? blanked.slice(0, sentence) : blanked;
+}
+
+
+/**
+ * A Commission case's own paragraph pinpoint, read from `commissionCaseTail`.
+ *
+ * An annex's paragraph is refused, as an annex's section already was: `Case M.9730 – FCA/PSA,
+ * Economic Annex, paragraph 45` is paragraph 45 of the economic annex, and the decision's own
+ * recital 45 is a different passage that would be shown under it. Six footnotes of the 2026
+ * draft merger guidelines cite an annex this way.
+ */
+function commissionCasePinpoint(own: string): ParsedPinpoint | undefined {
+  const window = own.slice(0, PINPOINT_SCAN_WINDOW);
+  const match = PINPOINT_PATTERN.exec(window);
+  if (!match || endsOnLetteredNumber(window, match)) return undefined;
+  if (/\bannex\b/i.test(window.slice(0, match.index))) return undefined;
+  return fromPinpointMatch(match);
+}
+
+/**
+ * Whether an act is named inside the title of another act, as what that act implements,
+ * amends or repeals, rather than cited for a provision of its own.
+ *
+ * `Annex I to the Commission Implementing Regulation (EU) 2023/914 of 20 April 2023
+ * implementing Council Regulation (EC) No 139/2004 … and repealing Commission Regulation (EC)
+ * No 802/2004, Form Relating to the Notification of a Concentration Pursuant to Council
+ * Regulation (EC) No 139/2004, paragraphs 13-14.` The paragraphs are the Form's, but the
+ * nearest act before them was the Merger Regulation named in the Form's title, so the pane
+ * would have searched Regulation 139/2004 and Regulation 802/2004 for a paragraph 13 neither
+ * was cited for.
+ *
+ * Two things are asked, because each alone is ordinary prose: that an instrument has already
+ * been named in the sentence (`citedWithinAnotherInstrument`), and that the act is introduced
+ * by the words a title uses to point at another act. Wrong in the safe direction: an act
+ * refused here keeps its citation and loses only a pinpoint.
+ */
+const TITLE_REFERENCE = /\b(?:implementing|amending|repealing|supplementing|replacing|under|pursuant\s+to)\s+(?:(?:the|Council|Commission|European\s+Parliament\s+and\s+(?:of\s+the\s+)?Council)\s+)*$/i;
+
+function namedInAnotherActsTitle(text: string, index: number, segmentStart: number): boolean {
+  return TITLE_REFERENCE.test(text.slice(segmentStart, index))
+    && citedWithinAnotherInstrument(text, { index, source: 'eur-lex' }, segmentStart);
+}
+
 export function detectCitations(text: string): CitationMatch[] {
   const matches: CitationMatch[] = [];
   const segments = citationSegments(text);
@@ -902,7 +1108,8 @@ export function detectCitations(text: string): CitationMatch[] {
     add({
       label: DIRECTIVE_WORDS.test(kind) ? 'EU directive' : REGULATION_WORDS.test(kind) ? 'EU regulation'
         : RECOMMENDATION_WORDS.test(kind) ? 'EU recommendation' : 'EU decision',
-      value: match[0], index, source: 'eur-lex', celex: celexForAct(kind, parsed.year, parsed.number), ...pinpointFor(index, index + match[0].length),
+      value: match[0], index, source: 'eur-lex', celex: celexForAct(kind, parsed.year, parsed.number),
+      ...(namedInAnotherActsTitle(text, index, segmentAt(segments, index).start) ? {} : pinpointFor(index, index + match[0].length)),
     });
   }
 
@@ -933,7 +1140,16 @@ export function detectCitations(text: string): CitationMatch[] {
   for (const match of text.matchAll(/\b(?:COMP\/)?(AT|SA|M)\.(\d{3,6})\b/g)) {
     const index = match.index ?? 0;
     const family = match[1] === 'AT' ? 'antitrust' : match[1] === 'SA' ? 'State aid' : 'merger';
-    add({ label: `Commission ${family} case`, value: match[0], index, source: 'commission', ...pinpointFor(index, index + match[0].length) });
+    const caseName = commissionCaseName(text.slice(index + match[0].length, index + match[0].length + COMMISSION_NAME_WINDOW));
+    const segment = segmentAt(segments, index);
+    const own = commissionCaseTail(text, index + match[0].length, segment.end);
+    const parsed = parsePinpointBefore(text, index, segment.start) ?? commissionCasePinpoint(own);
+    const section = parsed ? undefined : parseSectionPinpoint(own);
+    add({
+      label: `Commission ${family} case`, value: match[0], index, source: 'commission',
+      ...(caseName ? { caseName } : {}),
+      ...(section ? { locator: section } : { locator: parsed?.locator, pinpoint: parsed?.pinpoint }),
+    });
   }
 
   return matches.sort((a, b) => a.index - b.index);
@@ -1013,7 +1229,7 @@ const SENTENCE_BREAK = /[.!?]["”’']?\s+(?=[A-Z“‘"'])/g;
  * Wrong in the safe direction when it is wrong. A term refused here is left undefined, and a
  * later use of it resolves to nothing rather than to a document.
  */
-function citedWithinAnotherInstrument(text: string, citation: CitationMatch, segmentStart: number): boolean {
+function citedWithinAnotherInstrument(text: string, citation: Pick<CitationMatch, 'index' | 'source'>, segmentStart: number): boolean {
   if (citation.source !== 'eur-lex') return false;
   const before = text.slice(segmentStart, citation.index);
   let from = 0;
@@ -1482,7 +1698,10 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[])
         }
       }
 
-      if (citation.caseName) {
+      // Not a Commission case's name. Those are read to check the case number against, and
+      // turning "Google Search (Shopping)" or "Tata Steel/thyssenkrupp/JV" loose as short forms
+      // would change what other footnotes in the document resolve to.
+      if (citation.caseName && citation.source !== 'commission') {
         for (const variant of shortNameVariants(citation.caseName)) {
           newEntries.push({ key: variant.toLowerCase(), method: 'generated_variant', order: order++, citation: registered });
         }

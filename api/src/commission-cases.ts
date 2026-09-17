@@ -57,6 +57,21 @@ export type CommissionCaseIndex = {
    * a guess.
    */
   find(caseNumber: string): CommissionDecision[];
+  /**
+   * The register's title for a case — `TATA STEEL / THYSSENKRUPP / JV`, `Intel` — under the
+   * same spellings `find` accepts. Every case the datasets list has one, decided or not.
+   */
+  title(caseNumber: string): string | undefined;
+  /**
+   * The one case whose title is the name a citation gives, where a single case is it.
+   *
+   * Searched within the cited number's family (`M.`, `AT.`). Every word of the name must be
+   * in the title; among titles that hold them all, the one with the fewest words besides is
+   * the case named — `BALL / REXAM` over `ARDAGH / BALL REXAM DIVESTMENT BUSINESS` — and a
+   * tie goes to the number nearer the one cited, since a mistyped number is usually a digit
+   * or two away from the right one. A tie that survives that is no answer.
+   */
+  caseNamed(name: string, citedNumber: string): { caseNumber: string; title: string } | undefined;
   /** How many cases resolved to at least one decision document. */
   readonly size: number;
 };
@@ -219,6 +234,75 @@ function sortKey(decision: CommissionDecision, languages: readonly string[]): nu
   ];
 }
 
+/**
+ * The words of a case name worth comparing: accents dropped, case folded, and the words that
+ * name no party — legal forms, joiners, `JV`, and the register's own `(Art. 21 procedure)`.
+ */
+const GENERIC_NAME_WORDS = new Set([
+  'and', 'the', 'of', 'for', 'de', 'des', 'du', 'la', 'le', 'les', 'et', 'und', 'der', 'die', 'y', 'e',
+  'jv', 'ag', 'sa', 'se', 'nv', 'bv', 'plc', 'inc', 'ltd', 'llc', 'spa', 'gmbh', 'co', 'corp', 'group',
+  'holding', 'holdings', 'business', 'businesses', 'art', 'article', 'procedure', 'joint', 'venture',
+]);
+
+export function caseNameWords(name: string): string[] {
+  return name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length >= 2 && !/^\d+$/.test(word) && !GENERIC_NAME_WORDS.has(word));
+}
+
+/** Whether a word of a citation's name is in a title, run-together spellings included. */
+function inTitle(word: string, words: ReadonlySet<string>, joined: string): boolean {
+  // `EssilorLuxottica` is one word in a footnote and two in some titles; the joined title is
+  // only consulted for a word long enough not to turn up inside an unrelated one.
+  return words.has(word) || (word.length >= 5 && joined.includes(word));
+}
+
+/**
+ * Whether the name a citation gives a case and the register's title for it are the same case.
+ *
+ * Deliberately loose, because it only has to tell a wrong number from a right one: one word
+ * in common is agreement. Drafters shorten (`BSCH/Champalimaud` for `ANTONIO DE SOMMER
+ * CHAMPALIMAUD / BANCO SANTANDER CENTRAL HISPANOAMERICANO`) and misspell (`Boeing/Sprit`),
+ * and both agree. A wrong number shares nothing: across the 204 case citations of the
+ * Commission's 2026 draft merger guidelines, exactly the three carrying another case's number
+ * have no word in common with that case's title, and every other one has at least one. A name
+ * with no comparable word agrees with anything, since there is nothing in it to check.
+ */
+export function caseNamesAgree(name: string, title: string): boolean {
+  const words = caseNameWords(name);
+  if (!words.length) return true;
+  const titleWords = caseNameWords(title);
+  const set = new Set(titleWords);
+  const joined = titleWords.join('');
+  return words.some((word) => inTitle(word, set, joined));
+}
+
+/** How far apart two case numbers are, digit by digit — a transposition or a slip counts once or twice. */
+function numberDistance(a: string, b: string): number {
+  const x = a.replace(/\D/g, '');
+  const y = b.replace(/\D/g, '');
+  const rows = Array.from({ length: x.length + 1 }, (_, i) => [i, ...Array<number>(y.length).fill(0)]);
+  for (let j = 1; j <= y.length; j += 1) rows[0][j] = j;
+  for (let i = 1; i <= x.length; i += 1) {
+    for (let j = 1; j <= y.length; j += 1) {
+      rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    }
+  }
+  return rows[x.length][y.length];
+}
+
+/** Where a record states its title: `metadata.caseTitle`, the metadata sometimes encoded. */
+function caseTitleIn(record: unknown): string | undefined {
+  if (!record || typeof record !== 'object') return undefined;
+  for (const metadata of decoded((record as Record<string, unknown>).metadata)) {
+    if (metadata && typeof metadata === 'object') {
+      const title = firstString((metadata as Record<string, unknown>).caseTitle);
+      if (title?.trim()) return title.trim();
+    }
+  }
+  return undefined;
+}
+
 export type IndexOptions = {
   /** Language codes in order of preference, upper case. Defaults to English then French. */
   preferredLanguages?: readonly string[];
@@ -237,6 +321,7 @@ export function buildCommissionCaseIndex(
 ): CommissionCaseIndex {
   const languages = options.preferredLanguages ?? ['EN', 'FR'];
   const byCase = new Map<string, CommissionDecision[]>();
+  const titles = new Map<string, { title: string; words: Set<string>; joined: string }>();
 
   for (const raw of datasets) {
     let parsed: unknown;
@@ -249,6 +334,11 @@ export function buildCommissionCaseIndex(
 
     for (const [caseNumber, record] of Object.entries(parsed as Record<string, unknown>)) {
       const key = caseNumber.trim().toUpperCase();
+      const title = caseTitleIn(record);
+      if (title) {
+        const words = caseNameWords(title);
+        titles.set(key, { title, words: new Set(words), joined: words.join('') });
+      }
       for (const attachment of attachmentsIn(record)) {
         const url = firstString(attachment.attachmentLink);
         // Only a PDF, and only over https: the dataset is trusted for what it describes, not
@@ -299,26 +389,62 @@ export function buildCommissionCaseIndex(
    * choosing between two decisions naming different parties is exactly the guess this tool
    * refuses to make.
    */
-  const siblings = new Map<string, string[]>();
-  for (const key of byCase.keys()) {
-    const qualified = /^(.+?\.\d+)\.[^.]+$/.exec(key);
-    if (!qualified) continue;
-    const plain = qualified[1];
-    siblings.set(plain, [...(siblings.get(plain) ?? []), key]);
-  }
+  const groupQualified = (keys: Iterable<string>) => {
+    const groups = new Map<string, string[]>();
+    for (const key of keys) {
+      const qualified = /^(.+?\.\d+)\.[^.]+$/.exec(key);
+      if (!qualified) continue;
+      groups.set(qualified[1], [...(groups.get(qualified[1]) ?? []), key]);
+    }
+    return groups;
+  };
+  const siblings = groupQualified(byCase.keys());
+  // Grouped over every titled case rather than the decided ones: `M.12052` exists only as
+  // `M.12052.AP` — UNICREDIT / BANCO BPM (Art. 21(4)) — and has no decision to find, but a
+  // citation of it still names a case, and checking that name needs its title.
+  const titledSiblings = groupQualified(titles.keys());
+  // `COMP/M.8713` is the same case as `M.8713`; the register drops the prefix and so does the
+  // dataset.
+  const keyOf = (caseNumber: string) => caseNumber.replace(/^COMP\//i, '').trim().toUpperCase();
 
   return {
     size: byCase.size,
     find(caseNumber) {
-      // `COMP/M.8713` is the same case as `M.8713`; the register drops the prefix and so
-      // does the dataset. Matching is otherwise exact — a case number is an identifier, and
-      // there is no near-miss worth resolving to a decision naming different parties.
-      const wanted = caseNumber.replace(/^COMP\//i, '').trim().toUpperCase();
+      // Matching is otherwise exact — a case number is an identifier, and there is no near-miss
+      // worth resolving to a decision naming different parties. Where the number is wrong, the
+      // name is what says so; see `identifyCommissionCase`.
+      const wanted = keyOf(caseNumber);
       const exact = byCase.get(wanted);
       if (exact) return exact;
 
       const qualified = siblings.get(wanted);
       return qualified?.length === 1 ? byCase.get(qualified[0]) ?? [] : [];
+    },
+    title(caseNumber) {
+      const wanted = keyOf(caseNumber);
+      const exact = titles.get(wanted);
+      if (exact) return exact.title;
+      const qualified = titledSiblings.get(wanted);
+      return qualified?.length === 1 ? titles.get(qualified[0])?.title : undefined;
+    },
+    caseNamed(name, citedNumber) {
+      const words = caseNameWords(name);
+      const family = /^([A-Z]+)\./.exec(keyOf(citedNumber))?.[1];
+      if (!words.length || !family) return undefined;
+
+      let best: Array<{ key: string; title: string; extra: number; distance: number }> = [];
+      for (const [key, entry] of titles) {
+        if (!key.startsWith(`${family}.`)) continue;
+        if (!words.every((word) => inTitle(word, entry.words, entry.joined))) continue;
+        const extra = [...entry.words].filter((word) => !words.some((named) => named === word || named.includes(word))).length;
+        const candidate = { key, title: entry.title, extra, distance: numberDistance(citedNumber, key) };
+        const lead = best[0];
+        if (!lead || extra < lead.extra || (extra === lead.extra && candidate.distance < lead.distance)) best = [candidate];
+        else if (extra === lead.extra && candidate.distance === lead.distance) best.push(candidate);
+      }
+      if (best.length !== 1) return undefined;
+      // The register's own spelling of the number, less a qualifier a citation never carries.
+      return { caseNumber: best[0].key.replace(/^(.+?\.\d+)\.[^.]+$/, '$1'), title: best[0].title };
     },
   };
 }
@@ -346,7 +472,7 @@ export type CommissionCaseIndexLoader = {
   get(): Promise<CommissionCaseIndex>;
 };
 
-const EMPTY_INDEX: CommissionCaseIndex = { size: 0, find: () => [] };
+const EMPTY_INDEX: CommissionCaseIndex = { size: 0, find: () => [], title: () => undefined, caseNamed: () => undefined };
 
 /**
  * Keeps the index fresh without ever letting it fail a lookup.
@@ -410,5 +536,50 @@ export function createCommissionCaseIndexLoader(options: CaseIndexLoaderOptions 
       await building;
       return index;
     },
+  };
+}
+
+/** What a Commission citation is taken to cite, once its number has been checked against its name. */
+export type CommissionCaseIdentity = {
+  /** The case to show: the one cited, or the one its name identifies where the number is not it. */
+  caseNumber?: string;
+  /** The register's title for `caseNumber`. */
+  title?: string;
+  /**
+   * Set where the number cited is not the case the citation names. `caseNumber` is then the
+   * case the name identifies, or absent where no single case is it.
+   */
+  numberMismatch?: { cited: string; citedTitle?: string; name: string };
+};
+
+/**
+ * Which case a citation means, when its number and its name disagree.
+ *
+ * The name wins. A number is five digits typed by hand and a name is the case the drafter had
+ * in mind: every wrong number in the Commission's own 2026 draft merger guidelines sits beside
+ * the right name — `M.7967 – Ball/Rexam` is M.7567, `M.11506 – Parker/Meggitt` is M.10506,
+ * `M.9596 – EssilorLuxottica/GrandVision` is M.9569, and `M.9376 – Siemens/Alstom` and
+ * `M.9706 – Novelis/Aleris` cite numbers the register has never used, for M.8677 and M.9076.
+ * Following the number put Apax Partners' decision on screen under a citation to Ball/Rexam.
+ *
+ * So the case shown is the one named, and the mismatch is always carried with it for the
+ * reviewer to see: this changes what a citation says, and nobody should learn that from a
+ * title they happened to read closely. Where no single case carries the name, nothing is
+ * shown as the source at all, because the number is known to be wrong and there is nothing
+ * better to show.
+ *
+ * Checked only where there is something to check against: a citation that gives no name, or a
+ * number the index has decisions for but no title, is taken as cited.
+ */
+export function identifyCommissionCase(index: CommissionCaseIndex, cited: string, name: string | undefined): CommissionCaseIdentity {
+  const citedTitle = index.title(cited);
+  if (!name) return { caseNumber: cited, title: citedTitle };
+  if (citedTitle ? caseNamesAgree(name, citedTitle) : index.find(cited).length > 0) return { caseNumber: cited, title: citedTitle };
+
+  const named = index.caseNamed(name, cited);
+  if (!named && !citedTitle) return { caseNumber: cited };
+  return {
+    ...(named ? { caseNumber: named.caseNumber, title: named.title } : {}),
+    numberMismatch: { cited, ...(citedTitle ? { citedTitle } : {}), name },
   };
 }

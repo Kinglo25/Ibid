@@ -59,7 +59,8 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 655 tests (290 detection and resolution, 229 resolver, document store and contract, 136 task pane). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
+- `npm run test` passes: 721 tests (311 detection and resolution, 256 resolver, document store and contract, 154 task pane). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
+- `npm run answer-key` passes: the 2026 draft merger guidelines against their answer key (624 citations) — 0 at a wrong document, 4 at a wrong pinpoint each reading so in the .docx itself, and the other known gaps listed with reasons in `scripts/answer-keys/merger-guidelines-2026.known.json`. Outside `verify`: it needs the document, which is not in the repository.
 - `npm run corpus` passes: 21 documents, 17 read, 1,083 citations, 165 identifiers checked against CELLAR, 0 wrong-source. Outside `verify`: it needs the network.
 - `npm run word-check` passes: the .docx reader and real Word agree on all 1,991 footnotes of the Intel decision, and on every other sample. Outside `verify`: it needs Word on Windows.
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
@@ -1892,7 +1893,7 @@ Then sideload `addin/manifest.xml` in Word and open the sample document. Select 
 
 1. Run the Word end-to-end validation above and fix Office.js compatibility/UI issues that appear.
 2. Add explicit Commission-family classification (competition, state aid, merger, infringement) from citation context, then route each family to the appropriate official register. The current generic Commission adapter is intentionally conservative. **Note before starting: routing will not get you the decision text.** See "Why a competition decision is a link and not a passage" below — that was measured, and the answer changes what this item is worth.
-3. Extend the task-pane tests. The runner covers the presentation logic, the confirmation flow, the success state with each language outcome, the cursor-following code (through the Word stub), and the cache warming. The **retrieval-error** state is still unexercised.
+3. Extend the task-pane tests. The runner covers the presentation logic, the confirmation flow, the success state with each language outcome, the cursor-following code (through the Word stub), and the cache warming. The retrieval-error state is now exercised for an unreachable server and for a failure arriving after the reviewer has moved on; an error *status* from the API (`502`, or the Vite proxy's `500` for a stopped API) still is not.
 4. Replace the per-process document cache and rate limiting with shared, observable infrastructure before horizontal scaling. The store is behind a four-method `DocumentStore` interface (`api/src/document-store.ts`), so a shared backend is a third implementation of it rather than a change to the resolver.
 5. Broaden `documentTypeNear` in `shared/src/index.ts` if real documents surface more opinion/order phrasings than the current signal set (English "Opinion of [the] Advocate General" / "Order of the [General] Court", French "conclusions de l'avocat général" / "ordonnance"). Missing a signal is safe — it only causes an unnecessary fetch attempt that 404s and falls back to the link — but it is worth tightening once real client documents are seen.
 6. ~~Fix the joined-case CELEX gap.~~ **Done, and the diagnosis in this list was wrong** — see "The joined-case gap is not a language gap" below.

@@ -19,7 +19,8 @@
     "trial": "bash scripts/trial.sh",
     "word-check": "npm run build -w shared && node scripts/word-check.mjs",
     "accuracy:sample": "npm run build -w shared && node scripts/accuracy-sample.mjs",
-    "accuracy:score": "node scripts/accuracy-score.mjs"
+    "accuracy:score": "node scripts/accuracy-score.mjs",
+    "answer-key": "npm run build -w shared && node scripts/answer-key.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

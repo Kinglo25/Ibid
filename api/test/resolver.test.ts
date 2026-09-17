@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCommissionCaseIndex, createEuSourceResolver, createApiHealthCheck, createMemoryDocumentStore, type EuLookup, type ResolverOptions } from '../src/index.ts';
+import { buildCommissionCaseIndex, createEuSourceResolver, createApiHealthCheck, createMemoryDocumentStore, documentTypeOf, type EuLookup, type ResolverOptions } from '../src/index.ts';
 
 type Call = { url: string; init: RequestInit };
 
@@ -661,6 +661,63 @@ describe('Commission decisions, through the Commission’s own case data', () =>
 });
 
 /**
+ * A citation whose case number is another case's, as the Commission's own 2026 draft merger
+ * guidelines cite `Case M.7967 – Ball/Rexam`: M.7967 is Apax Partners / Neuberger Berman /
+ * Engineering, and Ball/Rexam is M.7567.
+ */
+describe('a Commission citation whose number is not the case it names', () => {
+  const APAX = 'https://ec.europa.eu/competition/mergers/cases/decisions/m7967_114_3.pdf';
+  const BALL_REXAM = 'https://ec.europa.eu/competition/mergers/cases/decisions/m7567_4959_3.pdf';
+  const decided = (title: string, link: string) => ({
+    metadata: { caseTitle: [title] },
+    decisions: [{ decisionAttachments: [{ metadata: {
+      attachmentLink: [link],
+      attachmentCategory: [JSON.stringify({ code: 'DocumentCategory0587', label: 'Decision - web publication' })],
+      attachmentLanguage: ['EN'], attachmentDocumentDate: ['2016-01-15'],
+    } }] }],
+  });
+  const index = buildCommissionCaseIndex([JSON.stringify({
+    'M.7967': decided('APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING', APAX),
+    'M.7567': decided('BALL / REXAM', BALL_REXAM),
+  })]);
+  const commissionCases = { get: async () => index };
+
+  test('shows the case it names, and carries the mismatch with it', async () => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([]).fetcher, commissionCases });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'M.7967', caseName: 'Ball/Rexam' });
+
+    assert.equal(preview.url, BALL_REXAM, 'Ball/Rexam’s decision, not Apax Partners’');
+    assert.equal(preview.title, 'M.7567 – BALL / REXAM');
+    assert.deepEqual(preview.numberMismatch, {
+      cited: 'M.7967', citedTitle: 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING', name: 'Ball/Rexam', caseNumber: 'M.7567',
+    });
+  });
+
+  test('where no case carries the name, shows no decision and searches the register for the name', async () => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([]).fetcher, commissionCases });
+
+    const previews = await resolver.resolve({ source: 'commission', value: 'M.7967', caseName: 'Nonexistent/Parties' });
+
+    assert.equal(previews.length, 1);
+    assert.equal(previews[0].url, 'https://competition-cases.ec.europa.eu/search?query=Nonexistent%2FParties');
+    assert.equal(previews[0].title, 'M.7967 – Nonexistent/Parties', 'as the footnote wrote it, since nothing else is known to be it');
+    assert.equal(previews[0].numberMismatch?.caseNumber, undefined);
+    assert.equal(previews[0].numberMismatch?.citedTitle, 'APAX PARTNERS / NEUBERGER BERMAN / ENGINEERING');
+  });
+
+  test('a name that agrees is the case as cited, titled as the register titles it', async () => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([]).fetcher, commissionCases });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'M.7567', caseName: 'Ball/Rexam' });
+
+    assert.equal(preview.url, BALL_REXAM);
+    assert.equal(preview.title, 'M.7567 – BALL / REXAM');
+    assert.equal(preview.numberMismatch, undefined);
+  });
+});
+
+/**
  * Reading the decision, rather than linking it.
  *
  * Driven through the document store rather than through a real PDF: `extractPdfText` is
@@ -866,6 +923,63 @@ describe('the passage of a Commission decision', () => {
 
     assert.equal(previews.length, 2);
     for (const preview of previews) assert.equal(preview.passage, undefined);
+  });
+
+  test('every recital a footnote cites is shown, and one the decision lacks is reported', async () => {
+    // Tata Steel/thyssenkrupp, cited "paragraphs 189 et seq., 1324 et seq. and 1398 et seq.":
+    // the list reaches the resolver whole now, and a recital not found must not be passed
+    // over in silence while the others are shown as the passage cited.
+    const documentStore = await storeHolding(DECISION_TEXT);
+    const { resolver } = makeResolver({ fetcher: stubFetcher([new Response(null, { status: 304 })]).fetcher, documentStore, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({
+      source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 999 }, paragraphs: [999, 1001, 1398],
+    });
+
+    assert.equal(preview.passage, 'cited');
+    assert.match(preview.excerpt, /^\(999\) An earlier recital/);
+    assert.match(preview.excerpt, /\n\n…\n\n\(1001\) The recital after/);
+    assert.ok(!preview.excerpt.includes('(1000)'), 'what was not cited is not shown');
+    assert.deepEqual(preview.unlocated, ['1398']);
+  });
+
+  test('of two decisions, the one carrying every cited recital is the answer', async () => {
+    // A short decision in the same case reaching recital 999 is not the decision a footnote
+    // citing 999 and 1001 means: it lacks a passage the footnote says is there.
+    const documentStore = await storeHolding(DECISION_TEXT, '(999) A procedural recital of a later decision.');
+    const { fetcher } = stubFetcher([new Response(null, { status: 304 }), new Response(null, { status: 304 })]);
+    const { resolver } = makeResolver({
+      fetcher, documentStore,
+      commissionCases: loaderFor([attachment(URL_2009, '2009-05-13'), attachment(URL_2023, '2023-09-22')]),
+    });
+
+    const previews = await resolver.resolve({
+      source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 999 }, paragraphs: [999, 1001],
+    });
+
+    assert.equal(previews.length, 1);
+    assert.equal(previews[0].url, URL_2009);
+    assert.equal(previews[0].unlocated, undefined);
+  });
+
+  test('a decision cited by a numbered section shows that section', async () => {
+    // "Case M.10658 – Norsk Hydro/Alumetal, section 9.1.3.3.7", from the 2026 draft merger guidelines.
+    const documentStore = await storeHolding([
+      '9.1.3.3.7. The Parties are not close competitors .................... 60',
+      '9.1.3.3.7. The Parties are not close competitors',
+      '(299) The Commission considers that the Parties have differentiated offerings.',
+      '9.1.3.3.8. Conclusion',
+      '(322) Based on the analysis of the evidence.',
+    ].join('\n'));
+    const { resolver } = makeResolver({ fetcher: stubFetcher([new Response(null, { status: 304 })]).fetcher, documentStore, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({
+      source: 'commission', value: 'AT.37990', locator: { kind: 'section', start: 9, sections: [{ from: '9.1.3.3.7' }] },
+    });
+
+    assert.equal(preview.passage, 'cited');
+    assert.equal(preview.locator, 'Section 9.1.3.3.7');
+    assert.equal(preview.excerpt, '9.1.3.3.7. The Parties are not close competitors\n(299) The Commission considers that the Parties have differentiated offerings.');
   });
 
   test('a citation with no pinpoint is a link, not a download', async () => {
@@ -1162,6 +1276,17 @@ describe('a cited range of paragraphs', () => {
     assert.match(preview.excerpt, /Text of paragraph 65\./);
     assert.ok(!/Text of paragraph 63\./.test(preview.excerpt), 'paragraph 63 was not cited');
     assert.match(preview.excerpt, /…/, 'and the gap between them is marked');
+    assert.equal(preview.unlocated, undefined, 'both were found, so nothing is reported missing');
+  });
+
+  test('a paragraph of a disjoint citation that is not in the text is reported, not dropped', async () => {
+    // Showing 62 alone for "paras 62 and 70" presents half the citation as all of it.
+    const { fetcher } = stubFetcher([judgment([61, 62, 63])]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve({ ...lookup(62), paragraphs: [62, 70, 71] });
+    assert.equal(preview.passage, 'cited');
+    assert.match(preview.excerpt, /Text of paragraph 62\./);
+    assert.deepEqual(preview.unlocated, ['70–71']);
   });
 
   test('labels a disjoint citation as the paragraphs it shows', async () => {
@@ -1556,59 +1681,55 @@ describe('the two 404s CELLAR answers with', () => {
   });
 });
 
-describe('asking CELLAR by the ECLI when it does not know the CELEX', () => {
+describe('asking CELLAR by the ECLI the footnote wrote', () => {
   // The CELEX Ibid sends is *derived* — sector letter from the document type, year from the
-  // case number — while the ECLI is quoted verbatim from the footnote. CELLAR turns out not
-  // to mint a CELEX for some case law it nonetheless holds and indexes by ECLI: every
-  // identifier the corpus run recorded as "unavailable" resolves this way, confirmed live
-  // on 2026-08-21. Before this, each of those citations fell back to a CURIA link telling
-  // the lawyer to go and look it up themselves, with the text sitting one request away.
+  // case number — while the ECLI is quoted verbatim from the footnote. The ECLI is asked
+  // first, because the two can name different documents, and the ECLI is the one the drafter
+  // wrote down. CELLAR also holds some case law only under its ECLI: every identifier the
+  // corpus run recorded as "unavailable" resolves this way, confirmed live on 2026-08-21.
   const order = (overrides: Partial<EuLookup> = {}): EuLookup => ({
     source: 'curia', value: 'ECLI:EU:T:2024:431', caseNumber: 'C-511/24',
     caseName: 'Aylo Freesites LTD v Commission', celex: '62024TO0511',
     ecli: 'ECLI:EU:T:2024:431', documentType: 'order', ...overrides,
   });
+  const ECLI_URL = 'https://example.test/ecli/ECLI%3AEU%3AT%3A2024%3A431';
 
   test('retrieves the document the footnote actually named', async () => {
     const { fetcher, calls } = stubFetcher([
-      noSuchDocument('62024TO0511'),
-      noSuchRendition(),
       documentResponse('<P class="C01PointnumeroteAltN"><A NAME="point112">112</A>The order says this.</P>'),
     ]);
     const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
 
     const [preview] = await resolver.resolve(order({ locator: { kind: 'point', start: 112 }, paragraphs: [112] }));
 
-    assert.equal(calls[0].url, 'https://example.test/celex/62024TO0511');
-    assert.equal(calls[1].url, 'https://example.test/ecli/ECLI%3AEU%3AT%3A2024%3A431',
-      'the ECLI is percent-encoded onto the sibling /ecli base, never interpolated raw');
+    assert.equal(calls[0].url, ECLI_URL, 'the ECLI is percent-encoded onto the sibling /ecli base, never interpolated raw');
     assert.equal(preview.source, 'CURIA');
     assert.equal(preview.locator, 'Point 112');
     assert.ok(preview.excerpt.includes('The order says this.'), preview.excerpt);
     assert.ok(preview.verifiedAt, 'it was retrieved, so it carries a confirmation time');
-    // The link has to be the address that answered. The CELEX URL 404s for this document —
-    // sending the reader there would be worse than the CURIA link this replaces.
-    assert.equal(preview.url, 'https://example.test/ecli/ECLI%3AEU%3AT%3A2024%3A431');
+    // The link has to be the address that answered.
+    assert.equal(preview.url, ECLI_URL);
   });
 
-  test('the unknown CELEX still costs only one request before moving on', async () => {
-    const { fetcher, calls } = stubFetcher([noSuchDocument('62024TO0511'), documentResponse('<p>text</p>')]);
-    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
-
-    await resolver.resolve(order());
-    assert.equal(calls.length, 2, 'one request to learn the CELEX is unknown, one to the ECLI that works');
-  });
-
-  test('never asks by ECLI when the CELEX answered', async () => {
+  test('never asks by the CELEX when the ECLI answered', async () => {
     const { fetcher, calls } = stubFetcher([documentResponse('<p>text</p>')]);
     const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
 
     await resolver.resolve(order());
     assert.equal(calls.length, 1);
-    assert.ok(calls[0].url.includes('/celex/'));
+    assert.ok(calls[0].url.includes('/ecli/'));
   });
 
-  test('never asks by ECLI when the failure was not a 404', async () => {
+  test('an ECLI CELLAR has never heard of costs one request before the CELEX', async () => {
+    const { fetcher, calls } = stubFetcher([noSuchDocument('ECLI'), documentResponse('<p>text</p>')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [preview] = await resolver.resolve(order());
+    assert.deepEqual(calls.map((call) => call.url), [ECLI_URL, 'https://example.test/celex/62024TO0511']);
+    assert.equal(preview.url, 'https://example.test/celex/62024TO0511');
+  });
+
+  test('never asks by the CELEX when the failure was not a 404', async () => {
     // A second identifier does not fix a server failing for an unrelated reason — the same
     // rule the rendition chain follows, one level up.
     const { fetcher, calls } = stubFetcher([new Response('nope', { status: 400 })]);
@@ -1619,22 +1740,20 @@ describe('asking CELLAR by the ECLI when it does not know the CELEX', () => {
   });
 
   test('holds what the ECLI returned under its own key, and revalidates it next time', async () => {
-    const { fetcher, calls } = stubFetcher([
-      noSuchDocument('62024TO0511'), documentResponse('<p>Article 1</p><p>the order</p>'), notModified(),
-    ]);
+    const { fetcher, calls } = stubFetcher([documentResponse('<p>Article 1</p><p>the order</p>'), notModified()]);
     const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
 
     await resolver.resolve(order({ locator: { kind: 'point', start: 1 } }));
     const [second] = await resolver.resolve(order({ locator: { kind: 'point', start: 2 } }));
 
-    assert.equal(calls.length, 3, 'the second lookup goes straight to the ECLI it worked under, and confirms it');
-    assert.equal(calls[2].url, 'https://example.test/ecli/ECLI%3AEU%3AT%3A2024%3A431');
-    assert.equal((calls[2].init.headers as Record<string, string>)['If-None-Match'], '"Con-20190721062819000"');
+    assert.equal(calls.length, 2, 'the second lookup goes straight to the ECLI it worked under, and confirms it');
+    assert.equal(calls[1].url, ECLI_URL);
+    assert.equal((calls[1].init.headers as Record<string, string>)['If-None-Match'], '"Con-20190721062819000"');
     assert.ok(second.excerpt.includes('the order'));
   });
 
   test('falls back to the CURIA link only once both identifiers are exhausted', async () => {
-    const { fetcher, calls } = stubFetcher([noSuchDocument('62024TO0511'), noSuchDocument('ECLI')]);
+    const { fetcher, calls } = stubFetcher([noSuchDocument('ECLI'), noSuchDocument('62024TO0511')]);
     const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
 
     const [preview] = await resolver.resolve(order());
@@ -1659,6 +1778,89 @@ describe('asking CELLAR by the ECLI when it does not know the CELEX', () => {
     const [preview] = await resolver.resolve(order());
     assert.equal(calls.length, 1);
     assert.ok(preview.url.startsWith('https://curia.europa.eu/'));
+  });
+});
+
+describe('a footnote that calls an Opinion a judgment', () => {
+  // Footnote 460 of the Commission's 2026 draft merger guidelines: "Judgment of 15 December
+  // 2002, Superleague v FIFA, C-333/21, EU:C:2022:993, paragraph 251". The word "Judgment"
+  // derives 62021CJ0333, the judgment; EU:C:2022:993 is Advocate General Rantos's Opinion
+  // (CELLAR's own metadata, checked 2026-09-17), which is the document the footnote named.
+  const superleague = (overrides: Partial<EuLookup> = {}): EuLookup => ({
+    source: 'curia', value: 'EU:C:2022:993', caseNumber: 'C-333/21', caseName: 'Superleague v FIFA',
+    celex: '62021CJ0333', ecli: 'ECLI:EU:C:2022:993', documentType: 'judgment',
+    locator: { kind: 'point', start: 251 }, paragraphs: [251], ...overrides,
+  });
+  const OPINION = () => documentResponse('<p>OPINION OF ADVOCATE GENERAL RANTOS delivered on 15 December 2022</p>'
+    + '<P class="C01PointnumeroteAltN"><A NAME="point251">251</A>The Advocate General says this.</P>');
+  const JUDGMENT = () => documentResponse('<p>JUDGMENT OF THE COURT (Grand Chamber)</p>'
+    + '<p>after hearing the Opinion of the Advocate General</p>'
+    + '<P class="C01PointnumeroteAltN"><A NAME="point251">251</A>The Court says this.</P>');
+  const OPINION_URL = `https://example.test/ecli/${encodeURIComponent('ECLI:EU:C:2022:993')}`;
+
+  test('shows the Opinion its ECLI names, and says what it is', async () => {
+    const { fetcher, calls } = stubFetcher([OPINION()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [preview] = await resolver.resolve(superleague());
+    assert.deepEqual(calls.map((call) => call.url), [OPINION_URL]);
+    assert.ok(preview.excerpt.includes('The Advocate General says this.'), preview.excerpt);
+    assert.equal(preview.documentType, 'opinion');
+    assert.equal(preview.title, 'Superleague v FIFA, C-333/21 (opinion)');
+  });
+
+  test('says nothing where the document is what the citation called it', async () => {
+    const { fetcher } = stubFetcher([JUDGMENT()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [preview] = await resolver.resolve(superleague({ ecli: 'ECLI:EU:C:2023:1011', value: 'EU:C:2023:1011' }));
+    assert.equal(preview.documentType, undefined, 'the lower-case "Opinion of the Advocate General" in a judgment is not its heading');
+    assert.equal(preview.title, 'Superleague v FIFA, C-333/21');
+  });
+
+  test('the judgment already held under the derived CELEX is not served in its place', async () => {
+    // The store a deployment already has was filled while the CELEX came first. The judgment
+    // cited in footnote 39 is held under 62021CJ0333, the same CELEX footnote 460 derives, and
+    // the same paragraph under both would also have shared one cached excerpt.
+    const { fetcher, calls } = stubFetcher([JUDGMENT(), OPINION()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [judgment] = await resolver.resolve(superleague({ ecli: undefined }));
+    const [opinion] = await resolver.resolve(superleague());
+
+    assert.ok(judgment.excerpt.includes('The Court says this.'));
+    assert.deepEqual(calls.map((call) => call.url), ['https://example.test/celex/62021CJ0333', OPINION_URL]);
+    assert.ok(opinion.excerpt.includes('The Advocate General says this.'), opinion.excerpt);
+  });
+
+  test('an ECLI CELLAR does not know still reaches the document held under the CELEX', async () => {
+    const { fetcher, calls } = stubFetcher([JUDGMENT(), noSuchDocument('ECLI'), notModified()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    await resolver.resolve(superleague({ ecli: undefined }));
+    const [preview] = await resolver.resolve(superleague({ ecli: 'ECLI:EU:C:2099:1', locator: { kind: 'point', start: 251 }, paragraphs: [251, 252] }));
+
+    assert.deepEqual(calls.map((call) => call.url), [
+      'https://example.test/celex/62021CJ0333',
+      `https://example.test/ecli/${encodeURIComponent('ECLI:EU:C:2099:1')}`,
+      'https://example.test/celex/62021CJ0333',
+    ], 'one request to learn the ECLI names nothing, then the held document confirmed as before');
+    assert.ok(preview.excerpt.includes('The Court says this.'));
+  });
+});
+
+describe('documentTypeOf', () => {
+  test('reads the heading a court document opens with, in English and in French', () => {
+    assert.equal(documentTypeOf('<p>JUDGMENT OF THE GENERAL COURT (Ninth Chamber)</p>'), 'judgment');
+    assert.equal(documentTypeOf('<p>OPINION OF ADVOCATE GENERAL WAHL</p><p>delivered on 20 October 2016</p>'), 'opinion');
+    assert.equal(documentTypeOf('<p>ORDER OF THE PRESIDENT OF THE GENERAL COURT</p>'), 'order');
+    assert.equal(documentTypeOf('<p>ARRÊT DU TRIBUNAL (deuxième chambre élargie)</p>'), 'judgment');
+    assert.equal(documentTypeOf("<p>CONCLUSIONS DE L'AVOCAT GÉNÉRAL</p>"), 'opinion');
+  });
+
+  test('takes the first heading, and says nothing where there is none', () => {
+    assert.equal(documentTypeOf('<p>(see para. 52) JUDGMENT OF THE COURT</p><p>… ORDER OF THE COURT of 3 May …</p>'), 'judgment');
+    assert.equal(documentTypeOf('<p>Judgment of the Court of 3 July 1991. AKZO Chemie BV v Commission</p>'), undefined);
   });
 });
 
@@ -1898,13 +2100,14 @@ describe('a joined case filed under a sibling number', () => {
     assert.deepEqual(calls.map((call) => call.url), ['https://example.test/celex/62012CJ0293']);
   });
 
-  test('comes after the ECLI, which is the name the court itself gave the document', async () => {
-    const { fetcher, calls } = stubFetcher([noSuchDocument('62012CJ0594'), html('<p>Judgment text, point 65.</p>')]);
+  test('comes after the ECLI and the CELEX, which the citation itself carries', async () => {
+    const { fetcher, calls } = stubFetcher([noSuchDocument('ECLI'), noSuchDocument('62012CJ0594'), html('<p>Judgment text, point 65.</p>')]);
     const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
     await resolver.resolve(joined({ ecli: 'ECLI:EU:C:2014:238' }));
     assert.deepEqual(calls.map((call) => call.url), [
-      'https://example.test/celex/62012CJ0594',
       `https://example.test/ecli/${encodeURIComponent('ECLI:EU:C:2014:238')}`,
+      'https://example.test/celex/62012CJ0594',
+      'https://example.test/celex/62012CJ0293',
     ]);
   });
 

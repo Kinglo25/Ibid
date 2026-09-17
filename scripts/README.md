@@ -119,3 +119,53 @@ worth nothing here, and reported as a skip rather than as a clean document.
 
 Weight it toward what breaks: PDF-converted Commission decisions, French-language documents,
 and pre-2012 documents that cite by European Court Reports volume rather than by ECLI.
+
+# The answer keys
+
+    npm run answer-key                     check every key whose document is present
+    npm run answer-key -- --write-known    rewrite the known-gap lists from this run
+
+`corpus` checks that an identifier names the right document. It cannot see a citation that
+reaches the right document and opens it at the wrong place: a paragraph taken from the case
+cited next to it, an annex's paragraph shown as the decision's recital, `Ibid.` read against
+the wrong note. None of those produces a wrong identifier, and all of them were in the
+Commission's 2026 draft merger guidelines while every test passed.
+
+An answer key is a document read by hand, once, and kept. `answer-keys/` holds, per document:
+
+- `<name>.jsonl` — every citation in every footnote: the authority meant, the pinpoint as
+  written, whether it was cited in full, by a short form or by `ibid.`, and any drafting
+  error the text itself proves (a date contradicting its ECLI, a case number of another
+  case). Built from the published PDF **without looking at Ibid's output**, and locked by
+  hash before Ibid was run; any later change is recorded in the header's `amended` list with
+  its reason and the hash before it.
+- `<name>.notes.json` — the text of each footnote the key was built from, so any entry can be
+  checked against its note, and so the pane's notes can be lined up with the PDF's.
+- `<name>.known.json` — the gaps accepted for now, each with a reason.
+
+The check reads the .docx the way the pane does — Word's footnotes, the notes a conversion
+left in the body, the parenthesised spans of the running text — runs detection and
+back-reference resolution, lines the pane's notes up with the PDF's by their text, and sorts
+every citation into `wrong-document`, `wrong-pinpoint`, `pinpoint-missing`, `unresolved`,
+`missed` or `lost`, plus `unexpected` for what Ibid reports that the key does not hold, and
+`merged`/`not-a-footnote` for notes the conversion damaged.
+
+**It exits non-zero on:** a `wrong-document` or `wrong-pinpoint` — must be zero, except where
+the Word document itself reads that way, which an accepted entry must quote in `reads` and the
+check confirms against the note; any outcome not in the known list; any known entry that no
+longer happens, so a fix is locked in rather than left to regress; a known entry whose reason
+is still `TODO`; and a run that checked nothing.
+
+It stops at detection. Whether retrieval then shows the passage is not checked here: that
+needs the network, and is the next thing to build.
+
+## Writing a key
+
+Read the PDF, not the .docx: the conversion is part of what is being tested, and a key built
+from it inherits its damage. Write the key before running Ibid, and record its hash. What
+counts as an authority follows `docs/ACCURACY.md`. Mark a mention that is neither to be
+required nor held against Ibid — an act named inside another act's title, an article inside a
+quotation — `"role": "incidental"`, and decide that before seeing the output too.
+
+A key written by one reader is one reading. Where a figure from it is going to be quoted, have
+a second marker check a sample of it blind, as `docs/ACCURACY.md` describes.

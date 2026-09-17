@@ -31,6 +31,8 @@ button.citation-chip:hover { background: #e9f0ff; }
 blockquote { margin: 0; padding: 10px 12px; border-left: 3px solid #8bafff; background: #f5f8ff; color: #31415d; font-size: 13px; line-height: 1.5; }
 .source-results article { padding: 12px; border: 1px solid rgba(53,72,104,.1); border-radius: 12px; }
 .source-results article p { font-size: 13px; }
+/* The gap between two disjoint passages of one citation: "paragraphs 189 et seq., 1324 et seq.". */
+.source-results article p.passage-gap { margin: 2px 0; color: #6b7a90; text-align: center; }
 .source-results article a, .source-link { color: #174abb; font-weight: 700; text-decoration: none; }
 .source-link { display: inline-flex; align-self: flex-start; padding: 8px 10px; border-radius: 8px; background: #e9f0ff; font-size: 13px; }
 .error { color: #a32424 !important; }
@@ -50,6 +52,20 @@ button.candidate-confirm:hover { background: #10357f; }
 /* Shown above a passage that is not the authentic text — a machine translation, or a
    document published only in French. Deliberately not styled as an error: nothing has gone
    wrong, the reader simply needs to know what they are looking at before relying on it. */
+/* A citation whose case number is another case's. Unlike `.source-note`, this is a mistake in
+   the document the reviewer is checking, and it changes which case is shown, so it is set to be
+   read before anything else in the card. */
+.source-warning {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-left: 4px solid #c0392b;
+  background: rgba(192, 57, 43, 0.09);
+  color: #6e1f16;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .source-note {
   margin: 0.35rem 0 0.5rem;
   padding: 0.4rem 0.6rem;

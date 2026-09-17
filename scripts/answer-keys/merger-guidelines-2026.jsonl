@@ -1,0 +1,645 @@
+{"document": "Merger Guidelines - final for public consultation.docx", "source": "the published PDF (98 pages, 478 footnotes), text extracted with pdftohtml and read note by note", "scope": "every footnote; the body holds no parenthesised citation", "built": "2026-09-17, by Claude, without reference to Ibid's output", "rules": "an authority is a published source outside the proceeding (docs/ACCURACY.md); pins are written as cited; 'm'/'case'/'celex' are the document meant, 'written' is what the footnote says where the two differ; role 'incidental' marks a mention that is neither to be required nor to be counted against Ibid", "amended": [{"date": "2026-09-17", "change": "added incidental entries for Regulation (EC) No 139/2004 in footnotes 47 and 48", "reason": "the incidental entries for Regulation 802/2004 in those footnotes already said '(Regulation 139/2004 likewise)', but only 802/2004 was encoded, so the first comparison credited the Merger Regulation named inside Implementing Regulation 2023/914's title as finding 'EUMR, Article 14' and 'EUMR, Articles 11-13'. The change makes Ibid's result worse, not better: those two EUMR citations now count as missed.", "sha256_before": "8c007178ac86705b86bcbc68d0ac97521a479170b899969052976fd1031c76bc"}]}
+{"n":5,"k":"legislation","celex":"32004R0139","role":"incidental","note":"inside the title of the Notice on Simplified Procedure"}
+{"n":36,"k":"legislation","celex":"32004R0139","role":"incidental","pin":["art 2"],"note":"inside a quotation from CK Telecoms"}
+{"n":47,"k":"legislation","celex":"32004R0802","role":"incidental","note":"inside the title of Implementing Regulation 2023/914 (Regulation 139/2004 likewise)"}
+{"n":47,"k":"legislation","celex":"32004R0139","role":"incidental","note":"inside the title of Implementing Regulation 2023/914, twice"}
+{"n":48,"k":"legislation","celex":"32004R0802","role":"incidental","note":"inside the title of Implementing Regulation 2023/914 (Regulation 139/2004 likewise)"}
+{"n":48,"k":"legislation","celex":"32004R0139","role":"incidental","note":"inside the title of Implementing Regulation 2023/914"}
+{"n":278,"k":"legislation","celex":"32019L1937","role":"incidental","note":"inside the DMA's title, as is Directive 2020/1828"}
+{"n":278,"k":"legislation","celex":"32020L1828","role":"incidental","note":"inside the DMA's title"}
+{"n":367,"k":"legislation","celex":"32004R0139","role":"incidental","pin":["art 2"],"note":"paraphrasing CK Telecoms"}
+{"n":396,"k":"treaty","treaty":"TFEU","role":"incidental","pin":["art 101"],"note":"inside the title of the Horizontal Co-operation Guidelines"}
+{"n":442,"k":"legislation","celex":"31989R4064","role":"incidental","note":"inside the title of a Bulletin supplement"}
+{"n":462,"k":"treaty","treaty":"TFEU","role":"incidental","pin":["art 18"],"note":"inside a quotation from Vatsouras"}
+{"n":472,"k":"legislation","celex":"32004R0139","role":"incidental","pin":["art 21(3)","art 21(4)"],"note":"naming the kind of decision, not citing the provision"}
+{"n":476,"k":"legislation","celex":"32004R0139","role":"incidental","pin":["art 21(3)"],"note":"naming the kind of decision"}
+{"reviewed":"1-110"}
+{"n":1,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"oj","note":"cited by OJ reference only; the body names Regulation (EC) No 139/2004 at the footnote mark"}
+{"n":3,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 2"]}
+{"n":4,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 2(2)","art 2(3)"]}
+{"n":5,"k":"notice","name":"Notice on Simplified Procedure","oj":"C 160, 5.5.2023, p. 1"}
+{"n":6,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["recital 28"]}
+{"n":7,"k":"notice","name":"Horizontal Merger Guidelines","oj":"C 31, 5.2.2004, p. 5","err":"OJ year written 2024; the guidelines are of 2004"}
+{"n":8,"k":"notice","name":"Non-Horizontal Merger Guidelines","oj":"C 265, 18.10.2008, p. 6","err":"OJ issue written C 26; believed to be C 265 (unverified)"}
+{"n":10,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 123"]}
+{"n":10,"k":"judgment","case":"T-289/24","ecli":"EU:T:2025:655","name":"Brasserie Nationale and Munhowen","pin":["para 184"]}
+{"n":11,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 2"]}
+{"n":12,"k":"treaty","treaty":"TFEU","pin":["art 173"]}
+{"n":14,"k":"judgment","case":"C-413/06 P","ecli":"EU:C:2008:392","name":"Impala","pin":["para 52","para 48"]}
+{"n":15,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["recital 8"]}
+{"n":16,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 21(4)"]}
+{"n":17,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["recital 23"]}
+{"n":20,"k":"legislation","celex":"32024R1083","name":"European Media Freedom Act","pin":["art 22"]}
+{"n":21,"k":"treaty","treaty":"TFEU","pin":["art 3(1)(b)"]}
+{"n":22,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["recital 4"]}
+{"n":23,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 2"]}
+{"n":26,"k":"legislation","celex":"32026H0720","name":"Recommendation (EU) 2026/720 on innovative enterprises"}
+{"n":27,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 109"]}
+{"n":29,"k":"decision","m":"M.8713","name":"Tata Steel/thyssenkrupp/JV","pin":["para 189 et seq.","para 1324 et seq.","para 1398 et seq."]}
+{"n":30,"k":"decision","m":"M.10433","name":"Vivendi/Lagardère","pin":["paras 1043-1044","para 1076","para 1126","paras 1156-1157","para 1024 et seq."]}
+{"n":30,"k":"decision","m":"M.11956","name":"UMG/Downtown","pin":["paras 244-250","para 277","paras 544-546"]}
+{"n":31,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["para 1975 et seq."]}
+{"n":31,"k":"decision","m":"M.8084","name":"Bayer/Monsanto","pin":["para 61 et seq.","para 1004 et seq."]}
+{"n":31,"k":"decision","m":"M.11177","name":"Pfizer/Seagen","pin":["paras 18-20","paras 179-185"]}
+{"n":32,"k":"decision","m":"M.8124","name":"Microsoft/LinkedIn","pin":["para 350"]}
+{"n":33,"k":"decision","m":"M.10658","name":"Norsk Hydro/Alumetal","pin":["section 9.1.3.3.7"]}
+{"n":34,"k":"decision","m":"M.7567","written":{"m":"M.7967"},"name":"Ball/Rexam","err":"case number written M.7967; Ball/Rexam is M.7567"}
+{"n":34,"k":"decision","m":"M.8713","name":"Tata Steel/thyssenkrupp/JV","pin":["para 1318 et seq."]}
+{"n":35,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 106"]}
+{"n":35,"k":"judgment","case":"C-255/22 P","ecli":"EU:C:2024:790","name":"Orlen","pin":["paras 96-97"]}
+{"n":36,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 82"]}
+{"n":37,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 2(2)","art 2(3)"]}
+{"n":37,"k":"judgment","case":"C-413/06 P","ecli":"EU:C:2008:392","name":"Impala","pin":["para 52"]}
+{"n":39,"k":"judgment","case":"C-377/20","ecli":"EU:C:2022:379","name":"Servizio Elettrico Nazionale","pin":["para 44","para 47"]}
+{"n":39,"k":"judgment","case":"C-333/21","ecli":"EU:C:2023:1011","name":"European Superleague Company","pin":["para 202"]}
+{"n":39,"k":"judgment","case":"C-501/06 P","joined":["C-513/06 P","C-515/06 P","C-519/06 P"],"ecli":"EU:C:2009:610","name":"GlaxoSmithKline Services","pin":["para 63"]}
+{"n":40,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["paras 238-239","paras 242-243"]}
+{"n":40,"k":"judgment","case":"T-175/12","ecli":"EU:T:2015:148","name":"Deutsche Börse","pin":["para 262","para 361"]}
+{"n":40,"k":"judgment","case":"T-342/07","ecli":"EU:T:2010:280","name":"Ryanair","pin":["para 427"],"err":"date written 6 July 2016; the ECLI (and fn 58) give 2010"}
+{"n":42,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["para 516"]}
+{"n":43,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["paras 75-77","para 87"]}
+{"n":45,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["paras 82-84","para 124"],"note":"case number broken over a line in the PDF: 'C- 376/20 P'"}
+{"n":45,"k":"judgment","case":"T-64/20","ecli":"EU:T:2024:815","name":"Deutsche Telekom","pin":["para 51"]}
+{"n":46,"k":"judgment","case":"T-64/20","ecli":"EU:T:2024:815","name":"Deutsche Telekom","pin":["paras 51-54"]}
+{"n":46,"k":"judgment","case":"C-202/06 P","ecli":"EU:C:2007:814","name":"Cementbouw","pin":["para 53"]}
+{"n":46,"k":"judgment","case":"T-162/10","ecli":"EU:T:2015:283","name":"Niki Luftfahrt","pin":["para 85"]}
+{"n":46,"k":"judgment","case":"C-12/03 P","ecli":"EU:C:2005:87","name":"Tetra Laval","pin":["para 44"],"err":"date written 15 February 2015; the ECLI gives 2005"}
+{"n":46,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["paras 76-77"]}
+{"n":47,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 14"]}
+{"n":47,"k":"legislation","celex":"32023R0914","name":"Implementing Regulation (EU) 2023/914","pin":["annex I paras 13-14"],"note":"Regulations 139/2004 and 802/2004 appear only inside this regulation's title"}
+{"n":47,"k":"judgment","case":"T-69/20","ecli":"EU:T:2024:816","name":"Tele Columbus","pin":["para 145"]}
+{"n":48,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["arts 11-13"]}
+{"n":48,"k":"legislation","celex":"32023R0914","name":"Implementing Regulation (EU) 2023/914","pin":["art 3","art 4"],"note":"Regulations 139/2004 and 802/2004 appear only inside this regulation's title"}
+{"n":49,"k":"judgment","case":"C-581/22 P","ecli":"EU:C:2024:821","name":"thyssenkrupp","pin":["paras 97-99"]}
+{"n":50,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["para 516"]}
+{"n":50,"k":"judgment","case":"C-413/06 P","ecli":"EU:C:2008:392","name":"Impala","pin":["paras 90-91"]}
+{"n":50,"k":"judgment","case":"T-380/17","ecli":"EU:T:2020:471","name":"HeidelbergCement and Schwenk Zement","pin":["paras 175-176"]}
+{"n":51,"k":"judgment","case":"T-69/20","ecli":"EU:T:2024:816","name":"Tele Columbus","pin":["para 144"]}
+{"n":52,"k":"judgment","case":"T-58/20","ecli":"EU:T:2024:813","name":"NetCologne","pin":["para 164"]}
+{"n":53,"k":"decision","m":"M.4439","name":"Ryanair/Aer Lingus","pin":["para 39"]}
+{"n":53,"k":"decision","m":"M.6314","name":"Telefónica UK/Vodafone UK/Everything Everywhere/JV","pin":["para 23"]}
+{"n":53,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["para 47"]}
+{"n":54,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["paras 616-617"]}
+{"n":55,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["para 516","para 117","para 150"],"note":"cited twice in the footnote"}
+{"n":56,"k":"other","name":"Best Practices for the Submission of Economic Evidence","ref":"SEC(2011) 1216 final"}
+{"n":56,"k":"judgment","case":"T-584/19","written":{"case":"C-584/19 P"},"ecli":"EU:T:2022:386","name":"thyssenkrupp","pin":["para 246"],"err":"case number written C-584/19 P, but the ECLI is a General Court one and fn 60/62 cite T-584/19; C-584/19 is a different case"}
+{"n":57,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["para 117"]}
+{"n":58,"k":"judgment","case":"T-64/20","ecli":"EU:T:2024:815","name":"Deutsche Telekom","pin":["para 58"]}
+{"n":58,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["para 120"]}
+{"n":58,"k":"judgment","case":"T-342/07","ecli":"EU:T:2010:280","name":"Ryanair","pin":["para 108"]}
+{"n":59,"k":"judgment","case":"T-64/20","ecli":"EU:T:2024:815","name":"Deutsche Telekom","pin":["para 59"]}
+{"n":59,"k":"judgment","case":"T-380/17","ecli":"EU:T:2020:471","name":"HeidelbergCement and Schwenk Zement","pin":["para 460"]}
+{"n":60,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["para 120"]}
+{"n":60,"k":"judgment","case":"T-834/17","ecli":"EU:T:2022:84","name":"United Parcel Service","pin":["para 314"],"err":"date written 23 February 2023; the ECLI gives 2022"}
+{"n":60,"k":"judgment","case":"T-584/19","ecli":"EU:T:2022:386","name":"thyssenkrupp","pin":["para 104"]}
+{"n":61,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["paras 116-118","para 150"]}
+{"n":62,"k":"judgment","case":"T-342/07","ecli":"EU:T:2010:280","name":"Ryanair","pin":["para 136"]}
+{"n":62,"k":"judgment","case":"C-265/17 P","ecli":"EU:C:2019:23","name":"Commission v United Parcel Service","pin":["paras 53-54"],"err":"date written 23 February 2023; the ECLI gives 2019. Case number broken over a line: 'C- 265/17P'"}
+{"n":62,"k":"judgment","case":"T-584/19","ecli":"EU:T:2022:386","name":"thyssenkrupp","pin":["para 246"]}
+{"n":63,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["recital 6"]}
+{"n":63,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 87"]}
+{"n":63,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","via":"ibid","ante":63,"pin":["para 71"]}
+{"n":63,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","via":"ibid","ante":63,"pin":["para 78"]}
+{"n":64,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 69","para 73","para 74","para 79","para 114"]}
+{"n":64,"k":"judgment","case":"T-312/20","ecli":"EU:T:2023:252","name":"EVH","pin":["para 49"]}
+{"n":65,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 2(1)(b)"]}
+{"n":66,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["recital 29"]}
+{"n":67,"k":"decision","m":"M.6166","name":"Deutsche Börse/NYSE Euronext","pin":["para 1139"]}
+{"n":67,"k":"decision","m":"M.7630","name":"FedEx/TNT Express","pin":["para 504"]}
+{"n":69,"k":"other","name":"DG COMP Best Practices on the conduct of EC merger control proceedings","pin":["para 18"]}
+{"n":70,"k":"judgment","case":"T-2/93","ecli":"EU:T:1994:55","name":"Air France","pin":["para 70"]}
+{"n":73,"k":"judgment","case":"T-312/20","ecli":"EU:T:2023:252","name":"EVH","pin":["para 234"]}
+{"n":73,"k":"decision","m":"M.950","name":"Hoffmann La Roche/Boehringer Mannheim","pin":["para 13"]}
+{"n":73,"k":"decision","m":"M.1846","name":"Glaxo Wellcome/SmithKline Beecham","pin":["points 70-72"]}
+{"n":73,"k":"decision","m":"M.2547","name":"Bayer/Aventis Crop Science","pin":["para 324 et seq."]}
+{"n":75,"k":"judgment","case":"T-102/96","ecli":"EU:T:1999:65","name":"Gencor","pin":["paras 247-263"]}
+{"n":75,"k":"judgment","case":"T-380/17","ecli":"EU:T:2020:471","name":"HeidelbergCement and Schwenk Zement","pin":["para 570"]}
+{"n":76,"k":"decision","m":"M.11602","name":"SES/Intelsat","pin":["para 331 et seq."]}
+{"n":76,"k":"decision","m":"M.11515","name":"Veolia Environnement/Uniper Hungary Energetikai","pin":["para 73 et seq.","para 153 et seq."]}
+{"n":77,"k":"decision","m":"M.10658","name":"Norsk Hydro/Alumetal","pin":["paras 44-94"]}
+{"n":78,"k":"decision","m":"M.11515","name":"Veolia Environnement/Uniper Hungary Energetikai","pin":["para 133 et seq."]}
+{"n":79,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 2(1)(b)"],"note":"written 'Article 2(1) lit. b'"}
+{"n":79,"k":"judgment","case":"T-405/08","ecli":"EU:T:2013:306","name":"SPAR Österreichische Warenhandels","pin":["para 91"]}
+{"n":79,"k":"decision","m":"M.8792","name":"T-Mobile NL/Tele2 NL","pin":["para 485 et seq."]}
+{"n":79,"k":"decision","m":"M.7278","name":"General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)","pin":["para 1153"]}
+{"n":80,"k":"decision","m":"M.5440","name":"Lufthansa/Austrian Airlines","pin":["para 85"]}
+{"n":81,"k":"decision","m":"M.7278","name":"General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)","pin":["para 1201 et seq."]}
+{"n":82,"k":"judgment","case":"T-2/93","ecli":"EU:T:1994:55","name":"Air France","pin":["para 70"]}
+{"n":82,"k":"judgment","case":"T-312/20","ecli":"EU:T:2023:252","name":"EVH","pin":["paras 233-234"],"note":"cited twice in the footnote, the second time at para 234"}
+{"n":82,"k":"judgment","case":"T-279/04","ecli":"EU:T:2010:384","name":"Editions Odile Jacob","pin":["para 327"]}
+{"n":82,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["para 137"]}
+{"n":84,"k":"decision","m":"M.7746","name":"Teva/Allergan","pin":["para 87","para 89","para 96"]}
+{"n":85,"k":"decision","m":"M.5181","name":"Delta Air Lines/Northwest Airlines","pin":["paras 32-33"]}
+{"n":85,"k":"decision","m":"M.5403","name":"Lufthansa/BMI","pin":["paras 42-44"]}
+{"n":85,"k":"decision","m":"M.5335","name":"Lufthansa/SN Airholding","pin":["paras 283-298"]}
+{"n":85,"k":"decision","m":"M.5440","name":"Lufthansa/Austrian Airlines","pin":["para 60 et seq."]}
+{"n":85,"k":"decision","m":"M.5889","name":"United Airlines/Continental Airlines","pin":["paras 36-42"]}
+{"n":85,"k":"decision","m":"M.10615","name":"Booking Holdings/eTraveli Group","pin":["para 619 et seq."]}
+{"n":86,"k":"decision","m":"M.5889","name":"United Airlines/Continental Airlines","pin":["para 37"]}
+{"n":87,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["para 424"]}
+{"n":88,"k":"decision","m":"M.5440","name":"Lufthansa/Austrian Airlines","pin":["para 60","para 62","paras 85-106"]}
+{"n":88,"k":"decision","m":"M.8222","name":"Knorr-Bremse/Haldex","note":"no pinpoint; the footnote says the merger was abandoned in phase 2, so there may be no final decision to show"}
+{"n":90,"k":"judgment","case":"C-68/94","joined":["C-30/95"],"ecli":"EU:C:1998:148","name":"Kali+Salz","pin":["para 110","para 114"]}
+{"n":90,"k":"decision","m":"M.2314","name":"BASF/Pantochim/Eurodiol","pin":["paras 157-160"]}
+{"n":90,"k":"decision","m":"M.6360","name":"Nynas/Shell/Harburg Refinery","pin":["paras 312-327"]}
+{"n":90,"k":"decision","m":"M.6796","name":"Aegean/Olympic II","pin":["paras 682-833"]}
+{"n":91,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["paras 414-415"]}
+{"n":92,"k":"decision","m":"M.308","name":"Kali+Salz/MdK/Treuhand","pin":["paras 70-77"]}
+{"n":92,"k":"decision","m":"M.890","name":"Blokker/Toys\"R\"Us","pin":["paras 109-111"]}
+{"n":92,"k":"decision","m":"M.2314","name":"BASF/Pantochim/Eurodiol","pin":["paras 144-145"]}
+{"n":92,"k":"decision","m":"M.4381","name":"JCI/FIAMM","pin":["paras 712-721"]}
+{"n":92,"k":"decision","m":"M.5830","name":"Olympic/Aegean Airlines I","pin":["paras 1991-2070"]}
+{"n":92,"k":"decision","m":"M.9287","name":"Connect Airways/Flybe","pin":["paras 245-263"]}
+{"n":93,"k":"decision","m":"M.308","name":"Kali+Salz/MdK/Treuhand","pin":["paras 70-77"],"note":"written 'paragraph 70-77'"}
+{"n":93,"k":"decision","m":"M.2314","name":"BASF/Pantochim/Eurodiol","pin":["paras 146-148"]}
+{"n":93,"k":"decision","m":"M.4381","name":"JCI/FIAMM","pin":["paras 722-736"]}
+{"n":93,"k":"decision","m":"M.6796","name":"Aegean/Olympic II","pin":["paras 806-817"]}
+{"n":93,"k":"decision","m":"M.774","name":"Saint-Gobain/Wacker-Chemie/NOM","pin":["paras 225-259"]}
+{"n":93,"k":"decision","m":"M.5830","name":"Olympic/Aegean Airlines I","pin":["paras 2071-2087"]}
+{"n":93,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["paras 416-424"]}
+{"n":94,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["para 424"]}
+{"n":95,"k":"judgment","case":"C-68/94","joined":["C-30/95"],"ecli":"EU:C:1998:148","name":"Kali+Salz","pin":["paras 115-116"],"note":"no ECLI written here; stated in full at fn 90"}
+{"n":95,"k":"decision","m":"M.6360","name":"Nynas/Shell/Harburg Refinery","pin":["paras 312-362"]}
+{"n":95,"k":"decision","m":"M.6796","name":"Aegean/Olympic II","pin":["paras 738-805"]}
+{"n":95,"k":"decision","m":"M.4381","name":"JCI/FIAMM","pin":["paras 737-752"]}
+{"n":95,"k":"decision","m":"M.5830","name":"Olympic/Aegean Airlines I","pin":["paras 2088-2119"]}
+{"n":95,"k":"decision","m":"M.6447","name":"IAG/BMI","pin":["paras 608-633"]}
+{"n":95,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["paras 404-444"]}
+{"n":96,"k":"decision","m":"M.6796","name":"Aegean/Olympic II","pin":["para 688"]}
+{"n":97,"k":"decision","m":"M.6796","name":"Aegean/Olympic II","pin":["para 752 et seq.","para 765 et seq."]}
+{"n":98,"k":"decision","m":"M.6796","name":"Aegean/Olympic II"}
+{"n":98,"k":"decision","m":"M.6360","name":"Nynas/Shell/Harburg Refinery"}
+{"n":99,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["para 413"]}
+{"n":99,"k":"decision","m":"M.5830","name":"Olympic/Aegean Airlines I","pin":["para 1987"]}
+{"n":100,"k":"notice","name":"Market Definition Notice","oj":"C/2024/1645, 22.2.2024","pin":["para 8"]}
+{"n":101,"k":"decision","m":"M.8084","name":"Bayer/Monsanto","pin":["section VI"]}
+{"n":101,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["section V.1"]}
+{"n":101,"k":"decision","m":"M.11071","name":"Lufthansa/MEF/ITA","pin":["sections 7.5-7.7"]}
+{"n":103,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["para 17"]}
+{"n":104,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["section 4.1"]}
+{"n":105,"k":"judgment","case":"T-79/12","ecli":"EU:T:2013:635","name":"Cisco Systems and Messagenet","pin":["para 69"]}
+{"n":106,"k":"decision","m":"M.9076","written":{"m":"M.9706"},"name":"Novelis/Aleris","pin":["paras 498-503"],"err":"case number written M.9706; Novelis/Aleris is M.9076"}
+{"n":107,"k":"judgment","case":"T-210/01","ecli":"EU:T:2005:456","name":"General Electric","pin":["paras 149-151"]}
+{"n":108,"k":"decision","m":"M.10507","name":"Hitachi Rail/Ground Transportation Systems Business of Thales","pin":["para 44"]}
+{"n":108,"k":"decision","m":"M.9779","name":"Alstom/Bombardier Transportation","pin":["paras 274-278"]}
+{"n":109,"k":"judgment","case":"C-464/23 P","joined":["C-465/23 P","C-467/23 P","C-468/23 P","C-470/23 P"],"ecli":"EU:C:2025:478","name":"EVH and Others","pin":["para 214"]}
+{"n":109,"k":"judgment","case":"T-405/08","ecli":"EU:T:2013:306","name":"SPAR Österreichische Warenhandels","pin":["para 66","para 69"]}
+{"reviewed":"111-180"}
+{"n":115,"k":"decision","m":"M.9076","name":"Novelis/Aleris","pin":["paras 952-956"]}
+{"n":115,"k":"decision","m":"M.10078","name":"Cargotec/Konecranes","pin":["para 1617"]}
+{"n":115,"k":"decision","m":"M.10663","name":"Orange/VOO/Brutélé","pin":["para 374"]}
+{"n":116,"k":"decision","m":"M.5529","name":"Oracle/Sun Microsystems","pin":["paras 136-138"]}
+{"n":117,"k":"decision","m":"M.10806","name":"Broadcom/VMware","pin":["paras 572-588"],"note":"written 'paragraph 572-588'"}
+{"n":118,"k":"decision","m":"M.9716","name":"AMS/Osram","pin":["paras 165-170"]}
+{"n":119,"k":"decision","m":"M.7217","name":"Facebook/WhatsApp","pin":["para 133"]}
+{"n":119,"k":"decision","m":"M.8994","name":"Microsoft/GitHub","pin":["para 100"]}
+{"n":120,"k":"decision","m":"M.9076","name":"Novelis/Aleris","pin":["para 968"]}
+{"n":121,"k":"decision","m":"M.10078","name":"Cargotec/Konecranes","pin":["para 1621"]}
+{"n":122,"k":"decision","m":"M.6471","written":{"m":"M.6461"},"name":"Outokumpu/Inoxum","pin":["paras 496-510"],"err":"case number written M.6461; Outokumpu/Inoxum is M.6471"}
+{"n":123,"k":"judgment","case":"T-282/02","ecli":"EU:T:2006:64","name":"Cementbouw","pin":["para 219"]}
+{"n":124,"k":"decision","m":"M.4439","name":"Ryanair/Aer Lingus","pin":["para 623"]}
+{"n":125,"k":"decision","m":"M.2978","name":"Lagardère/Natexis/VUP","pin":["paras 539-542"]}
+{"n":126,"k":"decision","m":"M.6944","name":"Thermo Fisher Scientific/Life Technologies","pin":["paras 245-247"]}
+{"n":127,"k":"decision","m":"M.4180","name":"Gaz de France/Suez","pin":["paras 208-270"]}
+{"n":128,"k":"decision","m":"M.9660","name":"Google/Fitbit","pin":["paras 459-461"]}
+{"n":128,"k":"decision","m":"M.10615","name":"Booking Holdings/eTraveli Group","pin":["paras 217-251"]}
+{"n":129,"k":"decision","m":"M.8677","written":{"m":"M.9376"},"name":"Siemens/Alstom","pin":["paras 463-466"],"err":"case number written M.9376; Siemens/Alstom is M.8677 (as fn 154 writes it)"}
+{"n":129,"k":"decision","m":"M.9343","name":"Hyundai Heavy Industries Holdings/Daewoo Shipbuilding & Marine Engineering","pin":["paras 1059-1079"]}
+{"n":130,"k":"decision","m":"M.10896","name":"Orange/MasMovil/JV","pin":["para 780"]}
+{"n":131,"k":"decision","m":"M.10615","name":"Booking Holdings/eTraveli Group","pin":["para 919"]}
+{"n":132,"k":"decision","m":"M.5153","name":"Arsenal/DSP","pin":["para 40","para 57"],"note":"name written 'Arsenal/DSL'; believed to be Arsenal/DSP (unverified)"}
+{"n":133,"k":"decision","m":"M.5830","name":"Olympic/Aegean Airlines I","pin":["paras 542-552"]}
+{"n":135,"k":"judgment","case":"T-282/02","ecli":"EU:T:2006:64","name":"Cementbouw","pin":["paras 223-224"]}
+{"n":135,"k":"decision","m":"M.11071","name":"Lufthansa/MEF/ITA","pin":["paras 665-693"]}
+{"n":136,"k":"decision","m":"M.7278","name":"General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)","note":"no pinpoint; inside a parenthesis within the footnote"}
+{"n":136,"k":"decision","m":"M.9461","name":"AbbVie/Allergan","note":"no pinpoint"}
+{"n":137,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["paras 90-92"]}
+{"n":138,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["paras 90-93"]}
+{"n":139,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["para 108"]}
+{"n":140,"k":"decision","m":"M.9461","name":"AbbVie/Allergan","pin":["para 57","para 60","footnote 58"]}
+{"n":140,"k":"decision","m":"M.11177","name":"Pfizer/Seagen","pin":["para 74","para 77"]}
+{"n":141,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["para 2402 et seq."]}
+{"n":143,"k":"decision","m":"M.7278","name":"General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)","pin":["section 8.7.3"]}
+{"n":143,"k":"decision","m":"M.11177","name":"Pfizer/Seagen","pin":["para 183"]}
+{"n":144,"k":"decision","m":"M.7932","name":"Dow/DuPont","note":"no pinpoint: 'Cases M.7932 - Dow/DuPont and Case M.7278 …, paragraph 387 and Section 8.7.4' — the pinpoint follows GE/Alstom"}
+{"n":144,"k":"decision","m":"M.7278","name":"General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)","pin":["para 387","section 8.7.4"]}
+{"n":145,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["para 389"]}
+{"n":147,"k":"decision","m":"M.9076","name":"Novelis/Aleris","pin":["paras 450-468"]}
+{"n":148,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["paras 682-715"],"note":"written 'paragraph 682-715'"}
+{"n":149,"k":"decision","m":"M.8713","name":"Tata Steel/thyssenkrupp/JV","pin":["para 1003"]}
+{"n":150,"k":"decision","m":"M.8713","name":"Tata Steel/thyssenkrupp/JV","pin":["paras 1318-1321"]}
+{"n":151,"k":"decision","m":"M.6296","name":"Triton/Compo","pin":["para 26"]}
+{"n":152,"k":"decision","m":"M.8713","name":"Tata Steel/thyssenkrupp/JV","pin":["paras 985-996","paras 1306-1311"]}
+{"n":153,"k":"decision","m":"M.10078","name":"Cargotec/Konecranes","pin":["paras 1493-1539"]}
+{"n":154,"k":"decision","m":"M.8677","name":"Siemens/Alstom","pin":["para 469"]}
+{"n":155,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["paras 655-672"]}
+{"n":155,"k":"decision","m":"M.9076","name":"Novelis/Aleris","pin":["para 876"]}
+{"n":156,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["paras 673-680"]}
+{"n":157,"k":"decision","m":"M.5830","name":"Olympic/Aegean Airlines I","pin":["paras 736-776"]}
+{"n":158,"k":"decision","m":"M.5830","name":"Olympic/Aegean Airlines I","pin":["paras 553-776"]}
+{"n":158,"k":"decision","m":"M.7559","name":"Pfizer/Hospira","pin":["para 54","para 55"]}
+{"n":160,"k":"decision","m":"M.1693","name":"Alcoa/Reynolds","pin":["para 38","para 39"]}
+{"n":161,"k":"decision","m":"M.10807","name":"Viasat/Inmarsat","pin":["para 223"]}
+{"n":161,"k":"decision","m":"M.8677","name":"Siemens/Alstom","pin":["paras 489-496"]}
+{"n":162,"k":"decision","m":"M.8713","name":"Tata Steel/thyssenkrupp/JV","pin":["paras 1331-1340"]}
+{"n":163,"k":"judgment","case":"T-342/07","ecli":"EU:T:2010:280","name":"Ryanair","pin":["para 239"]}
+{"n":164,"k":"decision","m":"M.9316","name":"Peab/YIT's Paving and Mineral Aggregates Business","pin":["paras 199-201"]}
+{"n":164,"k":"decision","m":"M.9383","name":"ZF/WABCO","pin":["paras 204-206"]}
+{"n":165,"k":"decision","m":"M.7523","name":"CMA CGM/OPDR","pin":["para 139"]}
+{"n":166,"k":"decision","m":"M.4533","name":"SCA/P&G","pin":["paras 111-119"]}
+{"n":167,"k":"decision","m":"M.11793","name":"Mytheresa/YNAP","pin":["section 6.2.7"]}
+{"n":167,"k":"decision","m":"M.10615","name":"Booking Holdings/eTraveli Group","pin":["section 6.4.6.3"]}
+{"n":168,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["para 75"]}
+{"n":169,"k":"decision","m":"M.8677","name":"Siemens/Alstom","pin":["paras 549-557"]}
+{"n":170,"k":"judgment","case":"T-282/06","ecli":"EU:T:2007:203","name":"Sun Chemical Group","pin":["para 171"]}
+{"n":171,"k":"decision","m":"M.6455","name":"SCA/Georgia-Pacific Europe","pin":["paras 239-242"]}
+{"n":171,"k":"decision","m":"M.8797","name":"Thales/Gemalto","pin":["paras 386-393"]}
+{"n":171,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["para 88","para 89"]}
+{"n":172,"k":"judgment","case":"T-282/02","ecli":"EU:T:2006:64","name":"Cementbouw","pin":["para 230"]}
+{"n":173,"k":"decision","m":"M.7565","name":"Danish Crown/Tican","pin":["paras 51-55"]}
+{"n":173,"k":"decision","m":"M.5046","name":"Friesland Foods/Campina","pin":["para 358"]}
+{"n":174,"k":"judgment","case":"T-282/02","ecli":"EU:T:2006:64","name":"Cementbouw","pin":["para 232"]}
+{"n":175,"k":"decision","m":"M.9343","name":"Hyundai Heavy Industries Holdings/Daewoo Shipbuilding & Marine Engineering","pin":["paras 1244-1245"]}
+{"n":176,"k":"decision","m":"M.10663","name":"Orange/VOO/Brutélé","pin":["paras 400-402"]}
+{"n":177,"k":"decision","m":"M.9343","name":"Hyundai Heavy Industries Holdings/Daewoo Shipbuilding & Marine Engineering","pin":["paras 1252-1260"]}
+{"n":179,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["recital 25"]}
+{"n":179,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 107"]}
+{"n":180,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["recital 25"],"note":"in prose: 'within the meaning of recital 25 of the EUMR'"}
+{"reviewed":"181-260"}
+{"n":181,"k":"judgment","case":"C-581/22 P","ecli":"EU:C:2024:821","name":"thyssenkrupp","pin":["para 204"]}
+{"n":183,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 2(3)"],"note":"in prose: 'Article 2(3) EUMR identifies …'"}
+{"n":185,"k":"judgment","case":"T-282/06","ecli":"EU:T:2007:203","name":"Sun Chemical Group","pin":["para 138"]}
+{"n":187,"k":"decision","m":"M.8658","name":"UTC/Rockwell Collins","pin":["section 8.1.3.2"]}
+{"n":188,"k":"decision","m":"M.11793","name":"Mytheresa/YNAP","note":"no pinpoint"}
+{"n":188,"k":"decision","m":"M.11086","name":"Arçelik/Whirlpool EMEA MDA","note":"no pinpoint"}
+{"n":188,"k":"decision","m":"M.10876","name":"BSA (Lactalis)/Ambrosi","note":"no pinpoint"}
+{"n":189,"k":"decision","m":"M.10506","written":{"m":"M.11506"},"name":"Parker/Meggitt","pin":["section 4.2.2","para 163","para 164","para 217","para 218","para 290","para 291"],"err":"case number written M.11506; Parker/Meggitt is M.10506"}
+{"n":190,"k":"notice","name":"Notice on Simplified Procedure","via":"short","ante":5,"pin":["section II.C"],"note":"in prose: 'As detailed in Section II.C of the Notice on Simplified Procedure'"}
+{"n":191,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["recital 32"]}
+{"n":191,"k":"judgment","case":"T-151/05","ecli":"EU:T:2009:144","name":"NVV","pin":["para 149","para 151"]}
+{"n":192,"k":"notice","name":"Notice on Simplified Procedure","via":"short","ante":5,"pin":["para 5(d)(bb)"]}
+{"n":193,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 187"]}
+{"n":194,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 189"]}
+{"n":194,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["para 129","para 130"],"note":"no ECLI written here"}
+{"n":195,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 188"],"note":"written 'paragraphs 188'"}
+{"n":196,"k":"decision","m":"M.10433","name":"Vivendi/Lagardère","pin":["section 8.3.3.2"]}
+{"n":198,"k":"decision","m":"M.10433","name":"Vivendi/Lagardère","pin":["section 8.3.3.2"]}
+{"n":199,"k":"decision","m":"M.5830","name":"Olympic/Aegean Airlines I","pin":["para 526"]}
+{"n":200,"k":"judgment","case":"T-584/19","ecli":"EU:T:2022:386","name":"thyssenkrupp","pin":["para 514"],"err":"date written 22 June 2002; the ECLI gives 2022"}
+{"n":201,"k":"judgment","case":"T-584/19","ecli":"EU:T:2022:386","name":"thyssenkrupp","pin":["para 514"],"err":"date written 22 June 2002; the ECLI gives 2022"}
+{"n":202,"k":"decision","m":"M.7567","name":"Ball/Rexam","pin":["paras 346-352"]}
+{"n":202,"k":"decision","m":"M.7054","name":"Cemex/Holcim Assets","pin":["para 134"]}
+{"n":203,"k":"decision","m":"M.7995","name":"Deutsche Börse/London Stock Exchange Group","pin":["paras 800-802"]}
+{"n":204,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["paras 533-551"]}
+{"n":205,"k":"decision","m":"M.9730","name":"FCA/PSA","pin":["economic annex para 45"]}
+{"n":206,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["para 625","para 626"]}
+{"n":207,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 241"]}
+{"n":208,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 149"]}
+{"n":209,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 163"]}
+{"n":210,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 167"]}
+{"n":210,"k":"judgment","case":"C-581/22 P","ecli":"EU:C:2024:821","name":"thyssenkrupp","pin":["para 242"],"note":"written 'paragraphs 242'"}
+{"n":212,"k":"decision","m":"M.10438","name":"MOL/OMV Slovenija","pin":["para 133","para 134"]}
+{"n":213,"k":"decision","m":"M.9343","name":"Hyundai Heavy Industries Holdings/Daewoo Shipbuilding & Marine Engineering","pin":["paras 528-529"]}
+{"n":214,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 162"]}
+{"n":215,"k":"decision","m":"M.7758","name":"Hutchison 3G Italy/WIND/JV","pin":["para 568"]}
+{"n":215,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["paras 585-597"]}
+{"n":216,"k":"decision","m":"M.8713","name":"Tata Steel/thyssenkrupp/JV","pin":["paras 883-966"]}
+{"n":217,"k":"decision","m":"M.10658","name":"Norsk Hydro/Alumetal","pin":["paras 323-380"]}
+{"n":218,"k":"decision","m":"M.7612","name":"Hutchison 3G UK/Telefónica UK","pin":["paras 764-775"]}
+{"n":218,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 165"]}
+{"n":218,"k":"decision","m":"M.4525","name":"Kronospan/Constantia","pin":["para 67"],"note":"written 'paragraphs 67'"}
+{"n":219,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["para 1518","para 2701","para 2801","para 2803","para 2843"]}
+{"n":220,"k":"decision","m":"M.7278","name":"General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)","pin":["annex I"]}
+{"n":221,"k":"decision","m":"M.7278","name":"General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)","pin":["annex I"]}
+{"n":223,"k":"decision","m":"M.9343","name":"Hyundai Heavy Industries Holdings/Daewoo Shipbuilding & Marine Engineering","pin":["paras 414-485"]}
+{"n":224,"k":"decision","m":"M.10507","name":"Hitachi Rail/Ground Transportation Systems Business of Thales","pin":["paras 165-167"]}
+{"n":225,"k":"decision","m":"M.4297","name":"Nokia/Siemens","pin":["paras 83-87"]}
+{"n":226,"k":"decision","m":"M.4662","name":"Syniverse/BSG","pin":["paras 74-78"]}
+{"n":226,"k":"decision","m":"M.7278","name":"General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)","pin":["annex I"]}
+{"n":227,"k":"decision","m":"M.8713","name":"Tata Steel/thyssenkrupp/JV","pin":["paras 474-481"]}
+{"n":229,"k":"decision","m":"M.9076","written":{"m":"M.9706"},"name":"Novelis/Aleris","pin":["paras 528-533"],"err":"case number written M.9706; Novelis/Aleris is M.9076"}
+{"n":231,"k":"decision","m":"M.4180","name":"Gaz de France/Suez","pin":["para 758","para 759"]}
+{"n":231,"k":"decision","m":"M.5549","name":"EDF/Segebel","pin":["para 60"]}
+{"n":233,"k":"decision","m":"M.8124","name":"Microsoft/LinkedIn","pin":["paras 341-343"]}
+{"n":236,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["section 4.4"]}
+{"n":237,"k":"decision","m":"M.9409","name":"Aurubis/Metallo","pin":["para 376"]}
+{"n":239,"k":"decision","m":"M.10433","name":"Vivendi/Lagardère","pin":["section 7.4.5.1.2.4"]}
+{"n":240,"k":"decision","m":"M.8465","name":"Vivendi/Telecom Italia","pin":["paras 48-52","para 60"]}
+{"n":241,"k":"decision","m":"M.8465","name":"Vivendi/Telecom Italia","pin":["para 60"]}
+{"n":242,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["paras 2337-2352","annex 5"]}
+{"n":243,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["annex 5 section 6"]}
+{"n":244,"k":"decision","m":"M.7881","name":"AB InBev/SABMiller","pin":["section VI.5.1.1"]}
+{"n":245,"k":"decision","m":"M.5865","name":"Teva/Ratiopharm","pin":["paras 408-420"]}
+{"n":246,"k":"decision","m":"M.5096","name":"RCA/MAV Cargo","pin":["paras 88-94"]}
+{"n":246,"k":"decision","m":"M.7908","name":"CMA CGM/NOL","pin":["paras 48-52"]}
+{"n":247,"k":"decision","m":"M.5650","name":"T-Mobile/Orange","pin":["paras 81-105"]}
+{"n":248,"k":"decision","m":"M.4150","name":"Abbott/Guidant","pin":["paras 46-65"]}
+{"n":249,"k":"decision","m":"M.6447","name":"IAG/BMI","pin":["paras 158-166"]}
+{"n":249,"k":"decision","m":"M.9221","name":"CMA CGM/CEVA","pin":["para 61","para 62"]}
+{"n":250,"k":"decision","m":"M.8792","name":"T-Mobile NL/Tele2 NL","pin":["section 'Network based competition'"]}
+{"n":251,"k":"decision","m":"M.9076","name":"Novelis/Aleris","pin":["section 8.3.9"]}
+{"n":257,"k":"decision","m":"M.7932","name":"Dow/DuPont","note":"no pinpoint"}
+{"n":257,"k":"decision","m":"M.8084","name":"Bayer/Monsanto","note":"no pinpoint"}
+{"n":257,"k":"decision","m":"M.9294","name":"BMS/Celgene","note":"no pinpoint"}
+{"n":257,"k":"decision","m":"M.9461","name":"AbbVie/Allergan","note":"no pinpoint"}
+{"n":257,"k":"decision","m":"M.9554","name":"Elanco Animal Health/Bayer Animal Health Division","note":"no pinpoint"}
+{"n":257,"k":"decision","m":"M.11177","written":{"m":"M.11771"},"name":"Pfizer/Seagen","err":"case number written M.11771; Pfizer/Seagen is M.11177 (as fn 31 writes it)","note":"no pinpoint"}
+{"reviewed":"261-350"}
+{"n":263,"k":"decision","m":"M.8401","name":"J&J/Actelion","pin":["paras 40-42"]}
+{"n":264,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["paras 277-278","para 283","para 1955","paras 2014-2037"]}
+{"n":266,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["para 1957"]}
+{"n":267,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["paras 90-93"]}
+{"n":267,"k":"decision","m":"M.8084","name":"Bayer/Monsanto","pin":["para 1015"]}
+{"n":267,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["paras 342-361"]}
+{"n":268,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["para 92"]}
+{"n":272,"k":"legislation","celex":"32026H0720","name":"Recommendation (EU) 2026/720 on innovative enterprises"}
+{"n":277,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["section 5"],"note":"'Section II.A.3 of these Guidelines' is a cross-reference, not an authority"}
+{"n":278,"k":"legislation","celex":"32022R1925","name":"Digital Markets Act","pin":["art 2"],"note":"Directives (EU) 2019/1937 and 2020/1828 appear only inside the DMA's title"}
+{"n":279,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["section 5"]}
+{"n":280,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["section 5"]}
+{"n":281,"k":"legislation","celex":"32022R1925","name":"Digital Markets Act","via":"short","ante":278,"pin":["art 2"]}
+{"n":283,"k":"judgment","case":"T-87/05","ecli":"EU:T:2005:333","name":"EDP","pin":["para 189"]}
+{"n":284,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["para 23(c)"]}
+{"n":287,"k":"judgment","case":"T-69/20","ecli":"EU:T:2024:816","name":"Tele Columbus","pin":["para 186"]}
+{"n":289,"k":"judgment","case":"T-64/20","ecli":"EU:T:2024:815","name":"Deutsche Telekom","pin":["para 135"]}
+{"n":289,"k":"judgment","case":"T-177/04","ecli":"EU:T:2006:187","name":"easyJet","pin":["para 116"],"note":"case number broken over a line in the PDF: 'T- 177/04'"}
+{"n":290,"k":"judgment","case":"C-331/21","ecli":"EU:C:2023:812","name":"EDP v Autoridade da Concorrência","pin":["para 60 et seq."]}
+{"n":292,"k":"judgment","case":"T-64/20","ecli":"EU:T:2024:815","name":"Deutsche Telekom","pin":["para 136"]}
+{"n":294,"k":"judgment","case":"T-64/20","ecli":"EU:T:2024:815","name":"Deutsche Telekom","pin":["para 137"],"err":"date written '13 November 20224'"}
+{"n":295,"k":"decision","m":"M.1630","name":"Air Liquide/BOC","pin":["paras 206-207"]}
+{"n":297,"k":"decision","m":"M.8480","name":"Praxair/Linde","pin":["paras 1191-1198"]}
+{"n":297,"k":"decision","m":"M.9728","name":"Altice/Omers/Allianz/Covage","pin":["paras 504-508"]}
+{"n":298,"k":"decision","m":"M.9674","name":"Vodafone Italia/TIM/INWIT JV","pin":["paras 276-294"]}
+{"n":299,"k":"decision","m":"M.10262","name":"Meta/Kustomer","note":"no pinpoint"}
+{"n":299,"k":"decision","m":"M.9019","name":"Mars/AniCura","note":"no pinpoint"}
+{"n":299,"k":"decision","m":"M.10806","name":"Broadcom/VMware","note":"no pinpoint"}
+{"n":300,"k":"decision","m":"M.9660","name":"Google/Fitbit","note":"no pinpoint"}
+{"n":300,"k":"decision","m":"M.10262","name":"Meta/Kustomer","note":"no pinpoint"}
+{"n":300,"k":"decision","m":"M.10806","name":"Broadcom/VMware","note":"no pinpoint"}
+{"n":301,"k":"decision","m":"M.8306","name":"Qualcomm/NXP","pin":["para 546","para 554"]}
+{"n":301,"k":"decision","m":"M.10860","name":"Advent/GfK","pin":["paras 155-161","para 164","para 168","para 176","paras 205-209"]}
+{"n":301,"k":"decision","m":"M.9945","name":"Siemens Healthineers/Varian Medical Systems","pin":["para 125 et seq."]}
+{"n":302,"k":"decision","m":"M.8306","name":"Qualcomm/NXP","pin":["paras 541-581"]}
+{"n":303,"k":"decision","m":"M.9660","name":"Google/Fitbit","pin":["paras 716-817"]}
+{"n":303,"k":"decision","m":"M.9945","name":"Siemens Healthineers/Varian Medical Systems","pin":["paras 84-116"]}
+{"n":304,"k":"decision","m":"M.10792","name":"Philip Morris International/Swedish Match","pin":["paras 215-217"]}
+{"n":305,"k":"decision","m":"M.10712","name":"Apollo Management/Tenneco","pin":["paras 92-94"]}
+{"n":305,"k":"decision","m":"M.8674","name":"BASF/Solvay","pin":["para 852"]}
+{"n":306,"k":"judgment","case":"T-370/17","ecli":"EU:T:2019:354","name":"KPN","pin":["para 119"]}
+{"n":306,"k":"decision","m":"M.10301","name":"CVC/Ethniki","pin":["paras 63-93"]}
+{"n":307,"k":"decision","m":"M.10262","name":"Meta/Kustomer","pin":["paras 273-293"]}
+{"n":307,"k":"decision","m":"M.10806","name":"Broadcom/VMware","pin":["paras 397-403"]}
+{"n":307,"k":"decision","m":"M.9660","name":"Google/Fitbit","pin":["paras 751-762"]}
+{"n":307,"k":"decision","m":"M.10646","name":"Microsoft/Activision Blizzard","pin":["paras 386-391"]}
+{"n":307,"k":"decision","m":"M.11766","name":"NVIDIA/Run:ai","pin":["paras 159-193"]}
+{"n":309,"k":"decision","m":"M.8480","name":"Praxair/Linde","pin":["paras 1191-1192"]}
+{"n":309,"k":"decision","m":"M.9449","name":"VAG/Varta","pin":["paras 57-59"]}
+{"n":309,"k":"decision","m":"M.9064","name":"Telia/Bonnier","pin":["paras 494-510"],"note":"written 'paragraph 494-510'"}
+{"n":309,"k":"decision","m":"M.9728","name":"Altice/Omers/Allianz/Covage","pin":["paras 504-508"]}
+{"n":309,"k":"decision","m":"M.8677","name":"Siemens/Alstom","pin":["paras 1226-1235"]}
+{"n":310,"k":"decision","m":"M.8314","name":"Broadcom/Brocade","note":"no pinpoint"}
+{"n":310,"k":"decision","m":"M.9660","name":"Google/Fitbit","note":"no pinpoint"}
+{"n":310,"k":"decision","m":"M.10262","name":"Meta/Kustomer","note":"no pinpoint"}
+{"n":311,"k":"decision","m":"M.9564","name":"LSEG/Refinitiv","pin":["paras 1045-1058"]}
+{"n":312,"k":"judgment","case":"C-12/03 P","ecli":"EU:C:2005:87","name":"Tetra Laval","pin":["paras 74-76","paras 75-77"],"note":"cited twice, each time inside a parenthesis within the footnote"}
+{"n":312,"k":"judgment","case":"T-210/01","ecli":"EU:T:2005:456","name":"General Electric","pin":["para 73","para 72"],"note":"cited twice"}
+{"n":313,"k":"judgment","case":"T-210/01","ecli":"EU:T:2005:456","name":"General Electric","pin":["paras 74-75","paras 311-312"]}
+{"n":314,"k":"decision","m":"M.3696","name":"E.ON/MOL","pin":["para 433","paras 443-446"]}
+{"n":314,"k":"decision","m":"M.3440","name":"EDP/ENI/GDP","pin":["paras 424-425"]}
+{"n":315,"k":"judgment","case":"T-210/01","ecli":"EU:T:2005:456","name":"General Electric","pin":["paras 295-297"]}
+{"n":317,"k":"decision","m":"M.9569","written":{"m":"M.9596"},"name":"EssilorLuxottica/GrandVision","pin":["annex I"],"err":"case number written M.9596; EssilorLuxottica/GrandVision is M.9569 (as fn 331 writes it)"}
+{"n":318,"k":"decision","m":"M.10108","name":"S&P Global/IHS Markit","pin":["para 568"]}
+{"n":318,"k":"decision","m":"M.10262","name":"Meta/Kustomer","pin":["para 316"]}
+{"n":318,"k":"decision","m":"M.10796","name":"Google/Photomath","pin":["para 120"]}
+{"n":319,"k":"decision","m":"M.9569","written":{"m":"M.9596"},"name":"EssilorLuxottica/GrandVision","pin":["paras 226-227","paras 325-337"],"err":"case number written M.9596; EssilorLuxottica/GrandVision is M.9569"}
+{"n":321,"k":"decision","m":"M.7194","name":"Liberty Global/De Vijver Media","note":"no pinpoint"}
+{"n":321,"k":"decision","m":"M.9064","name":"Telia/Bonnier","note":"no pinpoint"}
+{"n":321,"k":"decision","m":"M.8306","name":"Qualcomm/NXP","note":"no pinpoint"}
+{"n":322,"k":"decision","m":"M.10262","name":"Meta/Kustomer","pin":["para 430 et seq."]}
+{"n":323,"k":"judgment","case":"T-5/02","ecli":"EU:T:2002:264","name":"Tetra Laval","pin":["paras 270-336"]}
+{"n":325,"k":"decision","m":"M.9064","name":"Telia/Bonnier","note":"no pinpoint"}
+{"n":326,"k":"judgment","case":"T-210/01","ecli":"EU:T:2005:456","name":"General Electric","pin":["para 216","para 217","paras 287-290"]}
+{"n":326,"k":"decision","m":"M.9564","name":"LSEG/Refinitiv","pin":["paras 913-914"]}
+{"n":326,"k":"decision","m":"M.8985","name":"Boeing/KLX","pin":["para 67"]}
+{"n":326,"k":"decision","m":"M.5675","name":"Syngenta/Monsanto Sunflower Seed Business","pin":["para 347","para 350"]}
+{"n":326,"k":"decision","m":"M.4854","name":"TomTom/Tele Atlas","pin":["para 198"]}
+{"n":326,"k":"decision","m":"M.4569","name":"GE/Abbott","pin":["para 30","para 36"]}
+{"n":327,"k":"decision","m":"M.10262","name":"Meta/Kustomer","note":"no pinpoint"}
+{"n":327,"k":"decision","m":"M.9660","name":"Google/Fitbit","note":"no pinpoint"}
+{"n":329,"k":"judgment","case":"T-251/19","ecli":"EU:T:2022:296","name":"Wieland-Werke","pin":["paras 87-91"]}
+{"n":330,"k":"decision","m":"M.10702","name":"KPS Capital Partners/Real Alloy Europe","pin":["para 104"]}
+{"n":331,"k":"decision","m":"M.9569","name":"EssilorLuxottica/GrandVision","pin":["para 227"]}
+{"n":334,"k":"notice","name":"Market Definition Notice","via":"short","ante":100,"pin":["para 104"]}
+{"n":334,"k":"judgment","case":"T-604/18","ecli":"EU:T:2022:541","name":"Google and Alphabet (Google Android)","note":"no pinpoint"}
+{"n":338,"k":"decision","m":"M.9660","name":"Google/Fitbit","note":"no pinpoint"}
+{"n":339,"k":"decision","m":"M.1671","name":"Dow Chemical/Union Carbide","pin":["paras 107-114"]}
+{"n":340,"k":"decision","m":"M.10615","name":"Booking Holdings/eTraveli Group","note":"no pinpoint"}
+{"n":341,"k":"decision","m":"M.11071","name":"Lufthansa/MEF/ITA","pin":["section 11"]}
+{"n":343,"k":"decision","m":"M.7881","name":"AB InBev/SABMiller","pin":["paras 72-84"]}
+{"n":343,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["para 1123 et seq."]}
+{"n":344,"k":"judgment","case":"T-342/99","ecli":"EU:T:2002:146","name":"Airtours","pin":["para 62"]}
+{"n":345,"k":"decision","m":"M.7881","name":"AB InBev/SABMiller","pin":["paras 72-84"]}
+{"n":345,"k":"decision","m":"M.8444","name":"ArcelorMittal/Ilva","pin":["para 1123 et seq."]}
+{"n":346,"k":"decision","m":"M.7758","name":"Hutchison 3G Italy/WIND/JV","pin":["paras 972-981"]}
+{"n":347,"k":"decision","m":"M.10438","name":"MOL/OMV Slovenija","pin":["paras 291-302"]}
+{"n":348,"k":"decision","m":"M.10438","name":"MOL/OMV Slovenija","pin":["paras 367-376"]}
+{"n":349,"k":"decision","m":"M.8451","name":"Tronox/Cristal","pin":["paras 365-370"]}
+{"n":349,"k":"judgment","case":"T-102/96","ecli":"EU:T:1999:65","name":"Gencor","pin":["para 276"]}
+{"n":350,"k":"decision","m":"M.10438","name":"MOL/OMV Slovenija","pin":["para 377 et seq."]}
+{"reviewed":"351-420"}
+{"n":351,"k":"judgment","case":"T-342/99","ecli":"EU:T:2002:146","name":"Airtours","pin":["para 195"]}
+{"n":351,"k":"judgment","case":"T-464/04","ecli":"EU:T:2006:216","name":"Impala v Commission","pin":["para 466"]}
+{"n":352,"k":"decision","m":"M.11956","name":"UMG/Downtown","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.11578","name":"Boeing/Spirit","note":"no pinpoint; name written 'Boeing/Sprit'"}
+{"n":352,"k":"decision","m":"M.7724","name":"ASL/Arianespace","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.8314","name":"Broadcom/Brocade","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.11486","name":"Novo Holdings/Novo Nordisk/Catalent","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.11246","written":{"m":"M:11246"},"name":"Rolex/Bucherer","note":"no pinpoint; written with a colon, 'M:11246'"}
+{"n":352,"k":"decision","m":"M.10301","name":"CVC/Ethniki","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.9660","name":"Google/Fitbit","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.9019","name":"Mars/AniCura","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.8900","name":"Wieland Aurubis Rolled Products/Schwermetall","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.8948","name":"Spirit/Asco","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.9424","name":"NVIDIA/Mellanox","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.8788","name":"Apple/Shazam","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.6765","name":"Precision Castparts/Titanium Metals","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.4854","name":"TomTom/Tele Atlas","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.3440","name":"EDP/ENI/GDP","note":"no pinpoint; written without 'Case' and as 'EDP/ENL/GDP'"}
+{"n":352,"k":"decision","m":"M.2738","name":"GEES/Unison","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.2925","name":"Charterhouse/CDC/Telediffusion de France","note":"no pinpoint"}
+{"n":352,"k":"decision","m":"M.2510","name":"Cendant/Galileo","note":"no pinpoint; em dash before the name"}
+{"n":352,"k":"decision","m":"M.1879","name":"Boeing/Hughes","note":"no pinpoint; em dash before the name"}
+{"n":353,"k":"decision","m":"M.11956","name":"UMG/Downtown","note":"no pinpoint"}
+{"n":353,"k":"decision","m":"M.11578","name":"Boeing/Spirit","note":"no pinpoint; name written 'Boeing/Sprit'"}
+{"n":353,"k":"decision","m":"M.9660","name":"Google/Fitbit","note":"no pinpoint"}
+{"n":353,"k":"decision","m":"M.8788","name":"Apple/Shazam","note":"no pinpoint"}
+{"n":353,"k":"decision","m":"M.10301","name":"CVC/Ethniki","note":"no pinpoint"}
+{"n":353,"k":"decision","m":"M.8900","name":"Wieland Aurubis Rolled Products/Schwermetall","note":"no pinpoint"}
+{"n":353,"k":"decision","m":"M.8948","written":{"m":"M. 8948"},"name":"Spirit/Asco","note":"no pinpoint; written with a space, 'M. 8948'"}
+{"n":353,"k":"decision","m":"M.4854","name":"TomTom/Tele Atlas","note":"no pinpoint"}
+{"n":354,"k":"decision","m":"M.9660","name":"Google/Fitbit","pin":["paras 831-844"]}
+{"n":355,"k":"decision","m":"M.11956","name":"UMG/Downtown","pin":["para 482"]}
+{"n":355,"k":"decision","m":"M.8788","name":"Apple/Shazam","pin":["paras 317-328"]}
+{"n":356,"k":"decision","m":"M.10301","name":"CVC/Ethniki","pin":["paras 144-177"]}
+{"n":356,"k":"decision","m":"M.9660","name":"Google/Fitbit","pin":["paras 411-412"]}
+{"n":356,"k":"decision","m":"M.8788","name":"Apple/Shazam","pin":["para 225"]}
+{"n":357,"k":"decision","m":"M.11956","name":"UMG/Downtown","pin":["paras 371-373"]}
+{"n":357,"k":"decision","m":"M.8788","name":"Apple/Shazam","pin":["para 193"]}
+{"n":358,"k":"decision","m":"M.8900","name":"Wieland Aurubis Rolled Products/Schwermetall","note":"no pinpoint"}
+{"n":358,"k":"decision","m":"M.4854","name":"TomTom/Tele Atlas","note":"no pinpoint"}
+{"n":358,"k":"decision","m":"M.3440","name":"EDP/ENI/GDP","note":"no pinpoint; name written 'EDP/ENL/GDP', em dash"}
+{"n":358,"k":"decision","m":"M.2738","name":"GEES/Unison","note":"no pinpoint"}
+{"n":358,"k":"decision","m":"M.2925","name":"Charterhouse/CDC/Telediffusion de France","note":"no pinpoint; em dash"}
+{"n":358,"k":"decision","m":"M.2510","name":"Cendant/Galileo","note":"no pinpoint"}
+{"n":358,"k":"decision","m":"M.1879","name":"Boeing/Hughes","note":"no pinpoint; name written 'Boing/Hughes'"}
+{"n":359,"k":"decision","m":"M.8948","name":"Spirit/Asco","note":"no pinpoint"}
+{"n":360,"k":"decision","m":"M.8306","name":"Qualcomm/NXP","note":"no pinpoint"}
+{"n":360,"k":"decision","m":"M.6458","name":"Universal Music Group/EMI Music","note":"no pinpoint; in prose"}
+{"n":361,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["paras 242-244"]}
+{"n":362,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 80 et seq."]}
+{"n":365,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["recital 29"],"note":"written 'Recital 29 EUMR'"}
+{"n":366,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 106"]}
+{"n":366,"k":"judgment","case":"C-255/22 P","ecli":"EU:C:2024:790","name":"Orlen","pin":["paras 96-97"]}
+{"n":367,"k":"judgment","case":"C-376/20 P","ecli":"EU:C:2023:561","name":"CK Telecoms","pin":["para 82"]}
+{"n":370,"k":"decision","m":"M.6905","name":"INEOS/Solvay/JV","pin":["para 1197","para 1206"]}
+{"n":372,"k":"decision","m":"M.7630","name":"FedEx/TNT Express","pin":["para 516 et seq."]}
+{"n":373,"k":"decision","m":"M.6905","name":"INEOS/Solvay/JV","pin":["para 1197","para 1206"]}
+{"n":374,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","note":"no pinpoint"}
+{"n":374,"k":"decision","m":"M.7278","name":"General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)","note":"no pinpoint"}
+{"n":375,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","note":"no pinpoint"}
+{"n":376,"k":"decision","m":"M.6905","name":"INEOS/Solvay/JV","note":"no pinpoint"}
+{"n":376,"k":"decision","m":"M.8677","name":"Siemens/Alstom","note":"no pinpoint"}
+{"n":377,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","note":"no pinpoint"}
+{"n":380,"k":"decision","m":"M.7758","name":"Hutchison 3G Italy/WIND/JV","pin":["para 1391"],"note":"written 'paragraphs1391' with no space"}
+{"n":380,"k":"decision","m":"M.8792","name":"T-Mobile NL/Tele2 NL","pin":["para 892"]}
+{"n":381,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["para 1599"]}
+{"n":381,"k":"decision","m":"M.7630","name":"FedEx/TNT Express","pin":["para 579"]}
+{"n":381,"k":"decision","m":"M.7278","name":"General Electric/Alstom (Thermal Power - Renewable Power & Grid Business)","pin":["para 1324"]}
+{"n":382,"k":"decision","m":"M.7630","name":"FedEx/TNT Express","pin":["para 579"]}
+{"n":384,"k":"decision","m":"M.7421","name":"Orange/Jazztel","pin":["para 744"]}
+{"n":385,"k":"decision","m":"M.6360","name":"Nynas/Shell/Harburg Refinery","pin":["paras 410-417","para 460"]}
+{"n":385,"k":"decision","m":"M.6905","name":"INEOS/Solvay/JV","pin":["para 1187"]}
+{"n":386,"k":"decision","m":"M.7630","name":"FedEx/TNT Express","pin":["para 547"]}
+{"n":387,"k":"decision","m":"M.7018","name":"Telefónica Deutschland/E-Plus","pin":["para 1137"]}
+{"n":387,"k":"decision","m":"M.7758","name":"Hutchison 3G Italy/WIND/JV","pin":["para 1573"]}
+{"n":387,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["para 1594"]}
+{"n":388,"k":"decision","m":"M.7018","name":"Telefónica Deutschland/E-Plus","pin":["para 1137"]}
+{"n":388,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["para 1595"]}
+{"n":389,"k":"judgment","case":"T-834/17","ecli":"EU:T:2022:84","name":"United Parcel Service","pin":["para 136","para 138","para 232"],"err":"date written 23 February 2002; the ECLI gives 2022"}
+{"n":390,"k":"judgment","case":"C-62/86","ecli":"EU:C:1991:286","name":"AKZO","pin":["para 71"]}
+{"n":390,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["para 1605a"],"note":"a lettered paragraph"}
+{"n":391,"k":"decision","m":"M.7612","name":"Hutchison 3G UK/Telefónica UK","pin":["annex A paras 96-100","annex A section 3.1"]}
+{"n":392,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["annex A para 5 et seq."]}
+{"n":393,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["annex B"]}
+{"n":394,"k":"decision","m":"M.7612","name":"Hutchison 3G UK/Telefónica UK","pin":["annex A para 93"]}
+{"n":396,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["para 1694b"],"note":"a lettered paragraph"}
+{"n":396,"k":"decision","m":"M.7000","name":"Liberty Global/Ziggo","pin":["para 373"]}
+{"n":396,"k":"notice","name":"Horizontal Co-operation Guidelines","oj":"C 259, 21.7.2023","pin":["para 578"]}
+{"n":397,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["para 1694b"]}
+{"n":397,"k":"decision","m":"M.7000","name":"Liberty Global/Ziggo","pin":["para 373"]}
+{"n":397,"k":"notice","name":"Horizontal Co-operation Guidelines","via":"short","ante":396,"pin":["para 578"]}
+{"n":400,"k":"notice","name":"Horizontal Co-operation Guidelines","via":"short","ante":396,"pin":["sections 9.4.3.1-9.4.3.2"]}
+{"n":401,"k":"notice","name":"Horizontal Co-operation Guidelines","via":"short","ante":396,"pin":["section 9.4.3.3"]}
+{"n":402,"k":"decision","m":"M.6166","name":"Deutsche Börse/NYSE Euronext","pin":["para 1183"]}
+{"n":403,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["annex A para 8"]}
+{"n":406,"k":"decision","m":"M.7932","name":"Dow/DuPont","pin":["para 277"]}
+{"n":408,"k":"decision","m":"M.9409","name":"Aurubis/Metallo","pin":["para 851"]}
+{"n":409,"k":"decision","m":"M.9730","name":"FCA/PSA","pin":["economic annex para 104"]}
+{"n":410,"k":"decision","m":"M.4854","name":"TomTom/Tele Atlas","pin":["para 249"]}
+{"n":412,"k":"decision","m":"M.6166","name":"Deutsche Börse/NYSE Euronext","pin":["para 1183"]}
+{"n":413,"k":"judgment","case":"C-238/05","ecli":"EU:C:2006:734","name":"Asnef-Equifax","pin":["para 70","para 72"]}
+{"n":414,"k":"decision","m":"M.7018","name":"Telefónica Deutschland/E-Plus","pin":["para 756"],"note":"written 'Case M.7018 Telefonica …' with no dash, inside a parenthesis"}
+{"n":414,"k":"decision","m":"M.7612","name":"Hutchison 3G UK/Telefónica UK","pin":["para 1192"],"note":"written 'Hutchinson', no dash"}
+{"n":414,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["annex A"]}
+{"n":414,"k":"decision","m":"M.9569","name":"EssilorLuxottica/GrandVision","pin":["para 268"]}
+{"n":418,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["para 1600","para 1601"]}
+{"n":420,"k":"decision","m":"M.7630","name":"FedEx/TNT Express","pin":["para 579"]}
+{"reviewed":"421-478"}
+{"n":421,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["para 1602"]}
+{"n":422,"k":"decision","m":"M.10896","name":"Orange/MásMóvil/JV","pin":["annex A section 3"]}
+{"n":423,"k":"notice","name":"Horizontal Co-operation Guidelines","via":"short","ante":396,"pin":["para 583"]}
+{"n":423,"k":"judgment","case":"T-168/01","ecli":"EU:T:2006:265","name":"GlaxoSmithKline Services","pin":["para 248","para 251"]}
+{"n":423,"k":"judgment","case":"C-382/12 P","ecli":"EU:C:2014:2201","name":"MasterCard","pin":["para 242"]}
+{"n":425,"k":"notice","name":"Horizontal Co-operation Guidelines","via":"short","ante":396,"pin":["para 587"]}
+{"n":427,"k":"notice","name":"Horizontal Co-operation Guidelines","via":"short","ante":396,"pin":["para 587(d)","para 590"]}
+{"n":428,"k":"decision","m":"M.10494","name":"VIG/AEGON CEE","pin":["para 79"]}
+{"n":429,"k":"judgment","case":"C-161/07","ecli":"EU:C:2008:759","name":"Commission v Austria","pin":["paras 36-37"]}
+{"n":429,"k":"judgment","case":"C-543/08","ecli":"EU:C:2010:669","name":"Commission v Portugal","pin":["para 87"]}
+{"n":430,"k":"decision","m":"M.10494","name":"VIG/AEGON CEE","pin":["para 72 et seq."],"note":"written 'paragraphs 72 and seq.'"}
+{"n":431,"k":"other","name":"EEA Agreement, Protocol 24","pin":["art 7(1)"]}
+{"n":431,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 21(4)"],"note":"in prose: 'mirrors Article 21(4) of the EUMR'"}
+{"n":431,"k":"decision","m":"M.2491","name":"Sampo/Storebrand","pin":["paras 38-39"]}
+{"n":432,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 21(4)","art 21"],"note":"in prose"}
+{"n":432,"k":"decision","m":"M.10494","name":"VIG/AEGON CEE","note":"no pinpoint"}
+{"n":432,"k":"decision","m":"M.4685","name":"ENEL/Acciona/Endesa","note":"no pinpoint"}
+{"n":432,"k":"decision","m":"M.4197","name":"E.ON/Endesa","note":"no pinpoint"}
+{"n":432,"k":"decision","m":"M.2054","name":"Secil/Holderbank/Cimpor","note":"no pinpoint"}
+{"n":432,"k":"decision","m":"M.1616","name":"BSCH/A. Champalimaud","note":"no pinpoint"}
+{"n":432,"k":"decision","m":"M.1346","name":"EDF/London Electricity","note":"no pinpoint"}
+{"n":432,"k":"decision","m":"M.567","name":"Lyonnaise des Eaux/Northumbrian Water","note":"no pinpoint"}
+{"n":432,"k":"decision","m":"M.12052","name":"UniCredit/Banco BPM","note":"no pinpoint"}
+{"n":432,"k":"decision","m":"M.5932","name":"News Corp/BSkyB","note":"no pinpoint"}
+{"n":433,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 2(1)(a)"]}
+{"n":434,"k":"treaty","treaty":"TFEU","pin":["art 52","art 65"]}
+{"n":435,"k":"judgment","case":"C-348/09","ecli":"EU:C:2012:300","name":"P.I.","pin":["para 23"]}
+{"n":435,"k":"treaty","treaty":"TFEU","pin":["art 4(2)"]}
+{"n":436,"k":"judgment","case":"C-421/12","ecli":"EU:C:2014:2064","name":"Commission v Belgium","pin":["para 47"]}
+{"n":436,"k":"judgment","case":"C-483/99","ecli":"EU:C:2002:327","name":"Commission v France","pin":["para 48"]}
+{"n":436,"k":"judgment","case":"C-463/00","ecli":"EU:C:2003:272","name":"Commission v Spain","pin":["para 72"]}
+{"n":436,"k":"judgment","case":"C-54/99","ecli":"EU:C:2000:124","written":{"ecli":"EU:C:200:124"},"name":"Association Église de scientologie","pin":["para 17"],"err":"ECLI written 'EU:C:200:124', a year of 200"}
+{"n":436,"k":"judgment","case":"C-78/18","ecli":"EU:C:2020:476","name":"Commission v Hungary","pin":["para 91"]}
+{"n":436,"k":"judgment","case":"C-106/22","ecli":"EU:C:2023:568","name":"Xella Magyarország","pin":["para 66"]}
+{"n":437,"k":"judgment","case":"C-446/04","name":"Test Claimants in the FII Group Litigation","pin":["para 171"],"note":"no ECLI and no date written; 'Case C-446/04 Test claimants in FII Group litigation, para. 171'"}
+{"n":438,"k":"decision","m":"M.10494","name":"VIG/AEGON CEE","pin":["para 78","footnote 89"]}
+{"n":439,"k":"decision","m":"M.10433","name":"Vivendi/Lagardère","pin":["paras 1924-1927"]}
+{"n":440,"k":"legislation","celex":"32024R1083","name":"European Media Freedom Act","via":"short","ante":20,"pin":["art 22"],"note":"in prose: 'Article 22 European Media Freedom Act requires …'"}
+{"n":441,"k":"decision","m":"M.8354","name":"Fox/Sky","pin":["paras 469-473"]}
+{"n":441,"k":"decision","m":"M.5932","name":"News Corp/BSkyB","pin":["paras 304-309"]}
+{"n":442,"k":"other","name":"Community Merger Control Law, Bulletin Supplement 2/90, Notes on Council Regulation 4064/89","pin":["p. 25"]}
+{"n":443,"k":"legislation","celex":"32013R0575","name":"Capital Requirements Regulation"}
+{"n":443,"k":"legislation","celex":"32013L0036","name":"Capital Requirements Directive"}
+{"n":444,"k":"legislation","celex":"32014R0806","name":"Single Resolution Mechanism Regulation"}
+{"n":445,"k":"legislation","celex":"32014L0059","name":"Bank Recovery and Resolution Directive"}
+{"n":445,"k":"legislation","celex":"32019L0879","name":"Directive (EU) 2019/879"}
+{"n":446,"k":"legislation","celex":"32014L0049","name":"Deposit Guarantee Schemes Directive"}
+{"n":447,"k":"legislation","celex":"32009L0138","name":"Solvency II"}
+{"n":448,"k":"legislation","celex":"32019R2033","name":"Investment Firms Regulation"}
+{"n":448,"k":"legislation","celex":"32019L2034","name":"Investment Firms Directive"}
+{"n":449,"k":"legislation","celex":"32002L0087","name":"Financial Conglomerates Directive"}
+{"n":450,"k":"legislation","celex":"32016L2341","name":"IORP II Directive"}
+{"n":451,"k":"legislation","celex":"32015L2366","name":"Payment Services Directive 2"}
+{"n":452,"k":"legislation","celex":"32009L0110","name":"E-Money Directive"}
+{"n":453,"k":"legislation","celex":"32023R1114","name":"MiCA"}
+{"n":454,"k":"legislation","celex":"32012R0648","name":"EMIR"}
+{"n":455,"k":"legislation","celex":"32014R0909","name":"CSDR"}
+{"n":457,"k":"decision","m":"M.759","name":"Sun Alliance/Royal Insurance","pin":["paras 16-17"]}
+{"n":458,"k":"decision","m":"M.567","written":{"m":"IV/M.567"},"name":"Lyonnaise des Eaux/Northumbrian Water","pin":["paras 7-8"],"note":"written in the old style 'Case No IV/M.567'"}
+{"n":459,"k":"treaty","treaty":"TEU","pin":["art 5(4)"]}
+{"n":460,"k":"judgment","case":"C-391/20","ecli":"EU:C:2022:638","name":"Cilevičs","pin":["para 65"],"err":"date written 7 September 2002; the ECLI gives 2022"}
+{"n":460,"k":"opinion","case":"C-333/21","ecli":"EU:C:2022:993","name":"European Superleague Company (Opinion of AG Rantos)","pin":["para 251"],"err":"cited as 'Judgment of 15 December 2002'; the ECLI EU:C:2022:993 is believed to be AG Rantos's Opinion of 15 December 2022, not the judgment (EU:C:2023:1011, fn 39) — to verify"}
+{"n":460,"k":"judgment","case":"C-680/21","ecli":"EU:C:2023:1010","name":"Royal Antwerp Football Club","pin":["para 141"]}
+{"n":461,"k":"judgment","case":"C-341/05","ecli":"EU:C:2007:809","name":"Laval un Partneri","pin":["para 115"]}
+{"n":462,"k":"judgment","case":"C-22/08","joined":["C-23/08"],"ecli":"EU:C:2009:344","name":"Vatsouras and Koupatantze","pin":["paras 51-52"],"note":"'Article [18 TFEU]' appears only inside the quotation"}
+{"n":463,"k":"judgment","case":"C-72/10","ecli":"EU:C:2012:80","name":"Costa and Cifone","pin":["para 74"],"err":"date written 16 February 2021; the ECLI gives 2012. Joined with C-77/10, not written"}
+{"n":463,"k":"judgment","case":"C-308/06","ecli":"EU:C:2008:312","name":"Intertanko","pin":["para 69"]}
+{"n":464,"k":"judgment","case":"C-89/14","ecli":"EU:C:2015:537","name":"A2A","pin":["para 37"]}
+{"n":465,"k":"judgment","case":"106/77","written":{"case":"C-106/77"},"ecli":"EU:C:1978:49","name":"Simmenthal","pin":["para 17"],"note":"a 1978 case, numbered before the C- prefix existed; written 'C-106/77'"}
+{"n":465,"k":"judgment","case":"C-882/19","ecli":"EU:C:2021:800","name":"Sumal","pin":["para 73"]}
+{"n":466,"k":"treaty","treaty":"TFEU","pin":["arts 28-37","arts 49-55","arts 63-66"]}
+{"n":468,"k":"judgment","case":"C-421/12","ecli":"EU:C:2014:2064","name":"Commission v Belgium","pin":["para 50"]}
+{"n":469,"k":"legislation","celex":"32019R0452","name":"FDI Screening Regulation"}
+{"n":470,"k":"legislation","celex":"32024R1083","name":"European Media Freedom Act","via":"short","ante":20,"pin":["art 22"],"note":"stray '395.' after the citation is a conversion artefact"}
+{"n":472,"k":"decision","m":"M.4197","name":"E.ON/Endesa","decisionDate":"2006-12-20","pin":["para 25"]}
+{"n":472,"k":"decision","m":"M.4197","name":"E.ON/Endesa","decisionDate":"2006-09-26","pin":["para 24"],"note":"a different decision in the same case from the one cited just before it"}
+{"n":472,"k":"decision","m":"M.1616","name":"BSCH/A. Champalimaud","decisionDate":"1999-07-20","pin":["paras 65-67"],"note":"the Article 21(3) decision"}
+{"n":472,"k":"decision","m":"M.10494","name":"VIG/AEGON CEE","pin":["para 32"]}
+{"n":472,"k":"judgment","case":"C-196/07","ecli":"EU:C:2008:146","name":"Commission v Spain","pin":["paras 35-36"]}
+{"n":473,"k":"judgment","case":"C-42/01","ecli":"EU:C:2004:379","name":"Portugal v Commission","pin":["para 56","para 57"]}
+{"n":474,"k":"judgment","case":"C-42/01","ecli":"EU:C:2004:379","name":"Portugal v Commission","pin":["para 58"]}
+{"n":475,"k":"legislation","celex":"32004R0139","name":"EUMR","via":"short","pin":["art 21(4)"],"note":"'third sub-paragraph'"}
+{"n":476,"k":"decision","m":"M.1616","name":"BSCH/A. Champalimaud","decisionDate":"1999-07-20","pin":["article 1 of the decision"]}
+{"n":477,"k":"decision","m":"M.4125","name":"UniCredito/HVB","note":"no pinpoint"}
+{"n":477,"k":"decision","m":"M.4197","name":"E.ON/Endesa","note":"no pinpoint"}
+{"n":477,"k":"decision","m":"M.10494","name":"VIG/AEGON CEE","note":"no pinpoint"}
+{"n":477,"k":"decision","m":"M.12052","name":"UniCredit/Banco BPM","note":"no pinpoint"}
+{"n":478,"k":"judgment","case":"C-196/07","ecli":"EU:C:2008:146","name":"Commission v Spain","note":"no pinpoint"}
