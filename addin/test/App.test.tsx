@@ -18,6 +18,21 @@ import { installWordStub } from './word-stub.ts';
 afterEach(cleanup);
 
 /**
+ * Nothing on screen matches — asserted without handing the node to `assert`.
+ *
+ * `assert.equal(node, null)` inspects the node to depth 1000 when it fails, with custom
+ * inspectors switched off, and a happy-dom node reaches the whole window from its own
+ * properties. The process grew to 14GB and the kernel killed it, so a one-line failure
+ * surfaced as a SIGKILL of the whole file with no message. The markup is what a reader of
+ * the failure wants anyway.
+ */
+const absent = (node: HTMLElement | null, message?: string) => {
+  if (node === null) return;
+  const markup = node.outerHTML.length > 300 ? `${node.outerHTML.slice(0, 300)}…` : node.outerHTML;
+  assert.fail(`${message ? `${message}: ` : ''}expected nothing, found ${markup}`);
+};
+
+/**
  * The pane's default stub returns no documents, so every retrieval state below the 'empty'
  * one went unexercised — including the note that tells a lawyer the passage in front of
  * them is not English. That note is the whole of the current French policy: where no
@@ -82,7 +97,7 @@ describe('the pane, rendered', () => {
     assert.ok(await screen.findByRole('button', { name: /Schrems \?/ }));
     assert.ok(await screen.findByRole('button', { name: /Post Danmark \?/ }));
     // ...while a citation that resolved cleanly is not competing for attention.
-    assert.equal(screen.queryByRole('button', { name: /Regulation \(EU\) 2016\/679/ }), null);
+    absent(screen.queryByRole('button', { name: /Regulation \(EU\) 2016\/679/ }));
 
     await showEveryFootnote(user);
     assert.ok(await screen.findByRole('button', { name: /Regulation \(EU\) 2016\/679/ }));
@@ -133,7 +148,7 @@ describe('the pane, rendered', () => {
     await user.click(firstCandidate);
 
     await screen.findByText('Confirmed by you for this document.');
-    await waitFor(() => assert.equal(screen.queryByRole('button', { name: 'Use this' }), null));
+    await waitFor(() => absent(screen.queryByRole('button', { name: 'Use this' })));
   });
 
   describe('the language of the passage', () => {
@@ -159,7 +174,7 @@ describe('the pane, rendered', () => {
       await user.click((await findChip('Ibid.'))[0]);
 
       await screen.findByText(/Nor is that retention of data/);
-      assert.equal(screen.queryByText(/Published only in French/), null);
+      absent(screen.queryByText(/Published only in French/));
     });
 
     test('a machine translation is marked as not authentic and links to the French', async () => {
@@ -176,7 +191,7 @@ describe('the pane, rendered', () => {
       await screen.findByText(/this is not the authentic text/);
       const link = screen.getByRole('link', { name: 'Open the official version' });
       assert.equal(link.getAttribute('href'), 'https://eur-lex.europa.eu/official-fr');
-      assert.equal(screen.queryByText(/Published only in French/), null);
+      absent(screen.queryByText(/Published only in French/));
     });
   });
 
@@ -214,7 +229,7 @@ describe('the pane, rendered', () => {
       await user.click((await findChip('Ibid.'))[0]);
 
       await screen.findByText(/According to settled case-law/);
-      assert.equal(screen.queryByText(/could not be located/), null);
+      absent(screen.queryByText(/could not be located/));
     });
 
     /**
@@ -237,7 +252,7 @@ describe('the pane, rendered', () => {
       await user.click((await findChip('Ibid.'))[0]);
 
       await screen.findByText(/EUR-Lex holds only the published summary/);
-      assert.equal(screen.queryByText(/could not be located/), null);
+      absent(screen.queryByText(/could not be located/));
       const curia = screen.getByRole('link', { name: 'CURIA' });
       assert.equal(curia.getAttribute('href'), 'https://curia.europa.eu/juris/liste.jsf?language=en&num=T-457%2F08%20R');
     });
@@ -352,7 +367,7 @@ describe('warming the sources at document open', () => {
 
     word.putCursorOn(0);
     await screen.findByText('The passage.');
-    assert.equal(screen.queryByText('Retrieving the official source passage…'), null,
+    absent(screen.queryByText('Retrieving the official source passage…'),
       'nothing already in hand should show a loading state on its way to the screen');
   });
 
@@ -420,7 +435,7 @@ describe('a decision answered from what the server holds', () => {
     releaseConfirmation();
     await screen.findByText('(1000) The republished passage.');
     assert.ok(screen.getByText(/has published a different version of this decision since Ibid last read it/));
-    assert.equal(screen.queryByText(/checking for changes/), null, 'the check is over, so it no longer says one is coming');
+    absent(screen.queryByText(/checking for changes/), 'the check is over, so it no longer says one is coming');
     assert.equal(urls.length, 2);
     assert.ok(urls[0].includes('confirm=later'), 'the reviewer is answered from what is held');
     assert.ok(!urls[1].includes('confirm=later'), 'and the second request is the confirmation');
@@ -435,7 +450,7 @@ describe('a decision answered from what the server holds', () => {
     word.putCursorOn(0);
     await screen.findByText('(1000) The held passage.');
     await screen.findByText(/^Verified against the Commission at \d\d:\d\d$/);
-    assert.equal(screen.queryByText(/published a different version/), null, 'a 304 is not announced as a change');
+    absent(screen.queryByText(/published a different version/), 'a 304 is not announced as a change');
     assert.equal(urls.length, 2);
   });
 
@@ -451,7 +466,7 @@ describe('a decision answered from what the server holds', () => {
     word.putCursorOn(0);
     await screen.findByText(/^Verified against the Commission on 1 September( 2026)? at \d\d:\d\d$/);
     assert.ok(screen.getByText('(1000) The held passage.'));
-    assert.equal(screen.queryByText(/published a different version/), null);
+    absent(screen.queryByText(/published a different version/));
   });
 
   test('a footnote citing three passages "et seq." shows each, and says what is not shown', async () => {
@@ -593,7 +608,7 @@ describe('an answer that arrives after the reviewer has moved on', () => {
     settle.resolve(passage('(350) The LinkedIn passage.'));
     await settled();
     assert.ok(screen.getByText('(1000) The Intel passage.'), 'the passage for the footnote the cursor is on stays');
-    assert.equal(screen.queryByText('(350) The LinkedIn passage.'), null, 'not replaced by an answer to another footnote');
+    absent(screen.queryByText('(350) The LinkedIn passage.'), 'not replaced by an answer to another footnote');
     assert.ok(screen.getByText('Footnote 2 context'));
 
     word.putCursorOn(0);
@@ -615,7 +630,7 @@ describe('an answer that arrives after the reviewer has moved on', () => {
     settle.reject(new TypeError('Failed to fetch'));
     await settled();
     assert.ok(screen.getByText('(1000) The Intel passage.'));
-    assert.equal(screen.queryByText(/could not/), null);
+    absent(screen.queryByText(/could not/));
   });
 
   test('coming back before it arrives waits for the same request', async () => {
@@ -648,7 +663,7 @@ test('a server that cannot be reached is said to be unreachable, not the source'
     await paneReady();
     word.putCursorOn(0);
     await screen.findByText('Ibid could not reach its server, so nothing was retrieved. Open the official record below.');
-    assert.equal(screen.queryByText(/The source could not be retrieved/), null);
+    absent(screen.queryByText(/The source could not be retrieved/));
   } finally {
     word.remove();
   }
@@ -699,8 +714,8 @@ describe('following the cursor', () => {
     // following hides.
     await screen.findByText(/Put your cursor on a citation/);
 
-    assert.equal(screen.queryByRole('heading', { name: 'Needs review' }), null);
-    assert.equal(screen.queryByRole('button', { name: /Show all/ }), null);
+    absent(screen.queryByRole('heading', { name: 'Needs review' }));
+    absent(screen.queryByRole('button', { name: /Show all/ }));
     // The pane still answers about the cursor, which is the whole point of removing it.
     word.putCursorOn(0);
     await screen.findByText('ECLI:EU:C:2014:317', { selector: '.selected-citation' });
@@ -715,7 +730,7 @@ describe('following the cursor', () => {
     await paneReady();
 
     await screen.findByText(/1 citation still needs a decision\./);
-    assert.equal(screen.queryByRole('heading', { name: 'Needs review' }), null, 'said, not listed');
+    absent(screen.queryByRole('heading', { name: 'Needs review' }), 'said, not listed');
   });
 
   test('the list is still the whole pane where the cursor cannot be followed', async () => {
@@ -926,7 +941,9 @@ describe('finding the footnote the cursor is actually in', () => {
     // pane must at least have moved off footnote 1 — that staleness was the reported bug.
     word.putCursorInFootnoteText(1);
     await screen.findByText('Footnote 2', { selector: '.count' });
-    assert.equal(screen.queryByText('Footnote 1 context'), null);
+    // Waited for, not read at once: the badge moves on the render the cursor causes, and the
+    // source is cleared by the effect that render runs, one commit later.
+    await waitFor(() => absent(screen.queryByText('Footnote 1 context')));
   });
 
   test('a footnote citing several authorities offers each of them', async () => {
@@ -1026,7 +1043,7 @@ describe('finding the footnote the cursor is actually in', () => {
     // "Note" rather than "Footnote" is the body-text distinction; the badge is a fixed
     // pill, so it carries the label and the context line below carries the explanation.
     await screen.findByText('Note 72', { selector: '.count' });
-    assert.equal(screen.queryByText('Footnote 2 context'), null, 'its position in the list is not its number');
+    absent(screen.queryByText('Footnote 2 context'), 'its position in the list is not its number');
   });
 
   test('a citation Word has no footnote for is answered from the text selected', async () => {
@@ -1052,7 +1069,7 @@ describe('finding the footnote the cursor is actually in', () => {
 
     word.selectTextOutsideFootnotes(sevenCitations.slice(0, 121));
     await screen.findByText('What you selected', { selector: '.context-label' });
-    assert.equal(screen.queryByText(/Footnote \d+ context/), null, 'no footnote number is claimed');
+    absent(screen.queryByText(/Footnote \d+ context/), 'no footnote number is claimed');
     assert.ok(screen.getByText('Selected text', { selector: '.count' }), 'the panel says what it is about');
   });
 
@@ -1081,7 +1098,7 @@ describe('finding the footnote the cursor is actually in', () => {
     word.selectTextOutsideFootnotes(sevenCitations);
     const chips = await screen.findByText(/EU:C:2011:620/);
     assert.ok(chips, 'each citation in the selection is offered');
-    assert.equal(screen.queryByText('What you selected', { selector: '.context-label' }), null, 'and none opens by itself');
+    absent(screen.queryByText('What you selected', { selector: '.context-label' }), 'and none opens by itself');
   });
 
   test('a footnote it cannot identify is admitted, not answered stale', async () => {
@@ -1096,7 +1113,7 @@ describe('finding the footnote the cursor is actually in', () => {
     // pretending to describe this one.
     word.putCursorInUnknownFootnote('');
     await screen.findByText(/could not match to one it has read/);
-    assert.equal(screen.queryByText('Footnote 1 context'), null);
+    absent(screen.queryByText('Footnote 1 context'));
   });
 });
 
@@ -1137,7 +1154,7 @@ describe('footnotes Word numbers but does not hold', () => {
     await paneReady();
 
     word.putCursorInBodyParagraph('A recital of the decision, numbered as a list.');
-    assert.equal(screen.queryByText(/in body text/), null, 'a recital is not a footnote');
+    absent(screen.queryByText(/in body text/), 'a recital is not a footnote');
   });
 
   test('a document Word cannot list paragraphs for still reads its footnotes', async () => {
