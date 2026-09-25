@@ -103,9 +103,16 @@ const server = http.createServer(async (request, response) => {
 
   if (isApi) {
     if (route === '/health') return json(200, { status: 'ok' });
+    // A lookup that is not JSON, or is JSON `null`, is the caller's mistake rather than a
+    // failed official source, so it is a 400 like any other malformed lookup — not a 502.
+    let lookup;
     try {
-      const lookup = JSON.parse(url.searchParams.get('lookup') ?? '{}');
-      if (!lookup.source || !lookup.value) return json(400, { error: 'A source and citation are required.' });
+      lookup = JSON.parse(url.searchParams.get('lookup') ?? '{}');
+    } catch {
+      lookup = undefined;
+    }
+    if (!lookup?.source || !lookup.value) return json(400, { error: 'A source and citation are required.' });
+    try {
       // `confirm=later` is the pane asking for a decision already held to be answered from at
       // once and confirmed on a second request — see `ResolveOptions` in `src/index.ts`.
       const confirm = url.searchParams.get('confirm') === 'later' ? 'later' : 'first';
