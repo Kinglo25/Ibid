@@ -636,13 +636,17 @@ function courtFromEcli(ecli: string): string | undefined {
   return match ? match[1].toUpperCase() : undefined;
 }
 
+// French as EUR-Lex prints it: "l’avocat", the typographic apostrophe, and "l’avocate générale";
+// "mes conclusions" as well as "ses". Read for the straight apostrophe alone, every French
+// citation of an opinion was a judgment, and one without its ECLI opened the judgment.
+//
 // An Advocate General writes "my Opinion in Cartes Bancaires"; everyone else writes "his
 // Opinion in", "her Opinion in", or just "Opinion in". None of those name the office, which
 // is all this pattern used to look for, so an opinion cited that way derived the judgment's
 // CELEX — a well-formed identifier for the very document the citation was distinguishing
 // itself from. Four of these were found by running detection over the Court's own drafting
 // and asking CELLAR what each derived identifier really was.
-const OPINION_SIGNAL = /\bopinion of (?:the )?(?:advocate general|AG)\b|\b(?:advocate general|AG)'?s?\s+opinion\b|\b(?:my|his|her|their|its)\s+opinion\b|\bopinion in\s+(?!case\b)|\bconclusions?\s+de\s+l'avocat\s+g[ée]n[ée]ral\b|\bses\s+conclusions\b/i;
+const OPINION_SIGNAL = /\bopinion of (?:the )?(?:advocate general|AG)\b|\b(?:advocate general|AG)'?s?\s+opinion\b|\b(?:my|his|her|their|its)\s+opinion\b|\bopinion in\s+(?!case\b)|\bconclusions?\s+de\s+l['’]\s*avocate?\s+g[ée]n[ée]rale?\b|\b(?:mes|ses|nos|leurs)\s+conclusions\b/i;
 // "Order of the Court" is only one drafting convention; "Order of [date]" — the same
 // dating convention "Judgment of [date]" uses — is at least as common and was previously
 // unrecognised, so an order cited that way was silently mislabelled as a judgment.
@@ -655,7 +659,7 @@ const OPINION_SIGNAL = /\bopinion of (?:the )?(?:advocate general|AG)\b|\b(?:adv
 // "Order of the President of…" and "Order of [date]". A citation is named for its document
 // in whatever way the drafter reached for, and each way missed is a whole class of orders
 // derived under the judgment sector.
-const ORDER_SIGNAL = /\border of (?:the (?:(?:vice-?)?president of the )?(?:court|general court)|\d{1,2}\s+\S+\s+\d{4})\b|\border in (?:joined )?cases?\b|\bordonnance\s+(?:du\s+(?:vice-)?pr[ée]sident|de\s+la\s+cour|dans\s+l'affaire|du\s+\d{1,2})\b/i;
+const ORDER_SIGNAL = /\border of (?:the (?:(?:vice-?)?president of the )?(?:court|general court)|\d{1,2}\s+\S+\s+\d{4})\b|\border in (?:joined )?cases?\b|\bordonnance\s+(?:du\s+(?:vice-)?pr[ée]sident|de\s+la\s+cour|dans\s+l['’]affaire|du\s+\d{1,2})\b/i;
 // The affirmative counterpart: only used to record that the type was *stated*, never to
 // change the resolved type, which already defaults to 'judgment'.
 const JUDGMENT_SIGNAL = /\bjudgment of (?:the (?:court|general court)|\d{1,2}\s+\S+\s+\d{4})\b|\barr[êe]t\s+(?:de\s+la\s+cour|du\s+\d{1,2})\b/i;
@@ -797,7 +801,10 @@ const BARE_IDENTIFIER_FRAGMENT = new RegExp(
 const CASE_KEYWORD_ONLY = /^(?:joined\s+)?(?:cases?|affaires?(?:\s+jointes?)?)$/i;
 
 function caseNameBefore(text: string, index: number, segmentStart: number): string | undefined {
-  const before = text.slice(Math.max(segmentStart, index - 240), index).replace(/[\s,;:]+$/, '');
+  // A term defined between the case number and the ECLI is not the name: "(6/72, ci-après
+  // l’« arrêt Continental Can », EU:C:1973:22)" names its case before the number.
+  const before = text.slice(Math.max(segmentStart, index - 240), index).replace(/[\s,;:]+$/, '')
+    .replace(new RegExp(`${DEFINITION_CLAUSE_SOURCE}$`, 'i'), '').replace(/[\s,;:]+$/, '');
   const fragments = before.split(/[,;(]/).map((fragment) => fragment.trim());
 
   let cursor = fragments.length - 1;
@@ -1169,7 +1176,7 @@ function preGeneralCourtNumbers(scanned: string, ecliYear: number): NumberAt[] {
     .filter((number) => number.year < COURT_OF_JUSTICE_ALONE_UNTIL && number.year <= ecliYear);
   const accepted = found.map((number) =>
     /(?:\bcases?|\baffaires?(?:\s+jointes?)?)\s+$/i.test(scanned.slice(0, number.index))
-    || /^[\s,]*$/.test(scanned.slice(number.index + number.length)));
+    || new RegExp(`^[\\s,]*(?:${DEFINITION_CLAUSE_SOURCE}[\\s,]*)?$`, 'i').test(scanned.slice(number.index + number.length)));
   const joins = (gap: string) => /^[\s,;]*(?:and|et|&|to|à)?[\s,;]*$/i.test(gap);
   for (let changed = true; changed;) {
     changed = false;
@@ -1583,7 +1590,9 @@ const NAME_BOUNDARY_BEFORE = String.raw`(?<![\p{L}\p{N}])`;
 const NAME_BOUNDARY_AFTER = String.raw`(?![\p{L}\p{N}])`;
 
 function shortFormPattern(key: string): RegExp {
-  return new RegExp(`${NAME_BOUNDARY_BEFORE}${escapeRegExp(key)}${NAME_BOUNDARY_AFTER}`, 'giu');
+  // Any hyphen for any hyphen: the Court's French prints "Hoffmann‑La Roche" with a
+  // non-breaking one, and the name defined as "Hoffmann-La Roche" was not found in it.
+  return new RegExp(`${NAME_BOUNDARY_BEFORE}${escapeRegExp(key).replace(/[-‑–]/g, '[-‑–]')}${NAME_BOUNDARY_AFTER}`, 'giu');
 }
 
 // A drafter explicitly declaring a short form right after a full citation — e.g.
@@ -1606,6 +1615,27 @@ function shortFormPattern(key: string): RegExp {
 const DEFINED_TERM = /\(\s*(?:the\s+)?["“'‘]([^)]{1,80})["”'’]\s*\)/i;
 const DEFINED_TERM_SCAN_WINDOW = 160;
 const DEFINED_TERMS = new RegExp(DEFINED_TERM.source, 'gi');
+
+/**
+ * A term defined in words rather than by a bracket of its own: "ci-après l’« arrêt Continental
+ * Can »", "hereinafter ‘the Continental Can judgment’", "hereinafter referred to as ‘ISU’". The
+ * Court and its Advocates General write it inside the citation's bracket, between the case
+ * number and the ECLI — Kokott in Towercast, in French — and read for `(the "…")` alone, every
+ * later "Arrêt Continental Can, points 25 et 26" resolved to nothing.
+ */
+//
+// Two more shapes, both measured on the Court's own texts. EUR-Lex's French prints the term
+// without its guillemets — "(C‑209/10, ci-après l’ arrêt Post Danmark I , EU:C:2012:172)" — so
+// an "arrêt", "ordonnance" or "conclusions" followed by a name, up to the comma, is the term.
+// And English often closes the bracket with the term alone: "(T‑286/09, EU:T:2014:547, ‘the
+// judgment under appeal’)". `definedTermOf` reads whichever group matched.
+const DEFINITION_CLAUSE_SOURCE = String.raw`(?:\b(?:ci-apr[èe]s|hereinafter)\s+(?:(?:d[ée]nomm[ée]e?s?|d[ée]sign[ée]e?s?|referred\s+to\s+as|called)\s+)?(?:l['’]\s*|le\s+|la\s+|les\s+|the\s+)?(?:[«"“'‘]\s*([^»"”’]{1,80}?)\s*[»"”’]|[«"“]?\s*((?:arr[êe]t|ordonnance|conclusions)\s+[^,;()«»"“”]{1,60}?)(?=\s*[,;)]))|[,;]\s*[‘"“]\s*([^’"”]{1,80}?)\s*[’"”]\s*(?=\)))`;
+const definedTermOf = (match: RegExpExecArray | RegExpMatchArray) => match[1] ?? match[2] ?? match[3] ?? '';
+const DEFINITION_CLAUSE = new RegExp(DEFINITION_CLAUSE_SOURCE, 'i');
+const DEFINITION_CLAUSES = new RegExp(DEFINITION_CLAUSE_SOURCE, 'gi');
+
+/** A defined term's words as a short form is written: "the Continental Can judgment" is found as "Continental Can judgment". */
+const definedKey = (term: string) => term.trim().replace(/^(?:the|l['’]|le|la|les)\s*/i, '').toLowerCase();
 
 /**
  * How far past an act its defined term may sit. An act is cited with its full title and its
@@ -1646,6 +1676,29 @@ function pinpointAfterDefinedTerm(text: string, end: number, limit: number): Par
  */
 const LISTED_PROVISIONS = String.raw`(?:\s*(?:,\s*(?:and|et)\b|,|\band\b|\bet\b|&)\s*\d+(?:\(\d+\))?${PINPOINT_RANGE})*`;
 const PROVISION_BEFORE_TERM = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${LISTED_PROVISIONS})\\s*(?:(?:of|in)\\s+(?:the\\s+)?|de\\s+la\\s+|du\\s+|de\\s+l['’]\\s*)?$`, 'i');
+
+/**
+ * A court document's paragraphs written before its defined term, with the word that says
+ * whose they are: "points 40 à 42 de l’arrêt attaqué", "paragraphs 59 to 62 of the judgment
+ * under appeal". Unlike an act's, never without that word — "…, paragraph 5 Intel" is not a
+ * way anyone cites a judgment.
+ */
+const PARAGRAPHS_BEFORE_TERM = new RegExp(String.raw`(?:\b(?:points?|paragraphs?|paras\.?|para\.|pt\.?)|§{1,2}|¶{1,2})\s*(\d+${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})\s*(?:of\s+(?:the\s+)?|de\s+la\s+|du\s+|de\s+l['’]\s*)$`, 'i');
+
+function paragraphsBeforeTerm(text: string, index: number, floor: number): ParsedPinpoint | undefined {
+  return fromPinpointMatch(PARAGRAPHS_BEFORE_TERM.exec(text.slice(Math.max(floor, index - PINPOINT_BEFORE_WINDOW), index)));
+}
+
+/**
+ * Where the sentence a short form stands in ends. Its pinpoint is read no further: Wahl's
+ * opinion in Intel, in French, writes "Points 76 et 77 de l’arrêt attaqué. Voir également arrêt
+ * Hoffmann‑La Roche, point 89", and the judgment under appeal was given the next sentence's
+ * point 89.
+ */
+function sentenceEnd(text: string, from: number, limit: number): number {
+  const stop = /[.!?]\s+(?=\p{Lu})/u.exec(text.slice(from, limit));
+  return stop ? from + (stop.index ?? 0) + 1 : limit;
+}
 
 function provisionBeforeTerm(text: string, index: number, floor: number): ParsedPinpoint | undefined {
   return fromPinpointMatch(PROVISION_BEFORE_TERM.exec(text.slice(Math.max(floor, index - PINPOINT_BEFORE_WINDOW), index)));
@@ -1956,7 +2009,8 @@ export function shortNameVariants(caseName: string): string[] {
  * is prose, and treating it as a citation would put a source panel behind a
  * phrase the drafter never meant as a reference.
  */
-const ADJACENT_PINPOINT = new RegExp(String.raw`^[\s,;:]*(?:at\s+)?${PINPOINT_KEYWORD}\s*\d`, 'i');
+// A bracket may open between: "Judgment in MOTOE (paragraphs 51 and 52)".
+const ADJACENT_PINPOINT = new RegExp(String.raw`^[\s,;:(]*(?:at\s+)?${PINPOINT_KEYWORD}\s*\d`, 'i');
 const ADJACENT_PINPOINT_WINDOW = 40;
 
 function hasAdjacentPinpoint(text: string, endIndex: number, limit: number): boolean {
@@ -2025,6 +2079,9 @@ function citedElsewhere(text: string, end: number, limit: number): { length: num
  * Nobel, supra note 4"); the caller's rule that a segment already naming an authority
  * is left alone keeps that case from being reported twice.
  */
+/** The name of a document that is not a court's or an act: a paper, guidance, a report. */
+const NAMED_DOCUMENT = /\b(?:documents?|papers?|guidance|guidelines|lignes\s+directrices|orientations|communications?|notices?|reports?|rapports?|r[ée]flexion|livre\s+(?:vert|blanc)|staff\s+working|study|[ée]tude|consultation|questionnaire|submissions?|observations|reply|r[ée]ponse)\b/i;
+
 const SUPRA_NOTE_REFERENCE = new RegExp(
   String.raw`\b(?:(?:supra|above)\s*,?\s*(?:notes?|nn?\.?)|${CITED_IN_NOTE})\s*(\d{1,3})(?![\p{L}\p{N}])`,
   'iu',
@@ -2189,18 +2246,42 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[])
       const windowStart = citation.index + citation.value.length;
       const segment = segmentAt(segments, citation.index);
       const reach = citation.source === 'eur-lex' ? ACT_DEFINED_TERM_WINDOW : DEFINED_TERM_SCAN_WINDOW;
-      const parenthetical = DEFINED_TERM.exec(text.slice(windowStart, Math.min(segment.end, windowStart + reach)));
+      const after = text.slice(windowStart, Math.min(segment.end, windowStart + reach));
+      const bracketed = DEFINED_TERM.exec(after);
+      // A worded definition can close the citation's bracket past a semicolon — "(C‑49/07,
+      // EU:C:2008:376, paragraphs 51 and 52; ‘the judgment in MOTOE’)" — where the segment
+      // ends; the nearest-citation rule below still keeps it from reaching another's term.
+      let parenthetical: RegExpExecArray | null = bracketed
+        ?? DEFINITION_CLAUSE.exec(text.slice(windowStart, Math.min(text.length, windowStart + reach)));
+      let worded = !bracketed && parenthetical !== null;
+      let start = windowStart + (parenthetical?.index ?? 0);
+      // Or written just before it, inside the same bracket: "(6/72, ci-après l’« arrêt
+      // Continental Can », EU:C:1973:22)" — the ECLI is the citation, and the term precedes it.
+      if (!parenthetical) {
+        const from = Math.max(segment.start, citation.index - DEFINED_TERM_SCAN_WINDOW);
+        const clause = [...text.slice(from, citation.index).matchAll(DEFINITION_CLAUSES)].at(-1);
+        const clauseAt = clause ? from + (clause.index ?? 0) : -1;
+        if (clause && /^[\s,;]*$/.test(text.slice(clauseAt + clause[0].length, citation.index))) {
+          parenthetical = clause as RegExpExecArray;
+          start = clauseAt;
+          worded = true;
+        }
+      }
       if (parenthetical) {
-        const start = windowStart + (parenthetical.index ?? 0);
         declared.push({ start, end: start + parenthetical[0].length });
         // A term belongs to the citation nearest before it, or to nothing. Letting every
         // citation in reach register it and the latest win came to the same thing until the
         // nearest one is refused below — and then the next one back would inherit a term that
         // was never about it either.
         const nearer = hardMatches.some((other) => other.index >= windowStart && other.index < start);
-        if (!nearer && !UNDETECTED_INSTRUMENT_TERM.test(parenthetical[1])
+        if (!nearer && !UNDETECTED_INSTRUMENT_TERM.test(worded ? definedTermOf(parenthetical) : parenthetical[1])
             && !citedWithinAnotherInstrument(text, citation, segment.start)) {
-          newEntries.push({ key: parenthetical[1].trim().toLowerCase(), method: 'explicit_alias', order: order++, citation: registered });
+          const key = worded ? definedKey(definedTermOf(parenthetical)) : parenthetical[1].trim().toLowerCase();
+          newEntries.push({ key, method: 'explicit_alias', order: order++, citation: registered });
+          // "arrêt TeliaSonera" is then cited as "TeliaSonera, point 76", and "the judgment in
+          // MOTOE" as "MOTOE": the name the term was built on answers to it too.
+          const bare = key.replace(/^(?:arr[êe]ts?\s+|judgments?\s+in\s+|ordonnance\s+)|\s+(?:judgment|arr[êe]t)$/i, '');
+          if (bare !== key && bare.length >= 3) newEntries.push({ key: bare, method: 'explicit_alias', order: order++, citation: registered });
         }
       }
 
@@ -2390,8 +2471,8 @@ function resolveShortForms(
     if (authorities.some((authority) => hardMatches.some((citation) => sameAuthority(toRegistered(citation), authority.citation)))) continue;
 
     const actsOnly = authorities.every((authority) => authority.citation.source === 'eur-lex');
-    const parsed = (actsOnly ? provisionBeforeTerm(text, span.index, segment.start) : undefined)
-      ?? parsePinpoint(text, spanEnd + (cited?.length ?? 0), segment.end);
+    const parsed = (actsOnly ? provisionBeforeTerm(text, span.index, segment.start) : paragraphsBeforeTerm(text, span.index, segment.start))
+      ?? parsePinpoint(text, spanEnd + (cited?.length ?? 0), sentenceEnd(text, spanEnd, segment.end));
     // "Intel v Commission, cited in footnote 2" where the document cites two Intels: the
     // footnote named is what the drafter used to say which, so it settles it — provided
     // that footnote is above this one and cites exactly one of them.
@@ -2522,6 +2603,14 @@ function resolveBackReferences(
 
     const backReference = { footnote: referencedFootnote };
     const parsed = parsePinpoint(text, index + value.length, segment.end);
+    // "Document de réflexion de la Commission …, cité à la note 78" names what it cites, and it
+    // is a document, not the case note 78 happens to hold alone: Wahl's opinion in Intel, in
+    // French, had the Commission's discussion paper answered with Post Danmark II, point 55.
+    // Left unresolved, as a reference Ibid cannot open. And a page it gives ("p. 18") is its
+    // own locator: the note's paragraph is not inherited in its place.
+    const named = useSupra ? text.slice(segment.start, index) : '';
+    const namesADocument = NAMED_DOCUMENT.test(named);
+    const givesPages = !parsed && /^[\s,;:]*(?:p\.|pp\.|pages?\b)\s*\d/i.test(text.slice(index + value.length, segment.end));
     // "Ibid., recital 5" after a judgment: a judgment has no recitals, so the reference cannot
     // be to it, and it is left unresolved rather than opened at the judgment's paragraph 5.
     const kind = pinpointKind(text, index + value.length, segment.end);
@@ -2533,7 +2622,7 @@ function resolveBackReferences(
       });
       continue;
     }
-    if (source.length === 1) {
+    if (source.length === 1 && !namesADocument) {
       const [authority] = source;
       found.push({
         ...authority.citation, value, index, status: 'resolved',
@@ -2545,10 +2634,10 @@ function resolveBackReferences(
         // cite, which is the one failure this tool exists to prevent.
         // As a pair: `Ibid., Article 18` after `GDPR, recital 65` kept the new article and the
         // old recital, field by field, and sent paragraph 65 alongside Article 18.
-        locator: parsed ? parsed.locator : authority.locator,
-        pinpoint: parsed ? parsed.pinpoint : authority.pinpoint,
+        locator: parsed ? parsed.locator : givesPages ? undefined : authority.locator,
+        pinpoint: parsed ? parsed.pinpoint : givesPages ? undefined : authority.pinpoint,
       });
-    } else if (source.length > 1) {
+    } else if (source.length > 1 && !namesADocument) {
       found.push({
         ...ambiguous({ index, value, key: value.toLowerCase() }, [...source].reverse().map((authority) => authority.citation), parsed),
         label: 'Unconfirmed back-reference', backReference,

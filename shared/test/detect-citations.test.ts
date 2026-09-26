@@ -1561,3 +1561,129 @@ test('an article of a national code named in an act\'s title is not the act\'s',
   assert.equal(act.celex, '32007D0256');
   assert.notEqual(act.locator?.kind, 'article');
 });
+
+describe('a term defined the French way, and the English', () => {
+  // Kokott's opinion in Towercast (C-449/21), in French: footnote 38 defines the judgment, and
+  // footnotes 39, 40 and 42 cite it by the term, which resolved to nothing.
+  const notes = [
+    'Arrêt du 21 février 1973, Europemballage et Continental Can/Commission (6/72, ci-après l’« arrêt Continental Can », EU:C:1973:22).',
+    'Arrêt Continental Can, points 25 et 26.',
+  ];
+
+  test('"ci-après l\'« … »" declares the term, and the case keeps its number and name', () => {
+    const [first, second] = detectCitationsAcrossFootnotes(notes);
+    assert.equal(first[0].caseNumber, 'C-6/72');
+    assert.equal(first[0].caseName, 'Europemballage et Continental Can/Commission');
+    assert.equal(second[0]?.ecli, 'ECLI:EU:C:1973:22');
+    assert.deepEqual(second[0]?.pinpoint?.paragraphs, [25, 26]);
+  });
+
+  test('"hereinafter \'…\'" in English', () => {
+    const [, second] = detectCitationsAcrossFootnotes([
+      'Judgment of 21 February 1973, Europemballage and Continental Can v Commission (6/72, hereinafter ‘the Continental Can judgment’, EU:C:1973:22).',
+      'The Continental Can judgment, paragraph 25.',
+    ]);
+    assert.equal(second[0]?.ecli, 'ECLI:EU:C:1973:22');
+  });
+});
+
+describe('an opinion or an order cited in French, with the apostrophe EUR-Lex prints', () => {
+  // The French of the Court's texts writes "l’avocat", not "l'avocat", and every French citation
+  // of an opinion was read as the judgment: "point 131 de mes conclusions dans l’affaire
+  // C‑124/21 P", in Rantos' opinion in Super League, derived the judgment's CELEX.
+  for (const [text, type] of [
+    ['Voir point 131 de mes conclusions dans l’affaire C‑124/21 P (International Skating Union/Commission).', 'opinion'],
+    ['Conclusions de l’avocate générale Kokott dans l’affaire Towercast (C‑449/21, EU:C:2022:777, point 20).', 'opinion'],
+    ['Conclusions de l’avocat général Wahl dans l’affaire Intel/Commission (C‑413/14 P, EU:C:2016:788, point 73).', 'opinion'],
+    ['Ordonnance dans l’affaire C‑639/23 P(R), point 4.', 'order'],
+  ] as const) {
+    test(text.slice(0, 60), () => {
+      assert.equal(detectCitations(text)[0]?.documentType, type);
+    });
+  }
+});
+
+describe('found by reading the same opinions in English and in French', () => {
+  const INTEL_GC = 'Arrêt du 12 juin 2014, Intel/Commission (T‑286/09, EU:T:2014:547, ci-après l’« arrêt attaqué »).';
+  const HLR = 'Arrêt du 13 février 1979, Hoffmann-La Roche/Commission (85/76, ci-après l’« arrêt Hoffmann-La Roche », EU:C:1979:36).';
+
+  test('a pinpoint is not read from the next sentence', () => {
+    // Wahl in Intel, footnote 14 in French: "Points 76 et 77 de l’arrêt attaqué. Voir également
+    // arrêt Hoffmann‑La Roche, point 89" gave the judgment under appeal point 89.
+    const [, , third] = detectCitationsAcrossFootnotes([INTEL_GC, HLR, 'Points 76 et 77 de l’arrêt attaqué. Voir également arrêt Hoffmann‑La Roche, point 89.']);
+    const underAppeal = third.find((citation) => citation.ecli === 'ECLI:EU:T:2014:547');
+    assert.deepEqual(underAppeal?.pinpoint?.paragraphs, [76, 77]);
+    const hlr = third.find((citation) => citation.ecli === 'ECLI:EU:C:1979:36');
+    assert.deepEqual(hlr?.pinpoint?.paragraphs, [89], 'and the name with a non-breaking hyphen is the same name');
+  });
+
+  test('"points … de l’arrêt attaqué", and "paragraphs … of the judgment under appeal"', () => {
+    const [, fr] = detectCitationsAcrossFootnotes([INTEL_GC, 'Voir, également, points 40 à 42 de l’arrêt attaqué.']);
+    assert.deepEqual(fr[0]?.pinpoint?.paragraphs, [40, 41, 42]);
+    const [, en] = detectCitationsAcrossFootnotes(['Judgment of 12 June 2014, Intel v Commission (T‑286/09, EU:T:2014:547, ‘the judgment under appeal’).', 'See also paragraphs 40 to 42 of the judgment under appeal.']);
+    assert.deepEqual(en[0]?.pinpoint?.paragraphs, [40, 41, 42]);
+  });
+
+  test('a pinpoint in brackets after the name', () => {
+    // Rantos in Super League: "Judgment in MOTOE (paragraphs 51 and 52)" resolved in French, not in English.
+    const [, found] = detectCitationsAcrossFootnotes(['Judgment of 1 July 2008, MOTOE (C‑49/07, EU:C:2008:376).', 'Judgment in MOTOE (paragraphs 51 and 52).']);
+    assert.deepEqual(found[0]?.pinpoint?.paragraphs, [51, 52]);
+  });
+
+  test('a term EUR-Lex prints without its guillemets', () => {
+    // EUR-Lex's French prints "(C‑209/10, ci-après l’ arrêt Post Danmark I , EU:C:2012:172)".
+    const [, found] = detectCitationsAcrossFootnotes(['Voir arrêt du 27 mars 2012, Post Danmark (C‑209/10, ci-après l’ arrêt Post Danmark I , EU:C:2012:172, point 21).', 'Arrêt Post Danmark I, points 21 et 22.']);
+    assert.equal(found[0]?.ecli, 'ECLI:EU:C:2012:172');
+    assert.deepEqual(found[0]?.pinpoint?.paragraphs, [21, 22]);
+  });
+});
+
+describe('terms as the Court\'s texts define them, found in Super League, Google Shopping and Intel', () => {
+  test('closing the bracket past a semicolon, and cited by the name alone', () => {
+    const [, a, b] = detectCitationsAcrossFootnotes([
+      'Judgment of 1 July 2008 (C‑49/07, EU:C:2008:376, paragraphs 51 and 52; ‘the judgment in MOTOE’).',
+      'Judgment in MOTOE (paragraphs 51 and 52).',
+      'See the judgments in MOTOE (paragraph 51).',
+    ]);
+    assert.equal(a[0]?.ecli, 'ECLI:EU:C:2008:376');
+    assert.equal(b[0]?.ecli, 'ECLI:EU:C:2008:376');
+  });
+
+  test('EUR-Lex\'s French, which drops the closing guillemet', () => {
+    const [, found] = detectCitationsAcrossFootnotes(['C‑7/97, ci-après l’« arrêt Bronner , EU:C:1998:569, points 37 et suiv.', 'Arrêt Bronner (points 37 et suiv.).']);
+    assert.equal(found[0]?.ecli, 'ECLI:EU:C:1998:569');
+  });
+
+  test('"arrêt TeliaSonera" cited as "TeliaSonera"', () => {
+    const [, found] = detectCitationsAcrossFootnotes([
+      'Voir arrêt du 17 février 2011, TeliaSonera Sverige (C‑52/09, ci-après l’« arrêt TeliaSonera », EU:C:2011:83, point 22).',
+      'Voir arrêts Deutsche Telekom, point 175 ; TeliaSonera, point 76.',
+    ]);
+    const telia = found.find((citation) => citation.ecli === 'ECLI:EU:C:2011:83');
+    assert.deepEqual(telia?.pinpoint?.paragraphs, [76]);
+  });
+});
+
+describe('"cited in note N" naming a document rather than the case in that note', () => {
+  // Wahl's opinion in Intel, in French, footnote 97: "Document de réflexion de la Commission sur
+  // l’application de l’article [102 TFUE], cité à la note 78, p. 18, 19 et 41." Note 78 cites
+  // Post Danmark II alone, and the paper was answered with Post Danmark II, point 55.
+  const notes = ['Arrêt du 6 octobre 2015, Post Danmark (C‑23/14, EU:C:2015:651, point 55).'];
+  test('is not answered with that case', () => {
+    for (const reference of [
+      'Document de réflexion de la Commission sur l’application de l’article [102 TFUE], cité à la note 1, p. 18, 19 et 41.',
+      'Commission Guidance on enforcement priorities, cited in footnote 1, paragraph 20.',
+    ]) {
+      const [, found] = detectCitationsAcrossFootnotes([...notes, reference]);
+      assert.ok(!found.some((citation) => citation.ecli === 'ECLI:EU:C:2015:651'), reference);
+    }
+  });
+  test('still answered where it names nothing else, or the case', () => {
+    const [, bare] = detectCitationsAcrossFootnotes([...notes, 'Cited in footnote 1, paragraph 56.']);
+    assert.equal(bare[0]?.ecli, 'ECLI:EU:C:2015:651');
+  });
+  test('a page it gives is not the paragraph of the note it points at', () => {
+    const [, found] = detectCitationsAcrossFootnotes([...notes, 'Cité à la note 1, p. 18.']);
+    assert.equal(found[0]?.pinpoint, undefined);
+  });
+});
