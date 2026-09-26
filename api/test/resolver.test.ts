@@ -3021,6 +3021,15 @@ describe('a document of another case than the footnote names', () => {
     });
   });
 
+  test('the older title line names the whole group when the heading lists it party by party', async () => {
+    // Wood Pulp (EU:C:1988:447): "- Joined cases 89, 104, 114, 116, 117 and 125 to 129/85." in
+    // the title, and "In Joined Cases wood pulp 89/85, ( 1 ) A. Ahlstroem …" in the heading.
+    const woodPulp = html('<p>Judgment of the Court of 27 September 1988. - A. Ahlström Osakeyhtiö and others v Commission. - Joined cases 89, 104, 114, 116, 117 and 125 to 129/85. European Court reports 1988 Page 05193</p><p>In Joined Cases wood pulp 89/85, ( 1 ) A. Ahlstroem Osakeyhtioe, Helsinki,</p><p>12 The paragraph cited.</p><p>13 Next.</p>');
+    const { resolver } = makeResolver({ fetcher: stubFetcher([woodPulp]).fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: 'C-129/85', celex: '61985CJ0129', ecli: 'ECLI:EU:C:1988:447', locator: { kind: 'point', start: 12 }, paragraphs: [12] }));
+    assert.equal(preview.caseMismatch, undefined);
+  });
+
   test('a joined list is read whole, ranges and all', async () => {
     // Wood Pulp (EU:C:1988:447), cited by its last number, 129/85: the heading "In Joined Cases
     // 89/85, 104/85, … and 125/85 to 129/85" was read to its first comma, 89/85 alone.

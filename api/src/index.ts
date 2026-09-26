@@ -972,6 +972,14 @@ function caseNumbersIn(html: string): string[] {
   const list = opinion
     ? OPINION_CASE.exec(opening.slice(opinion.index))?.[1] ?? ''
     : CASE_HEADING.exec(opening)?.[1] ?? '';
+  // The older renderings also name the group in the title line — "… v Commission. - Joined
+  // cases 89, 104, 114, 116, 117 and 125 to 129/85." — where the heading below lists it party
+  // by party ("In Joined Cases wood pulp 89/85, ( 1 ) A. Ahlstroem …"). Both are read.
+  const title = /\s-\s+(?:Joined\s+cases|Cases?)\s+([^.]{1,300}?)\.\s/i.exec(opening)?.[1] ?? '';
+  return [...numbersListed(list), ...(title ? numbersListed(title) : [])];
+}
+
+function numbersListed(list: string): string[] {
   const full = [...list.matchAll(/\b(?:([CT])\s?[-‑–—]\s?)?(\d{1,4})\/(\d{2})(?!\d)(?:\s*(P\(R\)|RENV|DEP|REV|OP|P|R)(?![\w(]))?/g)]
     .map(([, court, number, year, suffix]) => `${court ?? 'C'}-${number}/${year}${suffix ? ` ${suffix}` : ''}`);
   return [...full, ...sharingTheirYear(list), ...rangesBetween(list)];
