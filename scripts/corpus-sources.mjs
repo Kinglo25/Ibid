@@ -79,6 +79,13 @@ export function notesFromCellar(html) {
     // after it one place off the number the text refers to it by.
     const marker = /^\s*<a[^>]*>\s*\(?\s*<span class="oj-super"[^>]*>([^<]*)<\/span>/i.exec(match[1]);
     if (marker && !/^\d+$/.test(marker[1].trim())) continue;
+    // A note of several paragraphs carries its number on the first alone; the rest are the same
+    // note, and counted as notes of their own they put the Apple decision's 385 at 389.
+    if (!marker && /^<p class="oj-note"/i.test(match[0]) && notes.length) {
+      const more = decodeEntities(match[1].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+      if (more) notes[notes.length - 1] += ` ${more}`;
+      continue;
+    }
     const withoutMarker = match[1]
       .replace(/^\s*\(\s*<span class="(?:coj-)?note"[^>]*>[\s\S]*?<\/span>\s*\)/i, '')
       .replace(/^\s*<a[^>]*>[\s\S]*?<\/a>\s*[).\u2013-]*/i, '');
