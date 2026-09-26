@@ -426,7 +426,7 @@ function decodeHtml(value: string): string {
  * number, so a range whose final paragraph is absent or renumbered still terminates at the
  * right place instead of running to the safety cap.
  */
-type SliceRange = { through?: number; maxLength?: number };
+type SliceRange = { through?: number; maxLength?: number; inSequence?: boolean };
 
 /**
  * Whether more than one heading in a document carries this number.
@@ -461,13 +461,37 @@ function headingRepeats(html: string, pattern: RegExp, targetNumber: number): bo
 const END_OF_NUMBERED_TEXT = new RegExp([
   String.raw`>\s*On those grounds,?\s+the\s+(?:Court|General Court)\b[^<]{0,80}\bhereby`,
   String.raw`>\s*Par ces motifs,?\s+(?:la Cour|le Tribunal)\b`,
+  // The same words standing as a paragraph of their own, the Court's name set in the next:
+  // IMS Health (C-418/01) writes "<p>On those grounds,</p>" and then "THE COURT (Fifth
+  // Chamber),", and its last paragraph ran on through the ruling and the signatures. Alone,
+  // not at the head of a longer paragraph — "On those grounds, the plea must be rejected" is
+  // reasoning, and the run it sits in must not end there.
+  String.raw`>\s*(?:On those grounds|Par ces motifs),?\s*<`,
   String.raw`>\s*HA(?:S|VE) ADOPTED TH(?:IS|E PRESENT)\b`,
   String.raw`>\s*(?:ONT|A) ADOPT(?:É|&Eacute;|&#201;)\s+(?:LE|LA|LES)\s+PR`,
   String.raw`>\s*This (?:Regulation|Directive|Decision) shall be binding in its entirety`,
   String.raw`>\s*Le pr(?:é|&eacute;|&#233;)sent r(?:è|&egrave;|&#232;)glement est obligatoire`,
   String.raw`>\s*(?:Done at|Fait (?:à|&agrave;|&#224;))\s+(?:Brussels|Bruxelles|Luxembourg|Strasbourg)\b`,
   String.raw`<p[^>]*>\s*ANNEXE?(?:\s+[IVXLC\d]+)?\s*<`,
+  // The footnotes, which follow a court document's last point: an Advocate General's opinion
+  // has no operative part to stop at, and its last point — Tizzano's point 198 in Tetra Laval —
+  // ran on through every footnote. A note's own paragraph, never the reference to it: modern
+  // renderings open the note with `<p class="note">` against an inline `<span class="note">`,
+  // and the older ones name it `NAME="Footnote1"` against the reference's `NAME="Footref1"`.
+  // Measured on the 105 court documents in the local cache that carry notes: in every one,
+  // every numbered point comes before the first note.
+  String.raw`<p\s+class="(?:coj-)?note"`,
+  String.raw`<a[^>]*\bNAME="Footnote\d+"`,
 ].join('|'), 'i');
+
+/** Headings as they run in sequence from 1: each taken only as the number after the last taken. */
+function inSequence(matches: RegExpExecArray[]): RegExpExecArray[] {
+  const run: RegExpExecArray[] = [];
+  for (const match of matches) {
+    if (Number(match[1]) === run.length + 1) run.push(match);
+  }
+  return run;
+}
 
 function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: number, range: SliceRange = {}): string | undefined {
   const last = Math.max(range.through ?? targetNumber, targetNumber);
@@ -480,7 +504,8 @@ function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: numbe
   const maxLength = range.maxLength ?? Math.min(400_000, 60_000 * (last - targetNumber + 1));
   let start = -1;
   let end = html.length;
-  for (const match of html.matchAll(pattern)) {
+  const anchors = [...html.matchAll(pattern)];
+  for (const match of range.inSequence ? inSequence(anchors) : anchors) {
     const number = Number(match[1]);
     if (start < 0) {
       if (number === targetNumber) start = match.index;
@@ -491,6 +516,9 @@ function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: numbe
   if (start < 0) return undefined;
   const closing = END_OF_NUMBERED_TEXT.exec(html.slice(start + 1, end));
   if (closing) end = start + 1 + closing.index;
+  // Most of those forms are matched from the `>` that closes the tag they sit in, so the cut
+  // falls inside that tag; it is moved to the tag's start, or "<p" was left on screen.
+  if (closing && html[end] === '>') end = Math.max(start, html.lastIndexOf('<', end));
   let stop = Math.min(end, start + maxLength);
   // Never inside a tag: a cut there left "</s" in the text on screen.
   if (stop < end) {
@@ -575,6 +603,17 @@ const ARTICLE_PARAGRAPH_HEADING = /<p[^>]*>\s*(\d+)\.\s/gi;
  * the next convention turning up would not be surprising. It has happened
  * every time a document from an era not yet met was put through.
  */
+/**
+ * A point numbered with a spaced period, `<p>1 . By order of 16 December 1987 the Court
+ * decided…` — how Darmon's opinion in Wood Pulp (61985CC0089) numbers all 82 of its points.
+ * The same shape numbers the parties and the headnotes of the all-capitals judgments of that
+ * era (`<p>6 . FARBWERKE HOECHST AG, …` in Walt Wilhelm), so it is read only where the text
+ * after it is in ordinary case, and only in sequence. Case-sensitive for that reason.
+ */
+const SPACED_POINT = /<[pP][^>]*>\s*(\d+)\s+\.\s+(?=[^<]{0,40}[a-z])/g;
+
+const WORD_TAB_POINT = /<p[^>]*>\s*<\/p>\s*(\d+)\.\s*<span[^>]*mso-tab-count/gi;
+
 const JUDGMENT_POINT_HEADINGS = [
   /<p[^>]*\bid="point(\d+)"[^>]*>/gi,
   // Any paragraph class carrying a named point anchor, not one exact class name. The
@@ -616,7 +655,13 @@ const JUDGMENT_POINT_HEADINGS = [
   // alone and close immediately (`<p class="count" id="point57">57</p>`),
   // and a period after it belongs to legislative numbering (`<p>1. text`), which is the
   // structure ARTICLE_PARAGRAPH_HEADING reads. Recitals are parenthesised.
-  /<p[^>]*>\s*(\d+)\s+(?=[^\s<])/gi,
+  //
+  // Nor a number followed by a spaced period, `<p>6 . FARBWERKE HOECHST AG, …`: that is how
+  // the same era numbers the parties to the main action and the headnotes, above the grounds.
+  // Walt Wilhelm (61968CJ0014, 1969) lists its seven parties so before paragraph 6 begins,
+  // `<p>6 THE EEC TREATY HAS ESTABLISHED…`, and the sixth party was shown as paragraph 6.
+  /<p[^>]*>\s*(\d+)\s+(?=[^\s<.])/gi,
+  SPACED_POINT,
   // The Reports' oldest rendering, all capitals and no separator at all between the number
   // and the first word: `<p>  38ARTICLE 86 IS AN APPLICATION OF THE GENERAL OBJECTIVE...`.
   // Confirmed live against Hoffmann-La Roche (61976CJ0085, 1979: 139 of its 142 paragraphs
@@ -638,8 +683,26 @@ const JUDGMENT_POINT_HEADINGS = [
   // tried first, and this is reached only for a document in which none of them found the
   // cited number at all. In that document the alternative is not a safer excerpt; it is the
   // catchwords, shown in place of the paragraph.
+  //
+  // Before it, one marked shape that pattern cannot reach: an opinion exported from Word,
+  // whose number stands outside any paragraph, after an empty one, and is followed by Word's
+  // tab — `<p></p>  73.<span style="mso-tab-count:1">&nbsp;…</span> It is plain…`. Found live
+  // in Tizzano's opinion in Commission v Tetra Laval (62003CC0012, 2004), whose 198 points
+  // are all written so. Anchored on the numbering in sequence: see `SEQUENCED_HEADINGS`.
+  WORD_TAB_POINT,
   /<p[^>]*>\s*(\d+)\.\s+(?=[^\s<])/gi,
 ];
+
+/**
+ * Point headings read only where they run in sequence, 1, 2, 3 … The Tetra Laval opinion
+ * quotes the judgment under appeal's paragraphs 11 to 26 straight after its own point 5, in
+ * the same markup, and the first "11." in the document is therefore the General Court's: a
+ * citation to the Advocate General's point 11 would have been shown the General Court's
+ * paragraph 11. In sequence, the quotation is passed over as the numbers 6 to 10 are awaited,
+ * and point 5 runs on through the quotation it introduces. `headingRepeats` still reads every
+ * heading, so the reviewer is told the document numbers two passages 11.
+ */
+const SEQUENCED_HEADINGS = new Set<RegExp>([WORD_TAB_POINT, SPACED_POINT]);
 
 /**
  * Groups cited paragraphs into the contiguous spans they actually form: [40,41,42,44] is
@@ -688,7 +751,7 @@ function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly nu
   const unlocated: string[] = [];
   const repeated: string[] = [];
   for (const run of runs) {
-    const raw = sliceByHeadingAnchor(html, pattern, run.from, { through: run.to });
+    const raw = sliceByHeadingAnchor(html, pattern, run.from, { through: run.to, inSequence: SEQUENCED_HEADINGS.has(pattern) });
     if (raw) {
       passages.push(decodeHtml(raw).trim());
       if (flagRepeats && headingRepeats(html, pattern, run.from)) repeated.push(String(run.from));
@@ -857,11 +920,55 @@ export function documentTypeOf(html: string): 'judgment' | 'opinion' | 'order' |
  */
 const CASE_HEADING = /\b(?:In\s+(?:Joined\s+)?Cases?|Dans\s+(?:l['’]affaire|les\s+affaires(?:\s+jointes)?))\s+([^,;:]{1,400})/i;
 
+/**
+ * An Advocate General's opinion names its case differently: "OPINION OF ADVOCATE GENERAL
+ * TIZZANO delivered 25 May 2004 (1) Case C‑12/03 P Commission v Tetra Laval", or in the
+ * older format "Opinion of Mr Advocate General Léger delivered on 10 July 2001. - J. C. J.
+ * Wouters … - Case C-309/99." — "Case", without the "In" a judgment writes. Its first point
+ * then names the judgment under appeal, "in Case T‑5/02", or a case it goes on to discuss,
+ * "In Case C‑35/99 Arduino", and the judgment's pattern took that for the opinion's own: four
+ * citations to the right opinion were said to show another case's passage. So in an opinion
+ * the case is the first "Case" after its heading, and the list ends at a parenthesis or at the
+ * end of a sentence.
+ */
+const OPINION_OPENING = /\b(?:OPINION|Opinion)\s+of\s+(?:(?:Mr|Mrs|Ms)\.?\s+)?(?:First\s+)?Advocate\s+General\b|\bCONCLUSIONS\s+DE\s+L['’]AVOCAT\s+G[ÉE]N[ÉE]RAL/i;
+const OPINION_CASE = /\b(?:Joined\s+)?(?:Cases?|Affaires?(?:\s+jointes)?)\s+((?:[^;:().]|\.(?!\s))[^;:()]{0,400}?)(?=[;:()]|\.\s|\.?$)/i;
+
 function caseNumbersIn(html: string): string[] {
   const opening = decodeHtml(html.slice(0, 60_000)).slice(0, 4_000);
-  const list = CASE_HEADING.exec(opening)?.[1] ?? '';
-  return [...list.matchAll(/\b(?:([CT])\s?[-‑–—]\s?)?(\d{1,4})\/(\d{2})(?!\d)(?:\s*(P\(R\)|RENV|DEP|REV|OP|P|R)(?![\w(]))?/g)]
+  const opinion = OPINION_OPENING.exec(opening);
+  const list = opinion
+    ? OPINION_CASE.exec(opening.slice(opinion.index))?.[1] ?? ''
+    : CASE_HEADING.exec(opening)?.[1] ?? '';
+  const full = [...list.matchAll(/\b(?:([CT])\s?[-‑–—]\s?)?(\d{1,4})\/(\d{2})(?!\d)(?:\s*(P\(R\)|RENV|DEP|REV|OP|P|R)(?![\w(]))?/g)]
     .map(([, court, number, year, suffix]) => `${court ?? 'C'}-${number}/${year}${suffix ? ` ${suffix}` : ''}`);
+  return [...full, ...sharingTheirYear(list)];
+}
+
+/**
+ * The Court's older way of listing joined cases, the year written once for the whole list:
+ * "Joined cases 89, 104, 114, 116, 117 and 125 to 129/85" (Wood Pulp). Each bare number takes
+ * the year that closes its run, and "125 to 129/85" is every case from 125 to 129. Read for
+ * full numbers alone the list was case 129/85, and a citation of case 89/85 was said to show
+ * another case's passage. Numbers of the Court only, as that era's are.
+ */
+function sharingTheirYear(list: string): string[] {
+  const found: string[] = [];
+  let pending: number[] = [];
+  let ranging = false;
+  for (const token of list.matchAll(/(?<![\d/‑–—-])(\d{1,4})(?:\/(\d{2})(?!\d))?|\b(?:to|à)\b/g)) {
+    if (!token[1]) { ranging = pending.length > 0; continue; }
+    const number = Number(token[1]);
+    if (!token[2]) { pending.push(number); ranging = false; continue; }
+    const from = ranging ? pending.pop() : undefined;
+    if (from !== undefined && number > from && number - from <= 50) {
+      for (let at = from; at < number; at += 1) pending.push(at);
+    }
+    found.push(...pending.map((bare) => `C-${bare}/${token[2]}`));
+    pending = [];
+    ranging = false;
+  }
+  return found;
 }
 
 /** A case number as the court files it, without the procedural suffix: `C-413/14 P` is case `C-413/14`. */
@@ -1533,7 +1640,16 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     target: CellarTarget, rendition: Rendition, key: string, stored: StoredDocument,
     conditional: Record<string, string>,
   ): Promise<LoadedDocument | undefined> {
-    const response = await fetchEurLex(target.url, rendition, conditional);
+    let response = await fetchEurLex(target.url, rendition, conditional);
+    // CELLAR holding two manifestations answers the confirmation with the same `300` list it
+    // answered the first request with (see `probeCellar`). Giving up on it turned every look
+    // after the first into a link — Electrabel (EU:T:2012:672) was found once and never
+    // again. The same manifestation is followed, and asked the same conditional question.
+    if (response.status === 300) {
+      const chosen = manifestationFor(await response.text().catch(() => ''), rendition);
+      if (!chosen) return undefined;
+      response = await fetchEurLex(chosen, rendition, conditional);
+    }
 
     if (response.status === 304) {
       // Deliberately before any read of the body: a 304 has none. Running the
@@ -1545,7 +1661,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       return { html: stored.html, language: languageOf(stored.html) ?? rendition.language, verifiedAt, url: target.url };
     }
     if (response.ok) return acceptDocument(target, key, rendition, response);
-    if (response.status === 404) {
+    if (response.status === 404 || response.status === 300) {
       await documentStore.delete(key);
       return undefined;
     }

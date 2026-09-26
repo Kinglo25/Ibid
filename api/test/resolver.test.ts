@@ -2734,6 +2734,118 @@ describe('a long paragraph', () => {
  * heading, and where that is not the footnote's, the reviewer has to be told: the passage on
  * screen is from a different case than the footnote names.
  */
+describe('a judgment of the Court\'s earliest renderings, whose parties are numbered too', () => {
+  // Walt Wilhelm (61968CJ0014, 1969), cited at paragraph 6: the parties to the main action
+  // are listed "<p>6 . FARBWERKE HOECHST AG, …" before the grounds begin "<p>6 THE EEC TREATY
+  // HAS ESTABLISHED ITS OWN SYSTEM OF LAW", and the pane showed the sixth party as the
+  // paragraph. A number followed by " ." is a list's or a headnote's, never a paragraph's.
+  const judgment = () => html([
+    '<p>1 . EEC - COMMUNITY LEGAL SYSTEM - SUPREMACY OF RULES OF COMMUNITY LAW</p>',
+    '<p>IN CASE 14/68</p>',
+    '<p>5 . FARBENFABRIKEN BAYER AG, LEVERKUSEN,</p>',
+    '<p>6 . FARBWERKE HOECHST AG, FRANKFURT-AM-MAIN-HOECHST,</p>',
+    '<p>4 MOREOVER THIS INTERPRETATION IS CONFIRMED.</p>',
+    '<p>6 THE EEC TREATY HAS ESTABLISHED ITS OWN SYSTEM OF LAW.</p>',
+    '<p>7 IT FOLLOWS FROM THE FOREGOING.</p>',
+  ].join(''));
+
+  test('shows the paragraph, not the party numbered like it', async () => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([judgment()]).fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: 'C-14/68', celex: '61968CJ0014', ecli: 'ECLI:EU:C:1969:4', locator: { kind: 'point', start: 6 }, paragraphs: [6] }));
+    assert.equal(preview.passage, 'cited');
+    assert.match(preview.excerpt, /^6 THE EEC TREATY HAS ESTABLISHED/);
+    assert.equal(preview.repeated, undefined, 'the parties are not a second numbering');
+  });
+});
+
+describe('a judgment whose operative part opens on a paragraph of its own', () => {
+  // IMS Health (C-418/01, 2004): "<p>On those grounds,</p>" and then "THE COURT (Fifth
+  // Chamber)," in another element. Paragraph 53, on costs and the judgment's last, was shown
+  // with the whole operative part and the signatures after it.
+  const judgment = () => html('<p class="count" id="point52">52</p><p>The answer to the question.</p><p class="count" id="point53">53</p><p>The costs incurred are not recoverable.</p><p></p><p>On those grounds,</p><dt><dd></dd><P ALIGN="center">THE COURT (Fifth Chamber),</P></dt><P></P> in answer to the questions referred to it, hereby rules: 1. The refusal constitutes an abuse.');
+
+  test('the last paragraph stops where it begins', async () => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([judgment()]).fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 53 }, paragraphs: [53] }));
+    assert.match(preview.excerpt, /are not recoverable\.$/);
+  });
+
+  test('but a paragraph of reasoning that opens with the same words does not end the run', async () => {
+    const reasoning = html('<p class="count" id="point7">7</p><p>The first ground.</p><p>On those grounds, the plea must be rejected.</p><p class="count" id="point8">8</p><p>Next.</p>');
+    const { resolver } = makeResolver({ fetcher: stubFetcher([reasoning]).fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 7 }, paragraphs: [7] }));
+    assert.match(preview.excerpt, /the plea must be rejected\.$/);
+  });
+});
+
+describe('an opinion numbered with a spaced period', () => {
+  // Darmon in Wood Pulp (61985CC0089): "<p>1 . By order of 16 December 1987 the Court
+  // decided…", all 82 points so — the shape the parties list of that era takes too.
+  test('is read, in ordinary case', async () => {
+    const opinion = html('<p>Opinion of Mr Advocate General Darmon delivered on 25 May 1988. - Joined cases 89, 104 and 125 to 129/85.</p><p>1 . By order of 16 December 1987 the Court decided to join the cases.</p><p>2 . The parties to the proceedings agree.</p><p>3 . It is the basis on which the Commission relied.</p>');
+    const { resolver } = makeResolver({ fetcher: stubFetcher([opinion]).fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: 'C-89/85', celex: '61985CC0089', ecli: 'ECLI:EU:C:1988:258', documentType: 'opinion', locator: { kind: 'point', start: 2 }, paragraphs: [2] }));
+    assert.equal(preview.passage, 'cited');
+    assert.match(preview.excerpt, /^2 \. The parties to the proceedings agree\.$/);
+  });
+});
+
+describe('an opinion exported from Word, numbered outside its paragraphs', () => {
+  // Tizzano in Commission v Tetra Laval (62003CC0012, 2004): each point is an empty `<p></p>`
+  // followed by its number and Word's tab, `<p></p>  73.<span style="mso-tab-count:1">&nbsp;
+  // </span> It is plain…`, and no pattern read it: point 73 was answered with the opening.
+  // After its own point 5 the opinion quotes the judgment under appeal's paragraphs 11 to 26
+  // in the same markup, so the first "11." in the document is the General Court's, not the
+  // Advocate General's.
+  const point = (n: number, text: string) => `<p></p>  ${n}.<span style="mso-tab-count:1">&nbsp;&nbsp;&nbsp;</span> ${text}`;
+  const opinion = () => html([
+    '<p>OPINION OF ADVOCATE GENERAL TIZZANO</p><p>delivered 25 May 2004 (1)</p><p>Case C‑12/03 P</p>',
+    ...[1, 2, 3, 4].map((n) => point(n, `Own point ${n}.`)),
+    point(5, 'The facts are set out in the judgment under appeal as follows:'),
+    point(11, 'Quoted paragraph 11 of the judgment under appeal.'),
+    point(12, 'Quoted paragraph 12 of the judgment under appeal.'),
+    ...[6, 7, 8, 9, 10, 11, 12, 13].map((n) => point(n, `Own point ${n}.`)),
+  ].join('\n'));
+  const lookup = (n: number) => curiaJudgmentLookup({ caseNumber: 'C-12/03 P', celex: '62003CC0012', ecli: 'ECLI:EU:C:2004:318', documentType: 'opinion', locator: { kind: 'point', start: n }, paragraphs: [n] });
+
+  test('reads the point cited', async () => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([opinion()]).fetcher });
+    const [preview] = await resolver.resolve(lookup(8));
+    assert.equal(preview.passage, 'cited');
+    assert.match(preview.excerpt, /^8\.\s+Own point 8\.$/);
+  });
+
+  test('the opinion\'s own point, not the quoted paragraph numbered like it, and says so', async () => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([opinion()]).fetcher });
+    const [preview] = await resolver.resolve(lookup(11));
+    assert.match(preview.excerpt, /^11\.\s+Own point 11\.$/);
+    assert.deepEqual(preview.repeated, ['11']);
+  });
+
+  test('its last point stops where the footnotes begin', async () => {
+    // Tetra Laval's point 198, the opinion's last, was shown with all 197 of its footnotes
+    // after it — 18,000 characters, the case law of the notes presented as the point cited.
+    const withNotes = html(`${point(1, 'Own point 1.')}\n${point(2, 'I propose that the Court should dismiss the appeal.')}\n<hr>\n<dl compact=""><dt><A HREF="#Footref1" NAME="Footnote1"> 1</A> –</dt><dd>Original language: Italian.</dd></dl>`);
+    const { resolver } = makeResolver({ fetcher: stubFetcher([withNotes]).fetcher });
+    const [preview] = await resolver.resolve(lookup(2));
+    assert.match(preview.excerpt, /dismiss the appeal\.$/);
+  });
+
+  test('and so does a modern opinion\'s', async () => {
+    const modern = html('<p class="count" id="point1">1</p><p>Own point 1.</p><p class="count" id="point2">2</p><p>I propose that the Court should dismiss the appeal.</p><p class="note"><span class="note"><a id="footnote1" href="#footref1">1</a></span> Original language: English.</p>');
+    const { resolver } = makeResolver({ fetcher: stubFetcher([modern]).fetcher });
+    const [preview] = await resolver.resolve(lookup(2));
+    assert.match(preview.excerpt, /dismiss the appeal\.$/);
+  });
+
+  test('a point that introduces a quotation carries it', async () => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([opinion()]).fetcher });
+    const [preview] = await resolver.resolve(lookup(5));
+    assert.match(preview.excerpt, /as follows:[\s\S]*Quoted paragraph 12/);
+    assert.ok(!preview.excerpt.includes('Own point 6'));
+  });
+});
+
 describe('a document of another case than the footnote names', () => {
   const heading = (cases: string) => html(`<p>JUDGMENT OF THE COURT (Grand Chamber)</p><p>6 September 2017</p><p>${cases},</p><p>APPEAL under Article 56 of the Statute</p><p class="count" id="point138">138</p><p>The paragraph shown.</p>`);
 
@@ -2761,6 +2873,55 @@ describe('a document of another case than the footnote names', () => {
     const second = makeResolver({ fetcher: stubFetcher([heading('In Case C‑999/15 P')]).fetcher });
     const [bare] = await second.resolver.resolve(curiaJudgmentLookup({ caseNumber: undefined, value: 'EU:C:2017:623', ecli: 'ECLI:EU:C:2017:623', celex: '62014CJ0413', locator: { kind: 'point', start: 138 }, paragraphs: [138] }));
     assert.equal(bare.caseMismatch, undefined);
+  });
+
+  describe('an Advocate General\'s opinion', () => {
+    // An opinion heads itself "Case C‑12/03 P", with no "In", and its first point names the
+    // judgment under appeal: "an appeal … against the judgment … in Case T‑5/02". Read by the
+    // judgment's pattern, Tizzano's opinion in Commission v Tetra Laval was said to be of case
+    // T‑5/02 — a warning, on the right document, that the passage was of another case. Found
+    // live on four citations in the opinions in Illumina/Grail, Super League and CK Telecoms.
+    const tetraLaval = (own: string) => html(`<p>OPINION OF ADVOCATE GENERAL TIZZANO</p><p>delivered 25 May 2004 (1)</p><p>${own}</p><p>Commission of the European Communities v Tetra Laval BV</p><p>(Regulation No 4067/89 – Leveraging effect)</p><p class="count" id="point1">1</p><p>The subject-matter of this case is an appeal against the judgment of the Court of First Instance in Case T‑5/02 Tetra Laval v Commission, which annulled a decision in Case COMP/M.2416.</p><p class="count" id="point73">73</p><p>The point cited.</p>`);
+    const lookup = { caseNumber: 'C-12/03 P', celex: '62003CC0012', ecli: 'ECLI:EU:C:2004:318', documentType: 'opinion' as const, locator: { kind: 'point' as const, start: 73 }, paragraphs: [73] };
+
+    test('is of the case its heading names, not of the judgment its first point discusses', async () => {
+      const { resolver } = makeResolver({ fetcher: stubFetcher([tetraLaval('Case C‑12/03 P')]).fetcher });
+      const [preview] = await resolver.resolve(curiaJudgmentLookup(lookup));
+      assert.equal(preview.passage, 'cited');
+      assert.equal(preview.caseMismatch, undefined);
+    });
+
+    test('and is said to be of another case where its heading names another', async () => {
+      const { resolver } = makeResolver({ fetcher: stubFetcher([tetraLaval('Case C‑999/15 P')]).fetcher });
+      const [preview] = await resolver.resolve(curiaJudgmentLookup(lookup));
+      assert.deepEqual(preview.caseMismatch, { cited: 'C-12/03 P', named: ['C-999/15 P'] });
+    });
+
+    test('a joined list that writes its year once, at the end', async () => {
+      // Darmon in Wood Pulp (61985CC0089): "Joined cases 89, 104, 114, 116, 117 and 125 to
+      // 129/85." Read for full numbers alone, the list was case 129/85, and a citation of case
+      // 89/85 — the right opinion — was said to show another case's passage.
+      const woodPulp = (heading: string) => html(`<p>Opinion of Mr Advocate General Darmon delivered on 25 May 1988. - A. Ahlström Osakeyhtiö and others v Commission. - ${heading} European Court reports 1988 Page 05193</p><p>57. The point cited.</p><p>58. Next.</p>`);
+      for (const [cited, heading, mismatch] of [
+        ['C-89/85', 'Joined cases 89, 104, 114, 116, 117 and 125 to 129/85.', false],
+        ['C-127/85', 'Joined cases 89, 104, 114, 116, 117 and 125 to 129/85.', false],
+        ['C-90/85', 'Joined cases 89, 104, 114, 116, 117 and 125 to 129/85.', true],
+      ] as const) {
+        const { resolver } = makeResolver({ fetcher: stubFetcher([woodPulp(heading)]).fetcher });
+        const [preview] = await resolver.resolve(curiaJudgmentLookup({ ...lookup, caseNumber: cited, celex: '61985CC0089', ecli: 'ECLI:EU:C:1988:258', locator: { kind: 'point', start: 57 }, paragraphs: [57] }));
+        assert.equal(preview.caseMismatch !== undefined, mismatch, cited);
+      }
+    });
+
+    test('in the older format, which names its case at the end of the heading', async () => {
+      // Léger in Wouters (C‑309/99): the heading runs "Opinion of Mr Advocate General Léger
+      // delivered on 10 July 2001. - J. C. J. Wouters … - Case C-309/99." and the opinion then
+      // discusses Arduino, "In Case C‑35/99".
+      const wouters = html('<p>Opinion of Mr Advocate General Léger delivered on 10 July 2001. - J. C. J. Wouters and Others v Algemene Raad van de Nederlandse Orde van Advocaten. - Reference for a preliminary ruling: Raad van State - Netherlands. - Article 85 of the EC Treaty (now Article 81 EC). - Case C-309/99.</p><p>1. In Case C‑35/99 Arduino the Court considered a tariff.</p><p>62. The point cited.</p><p>63. Next.</p>');
+      const { resolver } = makeResolver({ fetcher: stubFetcher([wouters]).fetcher });
+      const [preview] = await resolver.resolve(curiaJudgmentLookup({ ...lookup, caseNumber: 'C-309/99', celex: '61999CC0309', ecli: 'ECLI:EU:C:2001:390', locator: { kind: 'point', start: 62 }, paragraphs: [62] }));
+      assert.equal(preview.caseMismatch, undefined);
+    });
   });
 
   test('a case of the Court before 1989 is read as the Court writes it', async () => {
@@ -2830,6 +2991,26 @@ describe('a document CELLAR holds twice', () => {
     const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62012TJ0079', locator: { kind: 'point', start: 69 }, paragraphs: [69] }));
     assert.equal(calls[1].url, 'https://publications.europa.eu/resource/cellar/aaa.0002.03/DOC_1');
     assert.ok(preview.excerpt.includes('The Cisco paragraph.'));
+  });
+
+  test('and follows it again when confirming the copy already held', async () => {
+    // Electrabel (EU:T:2012:672), point 246: found the first time, and a link on every look
+    // after, because confirming the stored copy met the same `300` and gave up on it.
+    const list = () => choices([['aaa.0002.01/DOC_3', 'celex-62009TJ0332.ENG.html.techmd.rdf'], ['aaa.0002.03/DOC_1', 'celex-62009TJ0332.ENG.xhtml.techmd.rdf']]);
+    const { fetcher, calls } = stubFetcher([
+      list(),
+      documentResponse('<p class="count" id="point246">246</p><p>The Electrabel paragraph.</p><p class="count" id="point247">247</p><p>The next one.</p>'),
+      list(),
+      notModified(),
+    ]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, maxRetries: 0 });
+    const lookup = (n: number) => curiaJudgmentLookup({ celex: '62009TJ0332', locator: { kind: 'point', start: n }, paragraphs: [n] });
+    await resolver.resolve(lookup(246));
+    const [again] = await resolver.resolve(lookup(247));
+    assert.equal(again.passage, 'cited');
+    assert.ok(again.excerpt.includes('The next one.'), again.excerpt);
+    assert.equal(calls[3].url, 'https://publications.europa.eu/resource/cellar/aaa.0002.03/DOC_1');
+    assert.ok(new Headers(calls[3].init.headers).get('if-none-match'), 'confirmed, not downloaded again');
   });
 
   test('chooses nothing where two are in that format', async () => {

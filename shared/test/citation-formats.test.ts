@@ -46,12 +46,13 @@ describe('citation formats — English and French, and only those', () => {
     assert.deepEqual(detectCitations('Reglamento (UE) 2016/679, apartado 17.'), []);
   });
 
-  test('refuses bare "para", which is an ordinary word', () => {
-    // A mandatory digit follows, but the scan reaches 160 characters past the citation, so
-    // prose could silently produce a wrong paragraph. A missing pinpoint costs a click; a
-    // wrong one is the failure this tool exists to prevent.
-    assert.equal(one('ECLI:EU:C:2010:512, para 40.').locator, undefined);
+  test('reads bare "para" only directly after the citation', () => {
+    // The scan reaches 160 characters past the citation, and there "para" could be prose and
+    // silently produce a wrong paragraph. Straight after the citation — how UK and Brussels
+    // drafting writes it, "EU:C:2023:537, para 62" — it can only be the citation's own.
+    assert.deepEqual(one('ECLI:EU:C:2010:512, para 40.').pinpoint, { paragraphs: [40] });
     assert.deepEqual(one('ECLI:EU:C:2010:512, para. 40.').pinpoint, { paragraphs: [40] });
+    assert.equal(one('ECLI:EU:C:2010:512, on which the para 40 discussion turns.').locator, undefined);
   });
 });
 

@@ -594,6 +594,31 @@ describe('locators', () => {
     assert.equal(citation.locator, undefined);
   });
 
+  test('reads bare "para" where it follows the citation directly', () => {
+    // UK and Brussels drafting writes "para 62" with no full stop — "Case C-252/21 Meta
+    // Platforms, EU:C:2023:537, para 62" lost its pinpoint, and so did "Id. at para 64". Taken
+    // only straight after the citation: there it can only be the citation's paragraph, where
+    // further along the sentence it could be prose.
+    for (const text of ['Case C-252/21 Meta Platforms, EU:C:2023:537, para 62.', 'Case C-252/21 Meta, EU:C:2023:537, at para 62.', 'Judgment in Meta Platforms, C-252/21, EU:C:2023:537, para 62-64 and 70']) {
+      const [citation] = detectCitations(text);
+      assert.equal(citation.locator?.start, 62, text);
+    }
+    const [ranged] = detectCitations('Judgment in Meta Platforms, C-252/21, EU:C:2023:537, para 62-64 and 70');
+    assert.deepEqual(ranged.pinpoint?.paragraphs, [62, 63, 64, 70]);
+    const [id] = detectCitationsAcrossFootnotes(['Case C-252/21 Meta Platforms, EU:C:2023:537, para. 60.', 'Id. at para 64.'])[1];
+    assert.equal(id.locator?.start, 64);
+  });
+
+  test('a bare "para" further along the sentence is still not a pinpoint', () => {
+    const [citation] = detectCitations('ECLI:EU:C:2014:317, which the Court read in its para 40 discussion');
+    assert.equal(citation.locator, undefined);
+  });
+
+  test('a directly adjacent bare "para" is the pinpoint, not a later one', () => {
+    const [citation] = detectCitations('ECLI:EU:C:2010:512, para 40, as explained in paragraph 55 of the Opinion.');
+    assert.equal(citation.locator?.start, 40);
+  });
+
   test('reads a section-sign locator with no space', () => {
     const [citation] = detectCitations('ECLI:EU:C:2014:317, §128');
     assert.deepEqual(citation.locator, { kind: 'point', start: 128, paragraph: undefined, end: undefined });
@@ -1383,5 +1408,46 @@ describe('a case name whose parties carry their abbreviations', () => {
     const [citation] = detectCitations('Judgment of 21 December 2023, European Superleague Company SL v Fédération internationale de football association (FIFA), Union of European Football Associations (UEFA), C-333/21, EU:C:2023:1011, paragraph 202.');
     assert.ok(citation.caseName?.startsWith('European Superleague Company SL v Fédération internationale de football association'), citation.caseName);
     assert.ok(!citation.caseName?.endsWith(')') || citation.caseName.includes('('), citation.caseName);
+  });
+});
+
+describe('an act defined in the memo, cited by its provision', () => {
+  // The Digital Markets Act as a Brussels competition memo cites it: defined once, then cited
+  // with the provision in front of the defined term. The act was found and the article lost.
+  const DEFINED = 'Regulation (EU) 2022/1925 of the European Parliament and of the Council of 14 September 2022 on contestable and fair markets in the digital sector (the "DMA"), Article 6(7).';
+  const later = (text: string) => detectCitationsAcrossFootnotes([DEFINED, text])[1];
+
+  test('with the provision before the term, with or without "of the"', () => {
+    for (const text of ['Article 5(2) DMA.', 'Article 5(2) of the DMA.', 'See Articles 5(2) and 6(7) DMA.']) {
+      const [citation] = later(text);
+      assert.equal(citation?.celex, '32022R1925', text);
+      assert.deepEqual([citation?.locator?.kind, citation?.locator?.start, citation?.locator?.paragraph], ['article', 5, 2], text);
+    }
+  });
+
+  test('a recital before the term', () => {
+    const [citation] = later('See recital 36 DMA.');
+    assert.equal(citation.locator?.start, 36);
+  });
+
+  test('the provision after the term still reads as before', () => {
+    const [citation] = later('DMA, Article 5(2).');
+    assert.deepEqual([citation.locator?.start, citation.locator?.paragraph], [5, 2]);
+  });
+
+  test('a provision of something else in front of the term is not taken', () => {
+    const [citation] = later('Article 102 TFEU and the DMA.').filter((found) => found.celex === '32022R1925');
+    assert.equal(citation?.locator, undefined);
+  });
+
+  test('defined after the Official Journal reference, as the Commission and the Court write it', () => {
+    // "… (Digital Markets Act), OJ L 265, 12.10.2022, p. 1 (the "DMA"), Article 6(7)." — the
+    // term sat beyond the reach of the scan for it, so neither the term nor Article 6(7) was read.
+    const full = 'Regulation (EU) 2022/1925 of the European Parliament and of the Council of 14 September 2022 on contestable and fair markets in the digital sector and amending Directives (EU) 2019/1937 and (EU) 2020/1828 (Digital Markets Act), OJ L 265, 12.10.2022, p. 1 (the "DMA"), Article 6(7).';
+    const [first, second] = detectCitationsAcrossFootnotes([full, 'Article 5(2) DMA.']);
+    const act = first.find((found) => found.celex === '32022R1925');
+    assert.deepEqual([act?.locator?.start, act?.locator?.paragraph], [6, 7]);
+    assert.equal(second[0]?.celex, '32022R1925');
+    assert.deepEqual([second[0]?.locator?.start, second[0]?.locator?.paragraph], [5, 2]);
   });
 });

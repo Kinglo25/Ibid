@@ -242,10 +242,11 @@ function segmentAt(segments: Array<{ start: number; end: number }>, index: numbe
  * on which a pinpoint can be matched wrongly, and breadth that is not needed buys nothing
  * while costing precision.
  *
- * Bare "para" (no period) stays excluded even though a mandatory digit follows it — it is
- * an ordinary word, and the scan reaches 160 characters past the citation, so prose could
+ * Bare "para" (no period) stays excluded here even though a mandatory digit follows it — it
+ * is an ordinary word, and the scan reaches 160 characters past the citation, so prose could
  * produce a confident wrong paragraph. A missing pinpoint costs a click; a wrong one is
- * what this tool exists to prevent.
+ * what this tool exists to prevent. Directly after the citation it is read, by
+ * `ADJACENT_BARE_PARA`, because there it cannot be anything but the citation's paragraph.
  */
 const PINPOINT_KEYWORD = String.raw`(?:\b(?:points?|paragraphs?|paras\.?|para\.|pt\.?|articles?|art\.|recitals?|consid[ée]rants?)|§{1,2}|¶{1,2})`;
 const PINPOINT_RANGE = String.raw`(?:\s*(?:[–—‑-]|\bto\b|à)\s*\d+)?`;
@@ -276,6 +277,14 @@ const PINPOINT_PATTERN = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?
  * can never be attached to this one.
  */
 const PINPOINT_BEFORE = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})\\s*(?:of|de\\s+la|de|du)\\s+$`, 'i');
+/**
+ * Bare "para", taken only where it follows the citation directly: ", para 62", ", at para 62".
+ * UK and Brussels drafting writes it without a full stop, and `PINPOINT_KEYWORD` refuses it
+ * because the scan reaches 160 characters on, where "para" could be prose. Straight after
+ * the citation it can only be the citation's paragraph, so there it is read — and read
+ * first, since it is the pinpoint nearest the citation.
+ */
+const ADJACENT_BARE_PARA = new RegExp(`^[\\s,;:]*(?:at\\s+)?para\\s+(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})`, 'i');
 const PINPOINT_ITEM = /^(\d+)(?:\((\d+)\))?(?:\s*(?:[–—‑-]|\bto\b|à)\s*(\d+))?/i;
 const PINPOINT_SCAN_WINDOW = 160;
 const PINPOINT_BEFORE_WINDOW = 80;
@@ -335,7 +344,7 @@ function unbracketRecitals(text: string): string {
 
 export function parsePinpoint(text: string, index: number, limit = text.length): ParsedPinpoint | undefined {
   const tail = unbracketRecitals(text.slice(index, Math.min(limit, index + PINPOINT_SCAN_WINDOW)));
-  const match = PINPOINT_PATTERN.exec(tail);
+  const match = ADJACENT_BARE_PARA.exec(tail) ?? PINPOINT_PATTERN.exec(tail);
   if (match && endsOnLetteredNumber(tail, match)) return undefined;
   return fromPinpointMatch(match);
 }
@@ -1032,7 +1041,7 @@ function commissionCaseTail(text: string, from: number, limit: number): string {
  */
 function commissionCasePinpoint(own: string): ParsedPinpoint | undefined {
   const window = unbracketRecitals(own.slice(0, PINPOINT_SCAN_WINDOW));
-  const match = PINPOINT_PATTERN.exec(window);
+  const match = ADJACENT_BARE_PARA.exec(window) ?? PINPOINT_PATTERN.exec(window);
   if (!match || endsOnLetteredNumber(window, match)) return undefined;
   if (/\bannex\b/i.test(window.slice(0, match.index))) return undefined;
   return fromPinpointMatch(match);
@@ -1185,6 +1194,8 @@ export function detectCitations(text: string): CitationMatch[] {
   };
   const actPinpointFor = (start: number, end: number) => {
     const segment = segmentAt(segments, start);
+    const defined = parsePinpointBefore(text, start, segment.start) ? undefined : pinpointAfterDefinedTerm(text, end, segment.end);
+    if (defined) return { locator: defined.locator, pinpoint: defined.pinpoint };
     if (!parsePinpointBefore(text, start, segment.start) && provisionOfAnotherInstrument(text, end, segment.end)) return {};
     return pinpointFor(start, end);
   };
@@ -1533,6 +1544,50 @@ const DEFINED_TERM_SCAN_WINDOW = 160;
 const DEFINED_TERMS = new RegExp(DEFINED_TERM.source, 'gi');
 
 /**
+ * How far past an act its defined term may sit. An act is cited with its full title and its
+ * Official Journal reference before the term — "Regulation (EU) 2022/1925 … on contestable and
+ * fair markets in the digital sector and amending Directives (EU) 2019/1937 and (EU) 2020/1828
+ * (Digital Markets Act), OJ L 265, 12.10.2022, p. 1 (the "DMA")" puts it 255 characters on —
+ * and a term out of reach was never registered, so every later "Article 5(2) DMA" was lost.
+ * A term still belongs only to the citation nearest before it, which is what keeps the longer
+ * reach from handing one act's term to another.
+ */
+const ACT_DEFINED_TERM_WINDOW = 400;
+
+/**
+ * An act's provision written straight after the act's defined term: "(the "DMA"), Article
+ * 6(7)". The term can sit beyond the reach of the ordinary pinpoint scan, past the act's title
+ * and its Official Journal reference, and there the provision was lost. Taken only where the
+ * provision follows the term directly and no other authority stands between the act and its
+ * term — "Regulation (EC) No 1/2003 and Regulation (EC) No 773/2004 (the "Implementing
+ * Regulation"), Article 10" is Article 10 of the second.
+ */
+function pinpointAfterDefinedTerm(text: string, end: number, limit: number): ParsedPinpoint | undefined {
+  const window = text.slice(end, Math.min(limit, end + ACT_DEFINED_TERM_WINDOW));
+  const term = DEFINED_TERM.exec(window);
+  if (!term) return undefined;
+  if (new RegExp(NEXT_AUTHORITY.source, 'i').test(window.slice(0, term.index))) return undefined;
+  const after = end + (term.index ?? 0) + term[0].length;
+  const tail = text.slice(after, Math.min(limit, after + PINPOINT_SCAN_WINDOW));
+  const lead = /^[\s,;:]*/.exec(tail)?.[0].length ?? 0;
+  const match = PINPOINT_PATTERN.exec(tail.slice(lead));
+  return match && match.index === 0 ? fromPinpointMatch(match) : undefined;
+}
+
+/**
+ * A provision written straight before a defined act's term: "Article 5(2) DMA", "Article 5(2)
+ * of the DMA", "recital 36 DMA" — the way a memo cites an act it has defined, as it writes
+ * "Article 102 TFEU". Read only for a term that names an act; a court document's name is never
+ * cited so.
+ */
+const LISTED_PROVISIONS = String.raw`(?:\s*(?:,|\band\b|\bet\b|&)\s*\d+(?:\(\d+\))?${PINPOINT_RANGE})*`;
+const PROVISION_BEFORE_TERM = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${LISTED_PROVISIONS})\\s*(?:(?:of|in)\\s+(?:the\\s+)?|de\\s+la\\s+|du\\s+|de\\s+l['’]\\s*)?$`, 'i');
+
+function provisionBeforeTerm(text: string, index: number, floor: number): ParsedPinpoint | undefined {
+  return fromPinpointMatch(PROVISION_BEFORE_TERM.exec(text.slice(Math.max(floor, index - PINPOINT_BEFORE_WINDOW), index)));
+}
+
+/**
  * A defined term naming a kind of instrument that detection never reports — a notice, a set
  * of guidelines, a communication. Whatever such a term names, it is not any citation found
  * in the footnote, so it is bound to none of them.
@@ -1841,7 +1896,8 @@ const ADJACENT_PINPOINT = new RegExp(String.raw`^[\s,;:]*(?:at\s+)?${PINPOINT_KE
 const ADJACENT_PINPOINT_WINDOW = 40;
 
 function hasAdjacentPinpoint(text: string, endIndex: number, limit: number): boolean {
-  return ADJACENT_PINPOINT.test(text.slice(endIndex, Math.min(limit, endIndex + ADJACENT_PINPOINT_WINDOW)));
+  const tail = text.slice(endIndex, Math.min(limit, endIndex + ADJACENT_PINPOINT_WINDOW));
+  return ADJACENT_PINPOINT.test(tail) || ADJACENT_BARE_PARA.test(tail);
 }
 
 /**
@@ -2068,7 +2124,8 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[])
 
       const windowStart = citation.index + citation.value.length;
       const segment = segmentAt(segments, citation.index);
-      const parenthetical = DEFINED_TERM.exec(text.slice(windowStart, Math.min(segment.end, windowStart + DEFINED_TERM_SCAN_WINDOW)));
+      const reach = citation.source === 'eur-lex' ? ACT_DEFINED_TERM_WINDOW : DEFINED_TERM_SCAN_WINDOW;
+      const parenthetical = DEFINED_TERM.exec(text.slice(windowStart, Math.min(segment.end, windowStart + reach)));
       if (parenthetical) {
         const start = windowStart + (parenthetical.index ?? 0);
         declared.push({ start, end: start + parenthetical[0].length });
@@ -2268,7 +2325,9 @@ function resolveShortForms(
     // same authority.
     if (authorities.some((authority) => hardMatches.some((citation) => sameAuthority(toRegistered(citation), authority.citation)))) continue;
 
-    const parsed = parsePinpoint(text, spanEnd + (cited?.length ?? 0), segment.end);
+    const actsOnly = authorities.every((authority) => authority.citation.source === 'eur-lex');
+    const parsed = (actsOnly ? provisionBeforeTerm(text, span.index, segment.start) : undefined)
+      ?? parsePinpoint(text, spanEnd + (cited?.length ?? 0), segment.end);
     // "Intel v Commission, cited in footnote 2" where the document cites two Intels: the
     // footnote named is what the drafter used to say which, so it settles it — provided
     // that footnote is above this one and cites exactly one of them.
