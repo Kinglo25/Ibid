@@ -556,6 +556,15 @@ describe('Commission adapter', () => {
     assert.equal(preview.url, 'https://competition-cases.ec.europa.eu/cases/M.8713');
   });
 
+  test('a pre-2012 file number opens the case under the number the register gives it', async () => {
+    // Detection carries `COMP/C-3/37.990` as written and `AT.37990` as its case number.
+    const { fetcher } = stubFetcher([]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'COMP/C-3/37.990', caseNumber: 'AT.37990' });
+
+    assert.equal(preview.url, 'https://competition-cases.ec.europa.eu/cases/AT.37990');
+  });
+
   test('mentions the locator in the guidance text when one was detected', async () => {
     // The AT./SA./M. detection loop did not attach a locator at all before —
     // found missing against a real citation ("AT.37990 ... para. 1(c)").

@@ -1103,7 +1103,8 @@ function asPlainDate(value: string): string {
  * without it. Kept in step with `officialSourceUrl` in the pane, which builds the same link.
  */
 function commissionUrl(lookup: EuLookup): string {
-  const value = lookup.value.replace(/^COMP\//i, '');
+  // `COMP/C-3/37.990` carries its register number, `AT.37990`, as its case number.
+  const value = (lookup.caseNumber ?? lookup.value).replace(/^COMP\//i, '');
   // Only a case number addresses a case. A `C(yyyy) nnnn` decision number is the number of
   // the act, not of the file it was taken in, and the register has no page under it — so
   // that one keeps the search, which is still the best answer available for it.
@@ -1728,7 +1729,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
         };
       }
       return {
-        title: titled(identity), source: 'European Commission', url: commissionUrl({ ...lookup, value: identity?.caseNumber ?? lookup.value }), locator,
+        title: titled(identity), source: 'European Commission', url: commissionUrl({ ...lookup, caseNumber: identity?.caseNumber ?? lookup.caseNumber, value: identity?.caseNumber ?? lookup.value }), locator,
         excerpt: `Open the European Commission case register to inspect the published decision and related documents${locator ? `, focusing on ${locator.toLowerCase()}` : ''}.`,
       };
     };

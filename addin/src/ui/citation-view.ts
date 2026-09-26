@@ -228,7 +228,8 @@ export function officialSourceUrl(citation: CitationContext): string {
   // A `C(yyyy) nnnn` decision number names an act rather than a case file and has no page
   // there, so it keeps the search.
   if (citation.source === 'commission') {
-    const value = citation.value.replace(/^COMP\//i, '');
+    // `COMP/C-3/37.990` carries its register number, `AT.37990`, as its case number.
+    const value = (citation.caseNumber ?? citation.value).replace(/^COMP\//i, '');
     return /^(?:AT|SA|M)\.\d{3,6}$/i.test(value)
       ? `https://competition-cases.ec.europa.eu/cases/${encodeURIComponent(value)}`
       : `https://competition-cases.ec.europa.eu/search?query=${encodeURIComponent(citation.value)}`;

@@ -141,6 +141,11 @@ describe('the official source a back-reference links to', () => {
     assert.equal(officialSourceUrl(citation), 'https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:62012CJ0293');
   });
 
+  test('a pre-2012 Commission file number links to the case page the register gives it', () => {
+    const [citation] = getCitationContextsForFootnotes(['Commission Decision of 13 May 2009 in Case COMP/C-3/37.990 – Intel, recital 916.'])[0];
+    assert.equal(officialSourceUrl(citation), 'https://competition-cases.ec.europa.eu/cases/AT.37990');
+  });
+
   test('a judgment and the opinion in the same case are told apart in a pick-list', () => {
     const [judgment, opinion] = detectCitationsAcrossFootnotes([
       'Judgment of 6 September 2017, Intel v Commission, Case C-413/14 P, ECLI:EU:C:2017:632, para. 138.',

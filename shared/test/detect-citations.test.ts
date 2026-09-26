@@ -219,9 +219,11 @@ describe('CURIA document-type detection', () => {
       'Judgment of 12 June 2014, Ascendi (C-377/13, EU:C:2014:1754, paragraph 27). '
       + 'See also, to that effect, judgments of 23 March 1982, Nordsee (102/81, EU:C:1982:107).',
     );
+    // Nordsee's own number is the bare `102/81` in front of its ECLI, which is how the Court
+    // writes a case from before 1989 — once read, it is Nordsee's number and not Ascendi's.
     const nordsee = citations.find((citation) => citation.value.includes('1982:107'));
-    assert.equal(nordsee?.caseNumber, undefined, 'no case number is better than another citation\'s');
-    assert.equal(nordsee?.celex, undefined);
+    assert.equal(nordsee?.caseNumber, 'C-102/81', 'its own case number, never another citation\'s');
+    assert.equal(nordsee?.celex, '61981CJ0102');
   });
 
   test('recognises "my Opinion in", the way an Advocate General cites their own', () => {
@@ -1023,5 +1025,164 @@ describe('getCitationContexts', () => {
     const [context] = getCitationContexts('Directive 2002/58/CE, Article 15');
     assert.equal(context.celex, '32002L0058');
     assert.equal(context.source, 'eur-lex');
+  });
+});
+
+describe('Commission decisions, as the Commission writes them', () => {
+  test('a pre-2012 antitrust file number is the Commission\'s case, never a court\'s', () => {
+    // "COMP/C-3/37.990" read as Case C-3/37 — a court case from 1937, resolved, and handed the
+    // decision's recitals as its paragraphs.
+    const citations = detectCitations('Commission Decision of 13 May 2009 in Case COMP/C-3/37.990 – Intel, recitals 916 to 925.');
+    assert.equal(citations.length, 1);
+    const [intel] = citations;
+    assert.equal(intel.source, 'commission');
+    assert.equal(intel.value, 'COMP/C-3/37.990');
+    assert.equal(intel.caseNumber, 'AT.37990');
+    assert.equal(intel.caseName, 'Intel');
+    assert.deepEqual(intel.pinpoint?.paragraphs, [916, 917, 918, 919, 920, 921, 922, 923, 924, 925]);
+  });
+
+  test('reads the file numbers without a directorate, and the DG IV ones before them', () => {
+    assert.equal(find('Case COMP/38.784 – Wanadoo España v Telefónica, recitals 211 to 215.', 'COMP/38.784')?.caseNumber, 'AT.38784');
+    assert.equal(find('Case COMP/39.525 – Telekomunikacja Polska.', 'COMP/39.525')?.caseNumber, 'AT.39525');
+    // Recognised, so it is not read as anything else, but not translated: see the detector.
+    const old = find('Case IV/35.337 – X, recital 3.', 'IV/35.337');
+    assert.equal(old?.source, 'commission');
+    assert.equal(old?.caseNumber, undefined);
+  });
+
+  test('a Commission case\'s name is not a short form of a judgment of the same name', () => {
+    // "Intel" after AT.37990 was resolved to the Court's Intel judgment, opened at a paragraph
+    // 916 it does not have.
+    const [, decision] = detectCitationsAcrossFootnotes([
+      'Judgment of 6 September 2017, Intel v Commission, C-413/14 P, EU:C:2017:632, paragraph 138.',
+      'Commission Decision of 13 May 2009 in Case AT.37990 – Intel, recital 916.',
+    ]);
+    assert.deepEqual(decision.map((citation) => citation.value), ['AT.37990']);
+  });
+
+  test('an article named in an act\'s title is not the act\'s pinpoint', () => {
+    const regulation = find('Council Regulation (EC) No 1/2003 of 16 December 2002 on the implementation of the rules on competition laid down in Articles 81 and 82 of the Treaty (OJ L 1, 4.1.2003, p. 1).', 'Regulation (EC) No 1/2003');
+    assert.equal(regulation?.celex, '32003R0001');
+    assert.equal(regulation?.locator, undefined);
+    const decision = find('Commission Decision 2007/53/EC of 24 March 2004 relating to a proceeding pursuant to Article 82 of the EC Treaty (Case COMP/C-3/37.792 — Microsoft).', 'Decision 2007/53/EC');
+    assert.equal(decision?.locator, undefined);
+    assert.equal(find('Regulation (EC) No 1/2003 and Article 102 TFEU.', 'Regulation (EC) No 1/2003')?.locator, undefined);
+    // The act's own provision still reads, including one that points back at the act.
+    assert.equal(find('Regulation (EC) No 139/2004 (OJ L 24, 29.1.2004, p. 1), Article 2(3).', 'Regulation (EC) No 139/2004')?.locator?.start, 2);
+    assert.equal(find('Regulation (EC) No 139/2004, Article 2(3) of that Regulation.', 'Regulation (EC) No 139/2004')?.locator?.start, 2);
+  });
+});
+
+describe('the Court of Justice\'s numbers from before 1989, as the Court writes them', () => {
+  test('reads a bare case number in front of its ECLI', () => {
+    const [citation] = detectCitations('Judgment of 13 February 1979, Hoffmann-La Roche v Commission, 85/76, EU:C:1979:36, paragraph 91.');
+    assert.equal(citation.caseNumber, 'C-85/76');
+    assert.equal(citation.celex, '61976CJ0085');
+    assert.equal(citation.caseName, 'Hoffmann-La Roche v Commission');
+  });
+
+  test('so later short forms of it resolve', () => {
+    const [, later] = detectCitationsAcrossFootnotes([
+      'Judgment of 13 February 1979, Hoffmann-La Roche v Commission, 85/76, EU:C:1979:36, paragraph 91.',
+      'Hoffmann-La Roche, paragraph 38.',
+    ]);
+    assert.equal(later[0].status, 'resolved');
+    assert.equal(later[0].celex, '61976CJ0085');
+    assert.deepEqual(later[0].pinpoint?.paragraphs, [38]);
+  });
+
+  test('a joined group of them is one judgment, named after the group', () => {
+    const citations = detectCitations('Joined Cases 40/73 to 48/73, 50/73, 54/73 to 56/73, 111/73, 113/73 and 114/73 Suiker Unie and Others v Commission, EU:C:1975:174, paragraph 173.');
+    assert.equal(citations.length, 1);
+    assert.equal(citations[0].caseNumber, 'C-40/73');
+    assert.equal(citations[0].celex, '61973CJ0040');
+    assert.equal(citations[0].caseName, 'Suiker Unie and Others v Commission');
+  });
+
+  test('refuses a bare number the citation does not vouch for', () => {
+    // A regulation's number is not a case's, and neither is a number after the ECLI's year.
+    const [citation] = detectCitations('Regulation No 17/62 applied; see judgment of 13 February 1979, Hoffmann-La Roche v Commission, EU:C:1979:36.');
+    assert.equal(citation.caseNumber, undefined);
+    assert.equal(detectCitations('Judgment of 1970, X v Commission, 85/76, EU:C:1970:1.').find((match) => match.ecli)?.caseNumber, undefined);
+    // Nor at the General Court, which did not exist before 1989.
+    assert.equal(detectCitations('X v Commission, 85/76, EU:T:1990:1.').find((match) => match.ecli)?.caseNumber, undefined);
+  });
+});
+
+describe('"cited in footnote 2", as the Court and the Commission write "supra note 2"', () => {
+  const judgments = [
+    'Judgment of 6 September 2017, Intel v Commission, C-413/14 P, EU:C:2017:632, paragraphs 138 and 139.',
+    'Judgment of 12 June 2014, Intel v Commission, T-286/09, EU:T:2014:547, paragraph 76.',
+  ];
+
+  test('the footnote named says which of two cases of the same name is meant', () => {
+    const [, , third] = detectCitationsAcrossFootnotes([...judgments, 'Intel v Commission, cited in footnote 1, paragraph 136.']);
+    assert.equal(third[0].status, 'resolved');
+    assert.equal(third[0].celex, '62014CJ0413');
+    assert.equal(third[0].resolutionMethod, 'numbered_footnote');
+    assert.deepEqual(third[0].pinpoint?.paragraphs, [136]);
+    const [, , fourth] = detectCitationsAcrossFootnotes([...judgments, 'Intel v Commission, cited above in footnote 2, paragraph 80.']);
+    assert.equal(fourth[0].celex, '62009TJ0286');
+  });
+
+  test('without the number, two cases of the same name stay a question', () => {
+    const [, , third] = detectCitationsAcrossFootnotes([...judgments, 'Intel v Commission, cited above, paragraph 136.']);
+    assert.equal(third[0].status, 'unresolved_ambiguous');
+  });
+
+  test('a name the document never defined still reads through the footnote it points at', () => {
+    // "85/76" was not read then, so the name was never registered; the number still leads there.
+    const [, second] = detectCitationsAcrossFootnotes([
+      'Case 85/76 Hoffmann-La Roche v Commission [1979] ECR 461, paragraph 91.',
+      'The judgment cited in footnote 1, paragraph 38.',
+    ]);
+    assert.equal(second[0].status, 'resolved');
+    assert.equal(second[0].celex, '61976CJ0085');
+    assert.equal(second[0].backReference?.footnote, 1);
+    assert.deepEqual(second[0].pinpoint?.paragraphs, [38]);
+  });
+
+  test('reads the French', () => {
+    const [, second, third] = detectCitationsAcrossFootnotes([
+      'Arrêt du 6 septembre 2017, Intel/Commission, C‑413/14 P, EU:C:2017:632, point 138.',
+      'Arrêt Intel/Commission, précité à la note 1, point 139.',
+      'Arrêt Intel, point 140.',
+    ]);
+    assert.equal(second[0].celex, '62014CJ0413');
+    assert.deepEqual(second[0].pinpoint?.paragraphs, [139]);
+    assert.equal(third[0].celex, '62014CJ0413');
+    assert.deepEqual(third[0].pinpoint?.paragraphs, [140]);
+  });
+
+  test('a definition pointed at is not an authority cited', () => {
+    const [, second] = detectCitationsAcrossFootnotes([
+      'Judgment of 6 September 2017, Intel v Commission, C-413/14 P, EU:C:2017:632, paragraph 138.',
+      'As defined in footnote 1 above.',
+    ]);
+    assert.deepEqual(second, []);
+  });
+});
+
+describe('case names that carry a nickname', () => {
+  test('the parties are the name, and the nickname is a short form of its own', () => {
+    const [android, , later] = detectCitationsAcrossFootnotes([
+      'Judgment of 14 September 2022, Google and Alphabet v Commission (Google Android), T‑604/18, EU:T:2022:541, paragraph 639.',
+      'Judgment of 10 September 2024, Google and Alphabet v Commission (Google Shopping), C‑48/22 P, EU:C:2024:726, paragraph 165.',
+      'Google Android, paragraph 640; Google Shopping, paragraph 166.',
+    ]);
+    assert.equal(android[0].caseName, 'Google and Alphabet v Commission (Google Android)');
+    assert.deepEqual(later.map((citation) => citation.celex), ['62018TJ0604', '62022CJ0048']);
+  });
+
+  test('the formation that sat is not a nickname', () => {
+    const [citation] = detectCitations('Judgment of 6 October 2015, Schrems v Data Protection Commissioner (Grand Chamber), C-362/14, EU:C:2015:650, paragraph 94.');
+    assert.equal(citation.caseName, 'Schrems v Data Protection Commissioner');
+  });
+
+  test('a French Advocate General\'s opinion is named after the case "dans l\'affaire"', () => {
+    const [citation] = detectCitations('Conclusions de l\'avocat général Wahl dans l\'affaire Intel/Commission (C‑413/14 P, EU:C:2016:788, point 93).');
+    assert.equal(citation.caseName, 'Intel/Commission');
+    assert.equal(citation.celex, '62014CC0413');
   });
 });

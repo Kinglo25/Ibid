@@ -429,9 +429,20 @@ const CASE_SUFFIX = String.raw`P\(R\)|RENV|DEP|REV|OP|P|R`;
  * the citation entirely, which reads as "no citation in this footnote".
  */
 const CASE_HYPHENS = String.raw`[-‑–—]`;
-const CASE_NUMBER_SOURCE = String.raw`\b([CT])${CASE_HYPHENS}?(\d{1,4})\/(\d{2})(?!\d)(?:\s+(${CASE_SUFFIX})(?![\w(]))?`;
+/**
+ * Where a court's case number cannot be, however much it looks like one.
+ *
+ * DG Competition numbered its antitrust files by directorate until 2012 —
+ * `COMP/C-3/37.990` is Intel, `COMP/C-3/37.792` Microsoft — and the directorate
+ * reads as a case number of the Court: `C-3/37`, a case from 1937, resolved and
+ * handed a recital as its paragraph. A court's number is never the middle of a
+ * path, and its year is never the front of a decimal, so either is refused.
+ */
+const NOT_A_CASE_NUMBER_BEFORE = String.raw`(?<!\/)`;
+const NOT_A_CASE_NUMBER_AFTER = String.raw`(?!\d|[.,]\d)`;
+const CASE_NUMBER_SOURCE = String.raw`${NOT_A_CASE_NUMBER_BEFORE}\b([CT])${CASE_HYPHENS}?(\d{1,4})\/(\d{2})${NOT_A_CASE_NUMBER_AFTER}(?:\s+(${CASE_SUFFIX})(?![\w(]))?`;
 /** The same pattern with no capture groups, so it can be embedded in a larger one. */
-const CASE_NUMBER_INLINE = String.raw`\b[CT]${CASE_HYPHENS}?\d{1,4}\/\d{2}(?!\d)(?:\s+(?:${CASE_SUFFIX})(?![\w(]))?`;
+const CASE_NUMBER_INLINE = String.raw`${NOT_A_CASE_NUMBER_BEFORE}\b[CT]${CASE_HYPHENS}?\d{1,4}\/\d{2}${NOT_A_CASE_NUMBER_AFTER}(?:\s+(?:${CASE_SUFFIX})(?![\w(]))?`;
 
 // The separator list includes the range forms, because a joined-cases group is routinely
 // written as a span rather than a list — "Joined Cases C-87/90 to C-89/90 Verholen and
@@ -621,8 +632,12 @@ function labelForDocumentType(documentType: CuriaDocumentType, defaultLabel: str
  * initial or an abbreviation to be worth the false positives.
  */
 const PARTY_SEPARATOR = /\s+(?:v\.?|vs\.?|contre)\s+/i;
+/** A bracket after a case name that says which formation sat, not what the case is called. */
+const COURT_FORMATION = /\b(?:chambers?|chambres?|full\s+court|court|cour|tribunal|pl[ée]ni[èe]re|assembl[ée]e|formation)\b/i;
+/** The French form of the separator: `Intel/Commission`, `Commission/Italie`. One slash, between two names. */
+const FRENCH_PARTY_SEPARATOR = /(?<=[\p{L}.)])\s?\/\s?(?=\p{Lu})/u;
 const CASE_GROUP_PREFIX = new RegExp(
-  String.raw`^(?:joined\s+)?(?:cases?|affaires?(?:\s+jointes?)?)\s+(?:${CASE_NUMBER_INLINE}(?:\s*(?:,|and|et|&)\s*)?)+`,
+  String.raw`^(?:(?:joined\s+)?(?:cases?|affaires?(?:\s+jointes?)?)\s+)?(?:(?:${CASE_NUMBER_INLINE}|\d{1,3}\/\d{2}(?![\d\/]))(?:\s*(?:,|and|et|&|to|à)\s*)?)+`,
   'i',
 );
 const DOCUMENT_PREFIX = /^(?:judgments?|orders?|opinions?|arr[êe]ts?|ordonnances?|conclusions)\b/i;
@@ -683,7 +698,7 @@ function tidyCaseName(candidate: string): string {
  * is itself corroboration that what precedes it is a case name.
  */
 const BARE_IDENTIFIER_FRAGMENT = new RegExp(
-  String.raw`^(?:(?:joined\s+)?(?:cases?|affaires?(?:\s+jointes?)?)\s+)?(?:${CASE_NUMBER_INLINE}|(?:ECLI:)?EU:[CT]:\d{4}:\d+)(?:\s*(?:,|and|et|&)\s*(?:${CASE_NUMBER_INLINE}|(?:ECLI:)?EU:[CT]:\d{4}:\d+))*$`,
+  String.raw`^(?:(?:joined\s+)?(?:cases?|affaires?(?:\s+jointes?)?)\s+)?(?:${CASE_NUMBER_INLINE}|\d{1,3}\/\d{2}|(?:ECLI:)?EU:[CT]:\d{4}:\d+)(?:\s*(?:,|and|et|&)\s*(?:${CASE_NUMBER_INLINE}|\d{1,3}\/\d{2}|(?:ECLI:)?EU:[CT]:\d{4}:\d+))*$`,
   'i',
 );
 
@@ -710,12 +725,28 @@ function caseNameBefore(text: string, index: number, segmentStart: number): stri
   }
   if (cursor < 0) return undefined;
 
+  // "Google and Alphabet v Commission (Google Android), T-604/18" — the split at the bracket
+  // leaves the nickname on its own, and read alone it was the case's name, closing bracket and
+  // all. The parties are the name; the nickname is kept with it, because it is what the rest
+  // of the document calls the case (see `shortNameVariants`).
+  // A bracket naming the formation that sat — "(Grand Chamber)" — is not a nickname, and the
+  // parties alone are the name.
+  const nickname = /^([^()]+)\)$/.exec(fragments[cursor]);
+  if (nickname && cursor > 0) {
+    const parties = tidyCaseName(fragments[cursor - 1]);
+    if (PARTY_SEPARATOR.test(parties) && looksLikeCaseName(parties)) {
+      return COURT_FORMATION.test(nickname[1]) ? parties : `${parties} (${nickname[1].trim()})`;
+    }
+  }
+
   const previous = fragments[cursor - 1] ?? '';
   // "Opinion of Advocate General Jääskinen of 25 June 2013 in Google Spain" — the whole
   // fragment is a document-type preamble, so it is rejected outright as a case name, but
   // what follows the "in" is the case. Without this an opinion carries no case name, and
-  // therefore no route to the case number that makes it fetchable.
-  const preamble = DOCUMENT_PREFIX.test(tidyCaseName(fragments[cursor])) ? /\bin\s+(.+)$/i.exec(fragments[cursor]) : null;
+  // therefore no route to the case number that makes it fetchable. French says it with
+  // "dans l'affaire": "Conclusions de l'avocat général Wahl dans l'affaire Intel/Commission".
+  const preamble = DOCUMENT_PREFIX.test(tidyCaseName(fragments[cursor]))
+    ? /\b(?:in|dans\s+(?:l['’]affaire|les\s+affaires(?:\s+jointes)?))\s+(.+)$/i.exec(fragments[cursor]) : null;
   const fragment = tidyCaseName(preamble ? preamble[1] : fragments[cursor]);
   const followsCaseNumber = steppedOverIdentifier || CASE_GROUP_PREFIX.test(fragment);
   const candidate = tidyCaseName(fragment.replace(CASE_GROUP_PREFIX, ''));
@@ -844,7 +875,7 @@ function parseActNumbers(kind: string, hasSuffix: boolean, hasNo: boolean, first
  * declared further down the module than that.
  */
 const NEXT_AUTHORITY = new RegExp(
-  String.raw`\b(?:COMP\/)?(?:AT|SA|M)[.:]\s?\d{3,6}\b|${CASE_NUMBER_INLINE}|\b(?:ECLI:)?EU:[CT]:\d{4}:\d+\b|\b(?:${ACT_KEYWORDS})\s*(?:\((?:EU|EC|CE|EEC|UE|CEE)\)\s*)?(?:No\.?\s*)?\d{1,4}\/\d{1,4}`,
+  String.raw`\b(?:COMP\/)?(?:AT|SA|M)[.:]\s?\d{3,6}\b|\b(?:COMP|IV)\/(?:[A-H]-?\d\/)?\d{2}\.\d{3}(?![\d.])|${CASE_NUMBER_INLINE}|\b(?:ECLI:)?EU:[CT]:\d{4}:\d+\b|\b(?:${ACT_KEYWORDS})\s*(?:\((?:EU|EC|CE|EEC|UE|CEE)\)\s*)?(?:No\.?\s*)?\d{1,4}\/\d{1,4}`,
   'i',
 );
 
@@ -927,6 +958,66 @@ function namedInAnotherActsTitle(text: string, index: number, segmentStart: numb
     && citedWithinAnotherInstrument(text, { index, source: 'eur-lex' }, segmentStart);
 }
 
+/**
+ * Whether the provision read after an act is a provision of some other instrument.
+ *
+ * An act's title names the provisions it was adopted under, and the pinpoint scan reads
+ * straight into it: `Council Regulation (EC) No 1/2003 of 16 December 2002 on the
+ * implementation of the rules on competition laid down in Articles 81 and 82 of the Treaty`
+ * opened Regulation 1/2003 at an Article 81 it does not have, and the Commission's Microsoft
+ * decision, `Decision 2007/53/EC … relating to a proceeding pursuant to Article 82 of the EC
+ * Treaty`, at its own Article 82. A provision followed by `of` and another instrument, or by a
+ * Treaty's abbreviation, says whose it is. `of that Regulation` and its like point back at the
+ * act, so they do not count. Wrong in the safe direction: the act keeps its citation and loses
+ * only a pinpoint.
+ */
+const PROVISION_OF_ANOTHER_INSTRUMENT = /^(?:\s*\([^()\s]{1,4}\))*\s*(?:(?:of|de|du|des)\b(?!\s+(?:that|this|which|the\s+same|ce|cette|ledit|ladite)\b)|(?:TFEU|TFUE|TEU|TUE|EC|EEC|CE|CEE|EEA|EEE)\b)/i;
+
+function provisionOfAnotherInstrument(text: string, end: number, limit: number): boolean {
+  const tail = text.slice(end, Math.min(limit, end + PINPOINT_SCAN_WINDOW));
+  const match = PINPOINT_PATTERN.exec(tail);
+  return match !== null && PROVISION_OF_ANOTHER_INSTRUMENT.test(tail.slice((match.index ?? 0) + match[0].length));
+}
+
+type NumberAt = { index: number; length: number; caseNumber: string };
+
+/**
+ * The Court of Justice's case numbers from before the General Court existed, where they sit
+ * in front of the ECLI they belong to.
+ *
+ * The Court writes them with no prefix, and so does everyone citing it in its style:
+ * "Hoffmann-La Roche v Commission, 85/76, EU:C:1979:36". Read only for a prefixed number, that
+ * citation kept its ECLI and lost its case number, and with it its CELEX and its case name —
+ * so every later "Hoffmann-La Roche v Commission, paragraph 38" in the document resolved to
+ * nothing. A bare pair of numbers is too common to take on sight (dates, ratios, "Regulation
+ * No 17/62"), so one is taken only where the citation's own shape vouches for it: straight
+ * before the ECLI, after the word "Case" or "Joined Cases", or joined to such a number by
+ * nothing but a connector — the rest of a group. Its year must fall before 1989, when a case
+ * could only be the Court of Justice's, and not after the ECLI's own year.
+ */
+const COURT_OF_JUSTICE_ALONE_UNTIL = 1989;
+const BARE_CASE_NUMBER = /(?<![\p{L}\p{N}/.:‑–—-])(\d{1,3})\/(\d{2})(?![\p{N}/]|[.,]\d)/gu;
+
+function preGeneralCourtNumbers(scanned: string, ecliYear: number): NumberAt[] {
+  const found = [...scanned.matchAll(BARE_CASE_NUMBER)]
+    .map((number) => ({ index: number.index ?? 0, length: number[0].length, year: resolveTwoDigitYear(number[2]), caseNumber: `C-${number[1]}/${number[2]}` }))
+    .filter((number) => number.year < COURT_OF_JUSTICE_ALONE_UNTIL && number.year <= ecliYear);
+  const accepted = found.map((number) =>
+    /(?:\bcases?|\baffaires?(?:\s+jointes?)?)\s+$/i.test(scanned.slice(0, number.index))
+    || /^[\s,]*$/.test(scanned.slice(number.index + number.length)));
+  const joins = (gap: string) => /^[\s,;]*(?:and|et|&|to|à)?[\s,;]*$/i.test(gap);
+  for (let changed = true; changed;) {
+    changed = false;
+    for (let at = 0; at < found.length; at += 1) {
+      if (accepted[at]) continue;
+      const before = at > 0 && accepted[at - 1] && joins(scanned.slice(found[at - 1].index + found[at - 1].length, found[at].index));
+      const after = at < found.length - 1 && accepted[at + 1] && joins(scanned.slice(found[at].index + found[at].length, found[at + 1].index));
+      if (before || after) { accepted[at] = true; changed = true; }
+    }
+  }
+  return found.filter((_, at) => accepted[at]).map(({ index, length, caseNumber }) => ({ index, length, caseNumber }));
+}
+
 export function detectCitations(text: string): CitationMatch[] {
   const matches: CitationMatch[] = [];
   const segments = citationSegments(text);
@@ -942,6 +1033,11 @@ export function detectCitations(text: string): CitationMatch[] {
     const segment = segmentAt(segments, start);
     const parsed = parsePinpointBefore(text, start, segment.start) ?? parsePinpoint(text, end, segment.end);
     return { locator: parsed?.locator, pinpoint: parsed?.pinpoint };
+  };
+  const actPinpointFor = (start: number, end: number) => {
+    const segment = segmentAt(segments, start);
+    if (!parsePinpointBefore(text, start, segment.start) && provisionOfAnotherInstrument(text, end, segment.end)) return {};
+    return pinpointFor(start, end);
   };
 
   // Case numbers already accounted for by an ECLI citation's own "before text" scan
@@ -1013,8 +1109,13 @@ export function detectCitations(text: string): CitationMatch[] {
     previousEcliEnd = index + match[0].length;
     const groupStart = Math.max(before.toLowerCase().lastIndexOf('affaires'), before.toLowerCase().lastIndexOf('joined cases'));
     const scanned = before.slice(groupStart >= 0 ? groupStart : 0);
-    const caseMatches = [...scanned.matchAll(caseNumberPattern)];
-    for (const caseMatch of caseMatches) representedCaseNumbers.add(normaliseCaseNumber(caseMatch[0]));
+    const caseMatches: NumberAt[] = [...scanned.matchAll(caseNumberPattern)]
+      .map((caseMatch) => ({ index: caseMatch.index ?? 0, length: caseMatch[0].length, caseNumber: normaliseCaseNumber(caseMatch[0]) }));
+    if (match[1].toUpperCase() === 'C') {
+      caseMatches.push(...preGeneralCourtNumbers(scanned, Number(match[2])));
+      caseMatches.sort((a, b) => a.index - b.index);
+    }
+    for (const caseMatch of caseMatches) representedCaseNumbers.add(caseMatch.caseNumber);
     /*
      * Which of the case numbers before an ECLI is the one it belongs to.
      *
@@ -1035,12 +1136,11 @@ export function detectCitations(text: string): CitationMatch[] {
     let lead = caseMatches.length - 1;
     while (lead > 0) {
       const previous = caseMatches[lead - 1];
-      const gap = scanned.slice((previous.index ?? 0) + previous[0].length, caseMatches[lead].index ?? 0);
+      const gap = scanned.slice(previous.index + previous.length, caseMatches[lead].index);
       if (!separator.test(gap)) break;
       lead -= 1;
     }
-    const chosen = caseMatches[lead];
-    const caseNumber = chosen ? normaliseCaseNumber(chosen[0]) : undefined;
+    const caseNumber = caseMatches[lead]?.caseNumber;
     const { documentType, stated } = documentTypeNear(text, index, match[0].length);
     const ecli = `ECLI:${match[0].toUpperCase().replace(/^ECLI:/, '')}`;
     add({
@@ -1109,7 +1209,7 @@ export function detectCitations(text: string): CitationMatch[] {
       label: DIRECTIVE_WORDS.test(kind) ? 'EU directive' : REGULATION_WORDS.test(kind) ? 'EU regulation'
         : RECOMMENDATION_WORDS.test(kind) ? 'EU recommendation' : 'EU decision',
       value: match[0], index, source: 'eur-lex', celex: celexForAct(kind, parsed.year, parsed.number),
-      ...(namedInAnotherActsTitle(text, index, segmentAt(segments, index).start) ? {} : pinpointFor(index, index + match[0].length)),
+      ...(namedInAnotherActsTitle(text, index, segmentAt(segments, index).start) ? {} : actPinpointFor(index, index + match[0].length)),
     });
   }
 
@@ -1147,6 +1247,28 @@ export function detectCitations(text: string): CitationMatch[] {
     const section = parsed ? undefined : parseSectionPinpoint(own);
     add({
       label: `Commission ${family} case`, value: match[0], index, source: 'commission',
+      ...(caseName ? { caseName } : {}),
+      ...(section ? { locator: section } : { locator: parsed?.locator, pinpoint: parsed?.pinpoint }),
+    });
+  }
+
+  // The same antitrust files under the numbers they carried before the register adopted `AT.`:
+  // `COMP/C-3/37.990` (Intel, with the directorate that ran it), `COMP/38.784`, and before 1999
+  // `IV/35.337`. The register files a `COMP/` case under `AT.` and the same five digits —
+  // `COMP/C-3/37.990` is `AT.37990` — so that is carried as the case number, and `value` stays
+  // what the footnote wrote. A `IV/` number is recognised, so its directorate is not read as a
+  // court's case, but not translated: whether the register holds a case that old under `AT.`
+  // has not been checked, and a case page that is not there is worse than a search.
+  for (const match of text.matchAll(/\b(COMP|IV)\/(?:[A-H]-?\d\/)?(\d{2})\.(\d{3})(?![\d.])/g)) {
+    const index = match.index ?? 0;
+    const caseName = commissionCaseName(text.slice(index + match[0].length, index + match[0].length + COMMISSION_NAME_WINDOW));
+    const segment = segmentAt(segments, index);
+    const own = commissionCaseTail(text, index + match[0].length, segment.end);
+    const parsed = parsePinpointBefore(text, index, segment.start) ?? commissionCasePinpoint(own);
+    const section = parsed ? undefined : parseSectionPinpoint(own);
+    add({
+      label: 'Commission antitrust case', value: match[0], index, source: 'commission',
+      ...(match[1] === 'COMP' ? { caseNumber: `AT.${match[2]}${match[3]}` } : {}),
       ...(caseName ? { caseName } : {}),
       ...(section ? { locator: section } : { locator: parsed?.locator, pinpoint: parsed?.pinpoint }),
     });
@@ -1422,6 +1544,22 @@ function isUsableVariant(value: string): boolean {
  * company-name openers.
  */
 export function shortNameVariants(caseName: string): string[] {
+  // "Google and Alphabet v Commission (Google Android)": the nickname is how the document
+  // goes on to cite the case, so it is a short form in its own right, and the parties are
+  // varied without it — "Commission (Google" is not a name anyone writes.
+  const nicknamed = /^(.+?)\s*\(([^()]+)\)$/.exec(caseName);
+  if (nicknamed && !COURT_FORMATION.test(nicknamed[2])) {
+    const nickname = tidyCaseName(nicknamed[2]);
+    return [...new Set([caseName, ...shortNameVariants(nicknamed[1]), ...(isUsableVariant(nickname) ? [nickname] : [])])];
+  }
+  // French writes the parties either side of a slash, "Intel/Commission", where English
+  // writes "Intel v Commission"; "arrêt Intel, point 139" is the same short form as
+  // "Intel, paragraph 139", so the slash is read as the separator it is.
+  const french = FRENCH_PARTY_SEPARATOR.exec(caseName);
+  if (french && !PARTY_SEPARATOR.test(caseName)) {
+    const english = `${caseName.slice(0, french.index)} v ${caseName.slice(french.index + french[0].length)}`;
+    return [...new Set([caseName, ...shortNameVariants(english).filter((variant) => !PARTY_SEPARATOR.test(variant))])];
+  }
   const variants = new Set<string>();
   const applicantVariants = new Set<string>();
 
@@ -1513,6 +1651,35 @@ const IBID_REFERENCE = new RegExp(
 );
 
 /**
+ * How the Court and the Commission write `supra note 4`: "Intel v Commission, cited in
+ * footnote 2, paragraph 136", "cited above in footnote 17", and in French "précité à la note
+ * 15" or "cité à la note de bas de page 15". Every one ends on the footnote's number, which is
+ * what makes it a numbered reference rather than a name. `footnote 13 above` alone is not
+ * here: "As defined in footnote 13 above" points at a definition, not at an authority.
+ */
+const CITED_IN_NOTE = String.raw`(?:(?:cited|quoted|referred\s+to|mentioned)(?:\s+(?:above|supra|earlier|previously))?\s*,?\s*(?:in|at)\s+(?:foot)?notes?|pr[ée]cit[ée]e?s?\s*,?\s*(?:(?:[àa]|dans)\s+la\s+)?note(?:\s+de\s+bas\s+de\s+page)?|cit[ée]e?s?\s*,?\s*(?:[àa]|dans)\s+la\s+note(?:\s+de\s+bas\s+de\s+page)?)`;
+
+/**
+ * What can stand between a short form and its pinpoint to say the name was cited in full
+ * before: "Hoffmann-La Roche, cited above, paragraph 38", "Intel v Commission, cited in
+ * footnote 2, paragraph 136", "AKZO, footnote 17 above, paragraph 71", "arrêt Intel/Commission,
+ * précité, point 139", "Akzo Nobel, supra, para. 40". A name followed by one of these is being
+ * cited, whether or not a pinpoint follows. The footnote's number, where there is one, is
+ * captured, because it can settle which of two same-named cases is meant.
+ */
+const CITED_ELSEWHERE = new RegExp(
+  String.raw`^[\s,;:]*(?:(?:${CITED_IN_NOTE})\s*(\d{1,3})(?:\s+(?:above|ci-dessus))?|(?:foot)?notes?\s*(\d{1,3})\s+(?:above|ci-dessus)|(?:supra|above)\s*,?\s*(?:notes?|nn?\.?)\s*(\d{1,3})|(?:cited|quoted|referred\s+to|mentioned)\s+(?:above|supra|earlier|previously)|pr[ée]cit[ée]e?s?|supra|op\.\s*cit\.?|loc\.\s*cit\.?)(?![\p{L}\p{N}])`,
+  'iu',
+);
+
+function citedElsewhere(text: string, end: number, limit: number): { length: number; footnote?: number } | undefined {
+  const match = CITED_ELSEWHERE.exec(text.slice(end, Math.min(limit, end + 80)));
+  if (!match) return undefined;
+  const footnote = match[1] ?? match[2] ?? match[3];
+  return { length: match[0].length, ...(footnote ? { footnote: Number(footnote) } : {}) };
+}
+
+/**
  * `supra note 4` — a back-reference that names the footnote it points at instead of
  * relying on position. It is the safest back-reference there is: no adjacency to
  * judge, no convention to read, just a number the drafter wrote down. Unlike `Ibid.`
@@ -1521,7 +1688,7 @@ const IBID_REFERENCE = new RegExp(
  * is left alone keeps that case from being reported twice.
  */
 const SUPRA_NOTE_REFERENCE = new RegExp(
-  String.raw`\b(?:supra|above)\s*,?\s*(?:notes?|nn?\.?)\s*(\d{1,3})(?![\p{L}\p{N}])`,
+  String.raw`\b(?:(?:supra|above)\s*,?\s*(?:notes?|nn?\.?)|${CITED_IN_NOTE})\s*(\d{1,3})(?![\p{L}\p{N}])`,
   'iu',
 );
 
@@ -1536,7 +1703,7 @@ const SHORT_FORM_SPAN = new RegExp(
   // captured whole: without it the span started at the *defendant* ("Akzo Nobel v
   // Commission, para. 40" reported just "Commission"). Longer alternatives come first so
   // "van"/"von" are not consumed by "v".
-  String.raw`${NAME_BOUNDARY_BEFORE}([A-ZÀ-Þ][\p{L}\d'’&.-]*(?:\s+(?:and|of|the|de|du|des|la|le|von|van|vs\.?|v\.?|der|den|el|en|et|di|da|do|dos)?\s*[A-ZÀ-Þ][\p{L}\d'’&.-]*){0,5})(?=[\s,;:]*(?:at\s+)?${PINPOINT_KEYWORD}\s*\d)`,
+  String.raw`${NAME_BOUNDARY_BEFORE}([A-ZÀ-Þ][\p{L}\d'’&.-]*(?:\s+(?:and|of|the|de|du|des|la|le|von|van|vs\.?|v\.?|der|den|el|en|et|di|da|do|dos)?\s*[A-ZÀ-Þ][\p{L}\d'’&.-]*){0,5})(?=[\s,;:]*(?:(?:cited|quoted|referred\s+to|mentioned)\s+(?:above|supra|earlier|previously)[\s,;:]*|pr[ée]cit[ée]e?s?[\s,;:]*|supra[\s,;:]*|op\.\s*cit\.?[\s,;:]*)?(?:at\s+)?${PINPOINT_KEYWORD}\s*\d)`,
   'gu',
 );
 
@@ -1708,7 +1875,7 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[])
       }
     }
 
-    const shorthand = resolveShortForms(text, segments, hardMatches, registry, declared);
+    const shorthand = resolveShortForms(text, segments, hardMatches, registry, declared, history, position + 1);
     // Registering the same key for the same authority again adds nothing — resolution
     // groups by `sameAuthority` and takes the latest entry within a group — but a document
     // citing one case in full fifty times used to push its whole variant set fifty times,
@@ -1795,10 +1962,22 @@ function resolveShortForms(
   hardMatches: CitationMatch[],
   registry: RegistryEntry[],
   declared: Array<{ start: number; end: number }>,
+  history: readonly EstablishedAuthority[][] = [],
+  footnoteNumber = Number.POSITIVE_INFINITY,
 ): CitationMatch[] {
+  // A Commission case's name belongs to it, not to whatever else carries the name: in
+  // "Case AT.37990 – Intel, recital 916" the name is the decision's, and read as a short form
+  // it was the Court's Intel judgment, resolved and opened at a paragraph 916 it does not have.
+  const commissionNames = hardMatches.flatMap((citation) => {
+    if (citation.source !== 'commission' || !citation.caseName) return [];
+    const after = citation.index + citation.value.length;
+    const start = text.indexOf(citation.caseName, after);
+    return start !== -1 && start - after <= COMMISSION_NAME_WINDOW ? [{ start: citation.index, end: start + citation.caseName.length }] : [];
+  });
   const isSpokenFor = (index: number, length: number) =>
     hardMatches.some((citation) => index < citation.index + citation.value.length && citation.index < index + length)
-    || declared.some((range) => index < range.end && range.start < index + length);
+    || declared.some((range) => index < range.end && range.start < index + length)
+    || commissionNames.some((range) => index < range.end && range.start < index + length);
 
   const candidateSpans: ShortFormSpan[] = [];
   for (const key of new Set(registry.map((entry) => entry.key))) {
@@ -1817,8 +1996,10 @@ function resolveShortForms(
     const spanEnd = span.index + span.value.length;
 
     // An inferred short form has to be carrying a pinpoint to count as a citation;
-    // a declared one is the drafter's own statement and needs no corroboration.
-    if (!explicit.length && !hasAdjacentPinpoint(text, spanEnd, segment.end)) continue;
+    // a declared one is the drafter's own statement and needs no corroboration, and nor does
+    // a name the text itself says was cited before ("Intel v Commission, cited in footnote 2").
+    const cited = citedElsewhere(text, spanEnd, segment.end);
+    if (!explicit.length && !cited && !hasAdjacentPinpoint(text, spanEnd, segment.end)) continue;
 
     // A declared short form is the drafter stating, in the document, what the term means
     // from that point on, so the nearest preceding declaration simply wins — a document
@@ -1847,12 +2028,20 @@ function resolveShortForms(
     // same authority.
     if (authorities.some((authority) => hardMatches.some((citation) => sameAuthority(toRegistered(citation), authority.citation)))) continue;
 
-    const parsed = parsePinpoint(text, spanEnd, segment.end);
-    if (authorities.length === 1) {
-      const [authority] = authorities;
+    const parsed = parsePinpoint(text, spanEnd + (cited?.length ?? 0), segment.end);
+    // "Intel v Commission, cited in footnote 2" where the document cites two Intels: the
+    // footnote named is what the drafter used to say which, so it settles it — provided
+    // that footnote is above this one and cites exactly one of them.
+    const note = cited?.footnote;
+    const inNote = note !== undefined && note >= 1 && note < footnoteNumber && authorities.length > 1
+      ? authorities.filter((authority) => (history[note - 1] ?? []).some((established) => sameAuthority(established.citation, authority.citation)))
+      : [];
+    if (authorities.length === 1 || inNote.length === 1) {
+      const [authority] = authorities.length === 1 ? authorities : inNote;
       resolved.push({
         ...authority.citation, value: span.value, index: span.index, status: 'resolved',
-        resolutionMethod: authority.method, locator: parsed?.locator, pinpoint: parsed?.pinpoint,
+        resolutionMethod: authorities.length === 1 ? authority.method : 'numbered_footnote',
+        locator: parsed?.locator, pinpoint: parsed?.pinpoint,
       });
     } else {
       resolved.push(ambiguous(span, authorities.map((authority) => authority.citation), parsed));
