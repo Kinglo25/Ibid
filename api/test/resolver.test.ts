@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCommissionCaseIndex, createEuSourceResolver, createApiHealthCheck, createMemoryDocumentStore, documentTypeOf, type EuLookup, type ResolverOptions } from '../src/index.ts';
+import { buildCommissionCaseIndex, createEuSourceResolver, createApiHealthCheck, createMemoryDocumentStore, decisionTextKey, documentTypeOf, type EuLookup, type ResolverOptions } from '../src/index.ts';
 
 type Call = { url: string; init: RequestInit };
 
@@ -766,7 +766,7 @@ describe('the passage of a Commission decision', () => {
     const store = createMemoryDocumentStore();
     const urls = [URL_2009, URL_2023];
     for (const [at, text] of texts.entries()) {
-      await store.set(`pdf:${urls[at]}`, { html: text, etag: '"decision"', fetchedAt: 1_000 });
+      await store.set(decisionTextKey(urls[at]), { html: text, etag: '"decision"', fetchedAt: 1_000 });
     }
     return store;
   }
@@ -784,6 +784,21 @@ describe('the passage of a Commission decision', () => {
     assert.equal(preview.url, URL_2009, 'the link opens what the passage was cut from');
     assert.ok(preview.verifiedAt, 'a passage confirmed against the publisher says when');
     assert.equal(preview.confirmation, undefined, 'and confirmed is the default, so nothing is pending');
+  });
+
+  test('text an older extraction left in the cache is read again, not cut from', async () => {
+    // Outokumpu/Inoxum recital (510) kept showing `EN 101 EN` from the disk cache after the
+    // extraction learned to drop the page mark.
+    const documentStore = createMemoryDocumentStore();
+    await documentStore.set(`pdf:${URL_2009}`, { html: DECISION_TEXT, etag: '"decision"', fetchedAt: 1_000 });
+    const { fetcher, calls } = stubFetcher([new Response(null, { status: 503 })]);
+    const { resolver } = makeResolver({ fetcher, documentStore, commissionCases: loaderFor([attachment(URL_2009, '2009-05-13')]) });
+
+    const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 1000 } });
+
+    assert.equal(calls.length, 1);
+    assert.equal(new Headers(calls[0].init.headers).get('if-none-match'), null, 'the old text is not revalidated as if current');
+    assert.notEqual(preview.passage, 'cited', 'and no passage is cut from it');
   });
 
   test('asked to confirm later, a decision already held answers without touching the wire', async () => {
@@ -918,6 +933,87 @@ describe('the passage of a Commission decision', () => {
 
     assert.equal(previews.length, 2);
     for (const preview of previews) assert.equal(preview.passage, undefined, 'neither is presented as the passage');
+  });
+
+  describe('a decision about an earlier decision in the case', () => {
+    // Hoffmann-La Roche/Boehringer Mannheim (M.950), cited at paragraph 13: the register
+    // holds only the 2011 decision waiving the commitments — its recital (1) opens "By
+    // Decision 98/526/EC of 4 February 1998 in Case No IV/M.950" — and not the 1998 decision
+    // itself. Its recital (13) was shown as the paragraph cited: the right number of the
+    // wrong decision.
+    const WAIVER = [
+      '(1) By Decision 98/526/EC of 4 February 1998 in Case No IV/M.950 - Hoffmann La Roche/Boehringer Mannheim the Commission declared the concentration compatible.',
+      ...Array.from({ length: 12 }, (_, at) => `(${at + 2}) The waiver of the commitments is considered in point ${at + 2}.`),
+    ].join('\n');
+
+    test('is not given as the passage cited', async () => {
+      const documentStore = await storeHolding(WAIVER);
+      const { fetcher } = stubFetcher([new Response(null, { status: 304 })]);
+      const { resolver } = makeResolver({ fetcher, documentStore, commissionCases: loaderFor([attachment(URL_2009, '2011-05-04')]) });
+
+      const [preview] = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 13 } });
+
+      assert.equal(preview.passage, undefined, 'a link, not a passage');
+      assert.equal(preview.url, URL_2009);
+    });
+
+    test('and still stands against another decision carrying the same number', async () => {
+      // Excluding it would hand the answer to the other decision — wrong whenever the
+      // later one is the decision cited, as a re-adopted decision can be.
+      const main = Array.from({ length: 30 }, (_, at) => `(${at + 1}) The concentration is assessed in point ${at + 1}.`).join('\n');
+      const documentStore = await storeHolding(main, WAIVER);
+      const { fetcher } = stubFetcher([new Response(null, { status: 304 }), new Response(null, { status: 304 })]);
+      const { resolver } = makeResolver({
+        fetcher, documentStore,
+        commissionCases: loaderFor([attachment(URL_2009, '1998-02-04'), attachment(URL_2023, '2011-05-04')]),
+      });
+
+      const previews = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 13 } });
+
+      assert.equal(previews.length, 2);
+      for (const preview of previews) assert.equal(preview.passage, undefined);
+    });
+  });
+
+  describe('one decision published in several languages', () => {
+    // Lufthansa/Austrian Airlines (M.5440), cited at recital 85: the register lists the
+    // decision in English, French and German — the French one with no language at all — and
+    // all three carry a recital 85, numbered 1 to 406 alike. Treated as three decisions, the
+    // citation was answered with three links and no passage.
+    const numbered = (count: number, recital: (at: number) => string) =>
+      Array.from({ length: count }, (_, at) => `(${at + 1}) ${recital(at + 1)}`).join('\n');
+    const ENGLISH = numbered(406, (at) => `The Commission considers that the effects of the transaction are set out in point ${at}.`);
+    const FRENCH = numbered(406, (at) => `La Commission considère que les effets de la concentration sont exposés au considérant ${at}.`);
+
+    test('are one decision, shown in English', async () => {
+      const documentStore = await storeHolding(FRENCH, ENGLISH);
+      const { fetcher } = stubFetcher([new Response(null, { status: 304 }), new Response(null, { status: 304 })]);
+      const { resolver } = makeResolver({
+        fetcher, documentStore,
+        commissionCases: loaderFor([attachment(URL_2009, '2010-02-11'), attachment(URL_2023, '2009-08-28')]),
+      });
+
+      const previews = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 85 } });
+
+      assert.equal(previews.length, 1);
+      assert.equal(previews[0].passage, 'cited');
+      assert.equal(previews[0].url, URL_2023, 'the English version');
+      assert.match(previews[0].excerpt, /^\(85\) The Commission considers/);
+    });
+
+    test('numbered differently, they are two decisions and neither is picked', async () => {
+      const documentStore = await storeHolding(numbered(120, () => 'La Commission considère que la concentration est compatible.'), ENGLISH);
+      const { fetcher } = stubFetcher([new Response(null, { status: 304 }), new Response(null, { status: 304 })]);
+      const { resolver } = makeResolver({
+        fetcher, documentStore,
+        commissionCases: loaderFor([attachment(URL_2009, '2010-02-11'), attachment(URL_2023, '2009-08-28')]),
+      });
+
+      const previews = await resolver.resolve({ source: 'commission', value: 'AT.37990', locator: { kind: 'point', start: 85 } });
+
+      assert.equal(previews.length, 2);
+      for (const preview of previews) assert.equal(preview.passage, undefined);
+    });
   });
 
   test('a recital no decision in the case carries leaves both as links', async () => {

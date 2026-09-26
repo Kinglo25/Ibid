@@ -1,13 +1,22 @@
 import { createMemoryDocumentStore, type DocumentStore, type StoredDocument } from './document-store.ts';
 
 export { createFileDocumentStore, createMemoryDocumentStore, defaultCacheDirectory } from './document-store.ts';
+
+/**
+ * Where a decision's extracted text is held. Versioned by the extraction, because what is
+ * held is the text after `bodyTextOf` filtered it, not the PDF: a decision read before the
+ * extraction improved would otherwise keep being cut from the old text — `EN 101 EN` in the
+ * middle of Outokumpu/Inoxum recital (510) was still served from the disk cache after the
+ * page mark was dropped. Raise the version whenever the extraction changes what it keeps.
+ */
+export const decisionTextKey = (url: string) => `pdf:2:${url}`;
 export type { DocumentStore, StoredDocument } from './document-store.ts';
 
 export { createStaticFiles, contentTypeFor, resolveWithinRoot } from './static-files.ts';
 export type { StaticAsset } from './static-files.ts';
 
 import { identifyCommissionCase, type CommissionCaseIdentity, type CommissionCaseIndexLoader, type CommissionDecision } from './commission-cases.ts';
-import { boundedPassage, extractPdfText, locateRecitals, locateSections } from './pdf-text.ts';
+import { boundedPassage, extractPdfText, locateRecitals, locateSections, numberingLength, refersToEarlierDecision } from './pdf-text.ts';
 import { httpsOnly } from './https-only.ts';
 
 export { buildCommissionCaseIndex, createCommissionCaseIndexLoader, identifyCommissionCase, COMMISSION_CASE_DATASETS } from './commission-cases.ts';
@@ -1184,6 +1193,21 @@ const COMMISSION_CASE_NUMBER = /^(?:AT|SA|M)\.\d{3,6}$/i;
  */
 const MAX_DECISION_CANDIDATES = 4;
 
+/** Below this many recitals in sequence, two decisions' numbering matching says nothing. */
+const SAME_DECISION_FLOOR = 20;
+
+/**
+ * Whether a passage is English prose, by English's commonest words. Measured: 12 per cent of
+ * Lufthansa/Austrian Airlines recital (85) in English and 25 per cent of Ryanair/Aer Lingus
+ * point 39, and none at all of the French and German texts of that recital (85) — French and
+ * German have none of these as words, `in` aside, which is left out for that reason.
+ */
+function readsAsEnglish(passage: string): boolean {
+  const words = passage.match(/\p{L}+/gu) ?? [];
+  const common = words.filter((word) => /^(?:the|of|and|that|which|is|are|to)$/i.test(word)).length;
+  return words.length > 0 && common / words.length >= 0.06;
+}
+
 const PLAIN_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -1892,7 +1916,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
    * the wire the confirmation waited for.
    */
   async function loadDecisionText(url: string, confirm: ResolveOptions['confirm']): Promise<{ text: string; readable: boolean; verifiedAt: number; pending?: true } | undefined> {
-    const key = `pdf:${url}`;
+    const key = decisionTextKey(url);
     const stored = await documentStore.get(key);
     const held = stored
       ? { text: stored.html, readable: stored.html.length > 0, verifiedAt: stored.fetchedAt }
@@ -1931,6 +1955,30 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
         clearTimeout(timer);
       }
     });
+  }
+
+  /**
+   * Of several decisions carrying the cited recital, the English one — where they are one
+   * decision in several languages rather than several decisions.
+   *
+   * The register lists each language version of a decision as a decision of its own, dated
+   * when it was put online and sometimes with no language at all: Lufthansa/Austrian Airlines
+   * (M.5440) is an English text of 28 August 2009 and a French one "of 11 February 2010" with
+   * no language given. They are recognised by their shape rather than their labels: the same
+   * numbering, in sequence, to the same last recital — 406 in all three of that decision's
+   * texts — and at least `SAME_DECISION_FLOOR` of it, so that two short decisions do not
+   * match by coincidence. Anything short of that stays an ambiguity, and the reviewer is
+   * shown every decision rather than handed one.
+   */
+  function oneDecisionInEnglish<T extends { text: string; passage?: string }>(carrying: T[]): T | undefined {
+    const english = carrying.filter((candidate) => readsAsEnglish(candidate.passage ?? ''));
+    return english.length === 1 && sameNumbering(carrying) ? english[0] : undefined;
+  }
+
+  /** Whether these texts share one numbering, far enough to say they are one decision. */
+  function sameNumbering(texts: ReadonlyArray<{ text: string }>): boolean {
+    const length = numberingLength(texts[0].text);
+    return length >= SAME_DECISION_FLOOR && texts.every((candidate) => numberingLength(candidate.text) === length);
   }
 
   /**
@@ -2027,7 +2075,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
         return { excerpt: located.excerpt, unlocated: located.unlocated.map(runLabel) };
       };
 
-      const read: Array<{ decision: CommissionDecision; readable: boolean; verifiedAt: number; text: string; passage?: string; unlocated: string[] }> = [];
+      const read: Array<{ decision: CommissionDecision; readable: boolean; verifiedAt: number; text: string; passage?: string; unlocated: string[]; aboutAnother: boolean }> = [];
       for (const decision of decisions) {
         const loaded = await loadDecisionText(decision.url, confirm);
         if (!loaded) continue;
@@ -2040,10 +2088,14 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
           text: loaded.text,
           passage: located?.excerpt,
           unlocated: located ? located.unlocated : wanted,
+          aboutAnother: loaded.readable && refersToEarlierDecision(loaded.text),
         });
         // Two candidates carrying every cited recital is an ambiguity, and reading the rest
         // cannot resolve it — so nothing is gained by downloading them.
-        if (read.filter((candidate) => candidate.passage && !candidate.unlocated.length).length > 1) break;
+        // Unless those carrying it so far are one decision in several languages, when the
+        // English text may be among the rest.
+        const complete = read.filter((candidate) => candidate.passage && !candidate.unlocated.length);
+        if (complete.length > 1 && !sameNumbering(complete)) break;
       }
 
       // Where the citation names several recitals, the decisions carrying the most of them. A
@@ -2061,8 +2113,12 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
         verifiedAt: new Date(candidate.verifiedAt).toISOString(),
       });
 
-      if (carrying.length === 1) {
-        const [chosen] = carrying;
+      // A decision about an earlier one in the case is never the answer by itself: the
+      // earlier decision, numbered alike, may be the one cited and missing from the register
+      // (see `refersToEarlierDecision`). It still counts against any other decision carrying
+      // the number, since it may equally be the one cited.
+      const chosen = carrying.length === 1 ? carrying[0] : oneDecisionInEnglish(carrying);
+      if (chosen && !chosen.aboutAnother) {
         return marked([{
           ...previewOf(chosen), excerpt: chosen.passage as string, passage: 'cited' as const,
           ...(chosen.unlocated.length ? { unlocated: chosen.unlocated } : {}),

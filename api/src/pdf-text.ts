@@ -136,8 +136,15 @@ export function bodyTextOf(lines: ReadonlyArray<{ text: string; size: number }>)
   const counts = new Map<number, number>();
   for (const line of lines) counts.set(line.size, (counts.get(line.size) ?? 0) + 1);
   const body = [...counts].sort((a, b) => b[1] - a[1])[0][0];
-  return lines.filter((line) => line.size >= body).map((line) => line.text).join('\n');
+  return lines.filter((line) => line.size >= body && !PAGE_MARK.test(line.text)).map((line) => line.text).join('\n');
 }
+
+/**
+ * The Official Journal page mark, `EN 101 EN`: the language, the page number, the language.
+ * Older decisions set it in the body size, so size alone does not drop it, and a recital that
+ * crossed the page was shown with the mark in the middle of its sentence.
+ */
+const PAGE_MARK = /^([A-Z]{2}) \d{1,4} \1$/;
 
 /**
  * Rebuilds the document's lines from the position of every piece of text on the page.
@@ -265,10 +272,7 @@ export function locateRecitals(
   options: { maxLength?: number } = {},
 ): { excerpt?: string; unlocated: RecitalRun[] } {
   const maxLength = options.maxLength ?? 20_000;
-  const anchors: Array<{ number: number; index: number }> = [];
-  for (const match of text.matchAll(RECITAL_ANCHOR)) {
-    anchors.push({ number: Number(match[1]), index: match.index });
-  }
+  const anchors = anchorsOf(text);
 
   const passages: string[] = [];
   const unlocated: RecitalRun[] = [];
@@ -284,11 +288,143 @@ export function locateRecitals(
     const end = anchors.find((anchor) => anchor.index > start.index && anchor.number > run.to);
     const passage = text.slice(start.index, end ? end.index : undefined);
     const closing = END_OF_RECITALS.exec(passage.slice(1));
-    passages.push((closing ? passage.slice(0, closing.index + 1) : passage).trim());
+    passages.push(withoutTrailingHeadings((closing ? passage.slice(0, closing.index + 1) : passage).trim()));
   }
   return passages.length
     ? { excerpt: boundedPassage(passages.join('\n\n…\n\n'), maxLength).text, unlocated }
     : { unlocated };
+}
+
+/**
+ * A point's number the way older decisions set it, `70. In the pharmaceuticals industry`.
+ * Glaxo Wellcome/SmithKline Beecham (M.1846, 2000) numbers its 200-odd points so and has no
+ * `(70)` anywhere; before this the pane showed its opening under a citation to points 70-72.
+ */
+const POINT_ANCHOR = /^[ \t]*(\d{1,4})\.[ \t]+(?=\S)/gm;
+
+/**
+ * The anchors a decision numbers its recitals by: `(70)`, or the older `70.`.
+ *
+ * Counting them does not decide it. Ryanair/Aer Lingus (M.4439, 2007) numbers 1,240 points
+ * `39.` and has `(1)`, `(2)` lists inside them; Bayer/Monsanto's decision amending the
+ * commitments (M.8084, 2018) numbers 25 recitals `(1)` and annexes 140 clauses numbered `1.`,
+ * and counting read the annex as the decision. What decides it is where the numberings lie:
+ * over the stretch where `(1)`, `(2)` … run in sequence, Ryanair has 296 points and 14 list
+ * items, Bayer/Monsanto one heading and 25 recitals. The older numbering is taken where it
+ * outnumbers the `(n)` sequence on the `(n)` sequence's own ground, or where every point comes
+ * before the `(n)` sequence — a list inside the last point — or where there is no `(n)`
+ * sequence at all and the points begin in the first quarter of the text, as a decision's do
+ * and an annex's do not.
+ */
+function anchorsOf(text: string): Array<{ number: number; index: number }> {
+  const anchors: Array<{ number: number; index: number }> = [];
+  for (const match of text.matchAll(RECITAL_ANCHOR)) {
+    anchors.push({ number: Number(match[1]), index: match.index });
+  }
+  const points = pointsInSequence(text);
+  if (!points.length) return anchors;
+  const listed = inSequence(anchors);
+  if (!listed.length) return points[0].index <= text.length / 4 ? points : anchors;
+  const from = listed[0].index;
+  const to = listed[listed.length - 1].index;
+  const within = points.filter((point) => point.index > from && point.index < to).length;
+  if (within > listed.length) return points;
+  // A `(n)` list after every point is a list inside the last one. Anywhere else, the `(n)`
+  // numbering stands: at worst the passage is reported not found, where reading the other
+  // way could show a clause of an annex as the recital cited.
+  return points[points.length - 1].index < from && points.length > listed.length ? points : anchors;
+}
+
+/**
+ * How far a decision's numbering runs in sequence, 1, 2, 3 … — the shape of the decision
+ * rather than its words, which is what its language versions share. The English, French and
+ * German texts of Lufthansa/Austrian Airlines (M.5440) all run 1 to 406.
+ */
+export function numberingLength(text: string): number {
+  let last = 0;
+  for (const anchor of anchorsOf(text)) if (anchor.number === last + 1) last = anchor.number;
+  return last;
+}
+
+/**
+ * The older numbering's anchors, only as they run in sequence: 1, 2, 3 … Unlike `(70)`, the
+ * shape `70.` is also a heading's (`1. Pharmaceutic specialities`, set between points 10 and
+ * 11) and the start of a wrapped line (`2000. The pipeline`), and the sequence is what tells
+ * them apart: a number is a point only as the one after the last point. A heading numbered
+ * the same as the point that follows it — `2.` then `2.` — gives way to that point, so the
+ * passage opens at the point and not at the heading above it.
+ */
+function pointsInSequence(text: string): Array<{ number: number; index: number }> {
+  const points: Array<{ number: number; index: number }> = [];
+  for (const match of text.matchAll(POINT_ANCHOR)) {
+    // A table of contents' entry, by its dot leaders: `1. Introduction ........ 3`.
+    const line = text.slice(match.index, text.indexOf('\n', match.index) >>> 0 || undefined);
+    if (/\.{4,}|…{2,}/.test(line)) continue;
+    points.push({ number: Number(match[1]), index: match.index });
+  }
+  return inSequence(points);
+}
+
+/**
+ * Anchors as they run in sequence, 1, 2, 3 …: a number is taken only as the one after the
+ * last taken, and one repeating the last taken replaces it, so a heading numbered like the
+ * point after it gives way to that point.
+ */
+function inSequence(anchors: ReadonlyArray<{ number: number; index: number }>): Array<{ number: number; index: number }> {
+  const run: Array<{ number: number; index: number }> = [];
+  for (const anchor of anchors) {
+    const last = run[run.length - 1];
+    if (anchor.number === (last ? last.number + 1 : 1)) run.push(anchor);
+    else if (last && anchor.number === last.number) run[run.length - 1] = anchor;
+  }
+  return run;
+}
+
+/**
+ * A numbered heading's line: `4.2.4.5. Military fixed-wing trainers`, `(A.ii) EEA-specific
+ * barriers`, `v) Conclusion` — or a bare number, the footnote marker Novelis/Aleris (M.9076)
+ * sets in the body size and recital (503) was shown ending with. Lower-case lettered points — `(a)`, `(b)` — are a recital's own
+ * list and never match, and a line that ends as a sentence does is not taken for a heading.
+ */
+const HEADING_LINE = /^\d{1,4}$|^(?:\d+(?:\.\d+)*\.?|\([A-Z](?:\.[ivxlc]+)?\)|\([ivxlc]+\)|[ivxlc]+\)|[a-z](?:\.\d+)*\)|[A-Z]\.)[ \t]+\S[^\n]{0,150}$/;
+
+/**
+ * A recital's passage without the heading of the section after it. The slice runs up to the
+ * next recital's number, and where a section begins in between, its heading was shown as the
+ * last line of the recital cited — measured live on Siemens/Alstom, Parker/Meggitt,
+ * EssilorLuxottica/GrandVision and Outokumpu/Inoxum. Only lines after the recital's last
+ * complete sentence go, so a line that merely wraps — `2019 levels` — stays the recital's.
+ */
+function withoutTrailingHeadings(passage: string): string {
+  const lines = passage.split('\n');
+  // The trailing lines that could be headings: short, and not ending as a sentence or a
+  // list item does. A numbered heading's title can wrap onto an unnumbered line —
+  // `7. VERTICAL RELATIONSHIPS` then `Analytical framework` — so the cut is at the first
+  // numbered line among them, never at an unnumbered one alone.
+  let start = lines.length;
+  while (start > 1 && lines.length - start < 4 && lines[start - 1].length <= 150 && !/(?:[.;:,]|\b(?:and|or|et|ou))$/.test(lines[start - 1])) start -= 1;
+  let cut = start;
+  while (cut < lines.length && !HEADING_LINE.test(lines[cut])) cut += 1;
+  // What stays must end as a sentence does. A list's last item ending unpunctuated is the
+  // recital's, and the line before it ends `; and`, which is not a sentence's end.
+  if (cut === lines.length || cut === 0 || !/[.!?]["”’)\]]?$/.test(lines[cut - 1])) return passage;
+  return lines.slice(0, cut).join('\n');
+}
+
+/**
+ * Whether a decision is about an earlier decision in the same case: its first recital opens
+ * "By Decision 98/526/EC of 4 February 1998 in Case No IV/M.950…", "By decision of 21.3.2018
+ * (the "Decision")…", or the same in French or German. A waiver of commitments, an approval
+ * of a purchaser, a re-adoption. Its recitals are numbered like the decision it is about, so
+ * a pinpoint meant for the one is found in the other. Measured on the 50 distinct decisions
+ * read so far: 14 open so, every one of them a decision about an earlier one — commitments
+ * modified, a purchaser approved, commitments waived — and the first recital of none of the
+ * other 36 refers to an earlier decision.
+ */
+export function refersToEarlierDecision(text: string): boolean {
+  const first = sliceRecitals(text, [{ from: 1, to: 1 }]);
+  if (!first) return false;
+  return /^\(?1[).][ \t]*(?:(?:By|In)\s+(?:(?:its|a|the|Commission)\s+)*[Dd]ecision\b|Par\s+(?:(?:sa|la)\s+)?d[ée]cision\b|Mit\s+(?:der|seiner)\s+Entscheidung\b)/.test(first);
 }
 
 /** `locateRecitals`, for a caller that needs only the text. */

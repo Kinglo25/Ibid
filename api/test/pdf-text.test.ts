@@ -93,6 +93,20 @@ describe('the decision’s text, and the apparatus around it', () => {
   test('an empty document is empty, not a crash', () => {
     assert.equal(bodyTextOf([]), '');
   });
+
+  test('the page mark a decision prints in the body size is not part of the recital', () => {
+    // Outokumpu/Inoxum (M.6471) sets `EN 101 EN` at the foot of each page in the body size,
+    // and recital (510) was shown ending "…from the merged entity. EN 101 EN".
+    const pages = [
+      { text: '(510) Customers are particularly vulnerable to a price increase from', size: 12 },
+      { text: 'EN 101 EN', size: 12 },
+      { text: 'the merged entity.', size: 12 },
+      { text: '(511) The next recital.', size: 12 },
+    ];
+    const text = bodyTextOf(pages);
+    assert.ok(!text.includes('EN 101 EN'));
+    assert.match(text, /increase from\nthe merged entity\./);
+  });
 });
 
 describe('the recital a Commission citation names', () => {
@@ -183,6 +197,96 @@ describe('the recital a Commission citation names', () => {
     assert.ok(passage!.includes('lasted until 2019'));
     assert.ok(!passage!.includes('HAS ADOPTED'));
     assert.ok(!passage!.includes('infringed Article 102'));
+  });
+
+  test('the next section\'s heading is not shown as the end of the recital cited', () => {
+    // Measured live: Siemens/Alstom (463)-(466) ended "(A.ii) EEA-specific barriers to entry",
+    // Parker/Meggitt (291) "4.2.4.5. Military fixed-wing trainers", EssilorLuxottica/GrandVision
+    // (337) "8.2.3. vGUPPIu for rival retailers", Outokumpu/Inoxum (510) "v) Conclusion".
+    for (const heading of ['(A.ii) EEA-specific barriers to entry', '4.2.4.5. Military fixed-wing trainers', '8.2.3. vGUPPIu for rival retailers', 'v) Conclusion', '(iv) Conclusion', '5.3.2 Horizontal effects\n5.3.2.1 Introduction', 'a) Asthma/COPD\na.1) Asthma/COPD conditions', '7. VERTICAL RELATIONSHIPS\nAnalytical framework', '83']) {
+      const text = `(336) Before.\n(337) The rivals would face higher prices from the\nmerged entity.\n${heading}\n(338) After.`;
+      assert.equal(sliceRecitals(text, [{ from: 337, to: 337 }]), '(337) The rivals would face higher prices from the\nmerged entity.', heading);
+    }
+  });
+
+  describe('a decision numbered the older way, `70.` rather than `(70)`', () => {
+    // Glaxo Wellcome/SmithKline Beecham (M.1846, 2000), cited at points 70-72: before this the
+    // pane showed the decision's opening, labelled as not located, when the points were there.
+    const old = [
+      '1. On 20 March 2000, the Commission received a notification.',
+      '2. In the course of the proceedings, the parties submitted undertakings.',
+      'II. RELEVANT MARKETS',
+      '1. Pharmaceutic specialities',
+      '3. SB and GW both are active in human pharmaceuticals.',
+      ...Array.from({ length: 65 }, (_, at) => `${at + 4}. A point about the market.`),
+      '69. Given that the market investigation has not suggested otherwise.',
+      '70. In the pharmaceuticals industry, a full assessment requires',
+      'an examination of products under development.',
+      '71. The potential for these products to enter into competition.',
+      '72. In so far as research and development must be assessed,',
+      '2000. The pipeline products are considered.',
+      'B. Geographic market',
+      '73. The Commission has previously defined the geographic markets.',
+    ].join('\n');
+
+    test('finds the points cited, in sequence', () => {
+      assert.equal(
+        sliceRecitals(old, [{ from: 70, to: 72 }]),
+        '70. In the pharmaceuticals industry, a full assessment requires\nan examination of products under development.\n71. The potential for these products to enter into competition.\n72. In so far as research and development must be assessed,\n2000. The pipeline products are considered.',
+      );
+    });
+
+    test('a heading numbered like a point is not the point', () => {
+      assert.equal(sliceRecitals(old, [{ from: 1, to: 1 }]), '1. On 20 March 2000, the Commission received a notification.');
+      assert.equal(sliceRecitals(old, [{ from: 3, to: 3 }]), '3. SB and GW both are active in human pharmaceuticals.');
+    });
+
+    test('a number out of sequence is not a point', () => {
+      assert.equal(sliceRecitals(old, [{ from: 2000, to: 2000 }]), undefined);
+    });
+
+    test('a few parenthesised list items do not hide the older numbering', () => {
+      // Ryanair/Aer Lingus (M.4439, 2007): 1,958 points numbered `39.`, and 43 lines opening
+      // `(1)`, `(2)` — lists inside points. Point 39 was not found.
+      const listed = `${old}\n(1) a list item inside a point;\n(2) another one.\n(3) and a third.`;
+      assert.match(sliceRecitals(listed, [{ from: 70, to: 70 }])!, /^70\. In the pharmaceuticals industry/);
+    });
+
+    test('an annex numbered `1.` does not take over a decision numbered `(1)`', () => {
+      // Bayer/Monsanto's decision amending the commitments (M.8084, 11 April 2018): recitals
+      // (1) to (25), then the commitments annexed, numbered 1. to 140. Counting alone chose the
+      // annex, and recital 10 would have been shown as clause 10 of the commitments.
+      const recitals = Array.from({ length: 25 }, (_, at) => `(${at + 1}) Recital ${at + 1} of the decision.`);
+      recitals.splice(12, 0, '2. ASSESSMENT');
+      const annex = Array.from({ length: 140 }, (_, at) => `${at + 1}. Clause ${at + 1} of the commitments.`);
+      for (const opening of [['1. FACTS AND PROCEDURE'], []]) {
+        const text = [...opening, ...recitals, 'HAS ADOPTED THIS DECISION:', 'ANNEX', ...annex].join('\n');
+        assert.equal(sliceRecitals(text, [{ from: 10, to: 10 }]), '(10) Recital 10 of the decision.');
+      }
+      const unheaded = [...recitals.filter((line) => line.startsWith('(')), 'HAS ADOPTED THIS DECISION:', 'ANNEX', ...annex].join('\n');
+      assert.equal(sliceRecitals(unheaded, [{ from: 10, to: 10 }]), '(10) Recital 10 of the decision.');
+    });
+
+    test('a table of contents does not start the older numbering', () => {
+      const contents = ['1. Introduction ........ 3', '2. The parties ........ 4', '3. Assessment ........ 9'];
+      const text = [...contents, '1. Introduction', ...Array.from({ length: 40 }, (_, at) => `${at + 1}. Point ${at + 1} of the decision.`)].join('\n');
+      assert.equal(sliceRecitals(text, [{ from: 2, to: 2 }]), '2. Point 2 of the decision.');
+      assert.equal(sliceRecitals(text, [{ from: 5, to: 5 }]), '5. Point 5 of the decision.');
+    });
+
+    test('a decision that numbers its recitals `(1)` is not read the older way', () => {
+      const modern = '(1) A recital.\n(2) Another.\n(3) A third.\n4. A list item in a recital.\n(5) The fifth.';
+      assert.equal(sliceRecitals(modern, [{ from: 4, to: 4 }]), undefined);
+    });
+  });
+
+  test('a recital\'s own closing lines are kept, headings aside', () => {
+    const list = '(337) The Commission considers that:\n(a) prices would rise; and\n(b) output would fall.\n(338) After.';
+    assert.equal(sliceRecitals(list, [{ from: 337, to: 337 }]), '(337) The Commission considers that:\n(a) prices would rise; and\n(b) output would fall.');
+    const items = '(337) The Commission considers two points.\n(i) prices would rise; and\n(ii) output would fall\n(338) After.';
+    assert.equal(sliceRecitals(items, [{ from: 337, to: 337 }]), '(337) The Commission considers two points.\n(i) prices would rise; and\n(ii) output would fall', 'a list\'s last item is the recital\'s even unpunctuated');
+    const wrapped = '(337) The rivals would face costs of\n2019 levels\n(338) After.';
+    assert.equal(sliceRecitals(wrapped, [{ from: 337, to: 337 }]), '(337) The rivals would face costs of\n2019 levels', 'a line that wraps mid-sentence is the recital');
   });
 });
 
