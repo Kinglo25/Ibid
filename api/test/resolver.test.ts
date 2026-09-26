@@ -2629,3 +2629,46 @@ describe('a long paragraph', () => {
     assert.ok(preview.excerpt.endsWith('paragraph. […]'), preview.excerpt.slice(-40));
   });
 });
+
+/**
+ * The document an ECLI names is the one retrieved (see `loadCellarDocument`), and a mistyped
+ * ECLI can be a valid one — another case's. The document states its own case number in its
+ * heading, and where that is not the footnote's, the reviewer has to be told: the passage on
+ * screen is from a different case than the footnote names.
+ */
+describe('a document of another case than the footnote names', () => {
+  const heading = (cases: string) => html(`<p>JUDGMENT OF THE COURT (Grand Chamber)</p><p>6 September 2017</p><p>${cases},</p><p>APPEAL under Article 56 of the Statute</p><p class="count" id="point138">138</p><p>The paragraph shown.</p>`);
+
+  test('is said to be so, with both numbers', async () => {
+    const { fetcher } = stubFetcher([heading('In Case C‑999/15 P')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: 'C-413/14 P', celex: '62014CJ0413', ecli: 'ECLI:EU:C:2017:623', locator: { kind: 'point', start: 138 }, paragraphs: [138] }));
+    assert.deepEqual(preview.caseMismatch, { cited: 'C-413/14 P', named: ['C-999/15 P'] });
+  });
+
+  test('is not said of the same case, however its number is written', async () => {
+    for (const cases of ['In Case C‑413/14 P', 'In Case C-413/14P', 'In Joined Cases C‑412/14 P and C‑413/14 P', 'Dans l’affaire C‑413/14 P']) {
+      const { fetcher } = stubFetcher([heading(cases)]);
+      const { resolver } = makeResolver({ fetcher });
+      const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: 'C-413/14 P', celex: '62014CJ0413', ecli: 'ECLI:EU:C:2017:632', locator: { kind: 'point', start: 138 }, paragraphs: [138] }));
+      assert.equal(preview.caseMismatch, undefined, cases);
+    }
+  });
+
+  test('nor of a document that states no case number, nor of a citation that gave none', async () => {
+    const { fetcher } = stubFetcher([heading('Between the parties')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: 'C-413/14 P', celex: '62014CJ0413', locator: { kind: 'point', start: 138 }, paragraphs: [138] }));
+    assert.equal(preview.caseMismatch, undefined);
+    const second = makeResolver({ fetcher: stubFetcher([heading('In Case C‑999/15 P')]).fetcher });
+    const [bare] = await second.resolver.resolve(curiaJudgmentLookup({ caseNumber: undefined, value: 'EU:C:2017:623', ecli: 'ECLI:EU:C:2017:623', celex: '62014CJ0413', locator: { kind: 'point', start: 138 }, paragraphs: [138] }));
+    assert.equal(bare.caseMismatch, undefined);
+  });
+
+  test('a case of the Court before 1989 is read as the Court writes it', async () => {
+    const { fetcher } = stubFetcher([heading('In Case 85/76')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: 'C-85/76', celex: '61976CJ0085', ecli: 'ECLI:EU:C:1979:36', locator: { kind: 'point', start: 138 }, paragraphs: [138] }));
+    assert.equal(preview.caseMismatch, undefined);
+  });
+});

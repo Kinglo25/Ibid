@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, documentTypeNote, draftingNotes, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, outstandingNote, parentheticalsInBody, repeatedNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
+import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, caseMismatchNote, confirmationKey, documentTypeNote, draftingNotes, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, outstandingNote, parentheticalsInBody, repeatedNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -502,5 +502,13 @@ describe('a recital or an article cited under a judgment\'s name', () => {
     ]).map((citations) => citations[0]);
     assert.equal(unresolvedMessage({ ...citation, context: '' }),
       '"Intel" cites a recital, but the authority this document gives that name is a judgment, which has none — a Commission decision or an act is meant, and the document does not say which.');
+  });
+});
+
+describe('a court document of another case than the footnote names', () => {
+  test('is said first, with both numbers', () => {
+    assert.equal(caseMismatchNote({ cited: 'C-413/14 P', named: ['C-999/15 P'] }, 'ECLI:EU:C:2017:623'),
+      'The footnote gives case number C-413/14 P, but the document its ECLI (EU:C:2017:623) names is Case C-999/15 P. The passage shown is from that case — check the ECLI and the case number.');
+    assert.equal(caseMismatchNote(undefined), undefined);
   });
 });

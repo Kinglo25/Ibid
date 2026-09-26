@@ -4,7 +4,7 @@ import { prefetchStatus, prefetchTargets, startConfirmations, startPrefetch, typ
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
   autoSelectable, bodyProseLines, inlineFootnotesInBody, INLINE_NOTE_CEILING, INLINE_NOTE_FLOOR, INLINE_NOTE_SHAPE, needsReview, officialSourceUrl, parentheticalsInBody,
-  documentTypeNote, draftingNotes, excerptPassages, followingNote, numberMismatchNote, outstandingNote, repeatedNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
+  caseMismatchNote, documentTypeNote, draftingNotes, excerptPassages, followingNote, numberMismatchNote, outstandingNote, repeatedNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
   unresolvedMessage, verificationNote, type ReviewFootnote,
 } from './citation-view';
 
@@ -18,6 +18,8 @@ type ReviewDocument = {
   unlocated?: string[];
   repeated?: string[];
   truncated?: boolean;
+  /** The document's own case numbers, where the footnote's is not among them. */
+  caseMismatch?: { cited: string; named: string[] };
   /** A Commission case number that is not the case the citation names, and the case shown instead where one is. */
   numberMismatch?: NumberMismatch;
   /** What a court document is by its own heading, where the citation called it something else. */
@@ -1466,6 +1468,7 @@ export default function App() {
               <p className="source-provider">{document.source}</p>
               <a href={document.url} target="_blank" rel="noreferrer">{document.title}</a>
               <DocumentTypeWarning document={document} citation={selected.citation} />
+              {caseMismatchNote(document.caseMismatch, selected.citation.ecli) && <p className="source-warning" role="alert">{caseMismatchNote(document.caseMismatch, selected.citation.ecli)}</p>}
               <SourceLanguageNote document={document} />
               <ExcerptScopeNote document={document} />
               <CitedScopeNotes document={document} citation={selected.citation} />

@@ -117,6 +117,11 @@ export type SourcePreview = {
    */
   truncated?: boolean;
   /**
+   * The document retrieved states case numbers of its own, and the footnote's is not among
+   * them: a mistyped ECLI can name another case's judgment. `named` is what the document says.
+   */
+  caseMismatch?: { cited: string; named: string[] };
+  /**
    * Where the full text is, when `url` leads to something less than it.
    *
    * Set only alongside `passage: 'summary'`, where EUR-Lex published a summary of the
@@ -830,6 +835,28 @@ export function documentTypeOf(html: string): 'judgment' | 'opinion' | 'order' |
     .sort((a, b) => a.at - b.at);
   return found[0]?.type;
 }
+
+/**
+ * The case numbers a court document states for itself at its head: "In Case C‑413/14 P,",
+ * "In Joined Cases C‑293/12 and C‑594/12,", "Dans l'affaire …", or a number of the Court
+ * from before 1989 written bare, "In Case 85/76". Read from the opening only, so a case the
+ * judgment goes on to cite is never taken for its own; nothing found is an empty list, and
+ * then nothing is said.
+ */
+const CASE_HEADING = /\b(?:In\s+(?:Joined\s+)?Cases?|Dans\s+(?:l['’]affaire|les\s+affaires(?:\s+jointes)?))\s+([^,;:]{1,400})/i;
+
+function caseNumbersIn(html: string): string[] {
+  const opening = decodeHtml(html.slice(0, 60_000)).slice(0, 4_000);
+  const list = CASE_HEADING.exec(opening)?.[1] ?? '';
+  return [...list.matchAll(/\b(?:([CT])\s?[-‑–—]\s?)?(\d{1,4})\/(\d{2})(?!\d)(?:\s*(P\(R\)|RENV|DEP|REV|OP|P|R)(?![\w(]))?/g)]
+    .map(([, court, number, year, suffix]) => `${court ?? 'C'}-${number}/${year}${suffix ? ` ${suffix}` : ''}`);
+}
+
+/** A case number as the court files it, without the procedural suffix: `C-413/14 P` is case `C-413/14`. */
+const caseKey = (caseNumber: string) => {
+  const match = /([CT])\s?[-‑–—]?\s?(\d{1,4})\/(\d{2})/i.exec(caseNumber);
+  return match ? `${match[1].toUpperCase()}-${Number(match[2])}/${match[3]}` : caseNumber;
+};
 
 function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
   const locator = lookup.locator;
@@ -1684,11 +1711,18 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     // how a footnote calling an Opinion a judgment reaches the pane, now that the ECLI decides
     // which document is fetched. Titled as what it is, and the reviewer told.
     const retrieved = caseLaw ? documentTypeOf(html) : undefined;
+    // A mistyped ECLI can be a valid one, another case's, and the ECLI is what was retrieved
+    // by. The document says which case it is; where that is not the footnote's, the passage
+    // on screen is from another case, and the reviewer is told so above it.
+    const named = caseLaw && lookup.caseNumber ? caseNumbersIn(html) : [];
+    const caseMismatch = named.length && !named.some((number) => caseKey(number) === caseKey(lookup.caseNumber!))
+      ? { cited: lookup.caseNumber!, named } : undefined;
     const differs = retrieved && retrieved !== (lookup.documentType ?? 'judgment') ? retrieved : undefined;
     const base: SourcePreview = caseLaw
       ? {
           title: describeDocument(differs ? { ...lookup, documentType: differs } : lookup), ...caseLaw,
-          ...(differs ? { documentType: differs } : {}), url, source, locator: locatorLabel(lookup), language,
+          ...(differs ? { documentType: differs } : {}), ...(caseMismatch ? { caseMismatch } : {}),
+          url, source, locator: locatorLabel(lookup), language,
           // The grounds this document does not contain, on the service that has them. Only
           // here: everywhere else `url` already leads to the whole text, and a second link
           // beside it would say there is more to find when there is not.

@@ -564,6 +564,19 @@ export function draftingNotes(citation: Pick<CitationContext, 'drafting'>): stri
   });
 }
 
+/**
+ * Says that the court document retrieved is of another case than the footnote names.
+ *
+ * The ECLI is what a court document is retrieved by, and a mistyped ECLI can be a valid one —
+ * another case's. The document states its own case number, and where that is not the
+ * footnote's, the passage on screen is from a different case: the reviewer is told so first.
+ */
+export function caseMismatchNote(mismatch: { cited: string; named: string[] } | undefined, ecli?: string): string | undefined {
+  if (!mismatch) return undefined;
+  const named = mismatch.named.length === 1 ? `Case ${mismatch.named[0]}` : `Cases ${listed(mismatch.named)}`;
+  return `The footnote gives case number ${mismatch.cited}, but the document ${ecli ? `its ECLI (${ecli.replace(/^ECLI:/, '')})` : 'retrieved'} names is ${named}. The passage shown is from that case — check the ECLI and the case number.`;
+}
+
 export type NumberMismatch = { cited: string; citedTitle?: string; name: string; caseNumber?: string };
 
 /**
