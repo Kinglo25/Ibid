@@ -1144,12 +1144,20 @@ export function detectCitations(text: string): CitationMatch[] {
   // opened Alpha at Beta's paragraph 7, and "Regulation (EU) 2016/679 and Directive
   // 2002/58/EC, Article 15" the GDPR at the directive's Article 15. A Commission case already
   // stopped there (`commissionCaseTail`); this is the same rule for the rest.
-  const pinpointFor = (start: number, end: number) => {
+  const pinpointFor = (start: number, end: number, caseNumber?: string) => {
     const segment = segmentAt(segments, start);
     // The rest of a joined group is the same judgment, not the next authority: "Joined Cases
-    // C-87/90 to C-89/90 Verholen, paragraph 13" is C-87/90's paragraph 13.
+    // C-87/90 to C-89/90 Verholen, paragraph 13" is C-87/90's paragraph 13, and so is "Joined
+    // Cases C-293/12 Digital Rights Ireland and C-594/12 Seitlinger and Others, para. 65".
+    const group = new Set(caseNumber ? [caseNumber, ...(joinedSiblings.get(caseNumber) ?? [])] : []);
     const from = end + (GROUP_CONTINUATION.exec(text.slice(end, segment.end))?.[0].length ?? 0);
-    const next = text.slice(from, segment.end).search(NEXT_AUTHORITY);
+    let next = -1;
+    for (const found of text.slice(from, segment.end).matchAll(new RegExp(NEXT_AUTHORITY.source, 'gi'))) {
+      const number = new RegExp(`^${CASE_NUMBER_SOURCE}$`, 'i').test(found[0].trim()) ? normaliseCaseNumber(found[0]) : undefined;
+      if (number && group.has(number)) continue;
+      next = found.index ?? 0;
+      break;
+    }
     const parsed = parsePinpointBefore(text, start, segment.start) ?? parsePinpoint(text, end, next >= 0 ? from + next : segment.end);
     return { locator: parsed?.locator, pinpoint: parsed?.pinpoint };
   };
@@ -1269,7 +1277,7 @@ export function detectCitations(text: string): CitationMatch[] {
       caseNumber, caseName: caseNameBefore(text, index, segment.start), documentType, documentTypeStated: stated || undefined,
       celex: caseNumber ? celexForCase(caseNumber, { documentType, court: courtFromEcli(ecli) }) : undefined,
       alternativeCelexes: alternativesFor(caseNumber, { documentType, court: courtFromEcli(ecli) }), joinedCaseNumbers: siblingsOf(caseNumber),
-      ...pinpointFor(index, index + match[0].length),
+      ...pinpointFor(index, index + match[0].length, caseNumber),
     });
   }
 
@@ -1298,7 +1306,7 @@ export function detectCitations(text: string): CitationMatch[] {
       label: labelForDocumentType(documentType, 'CJEU case number'), value: caseNumber, index, source: 'curia', caseNumber,
       caseName: caseNameBefore(text, index, segment.start) ?? caseNameAfter(text, index + match[0].length, segment.end),
       documentType, documentTypeStated: stated || undefined, celex: celexForCase(caseNumber, { documentType }),
-      alternativeCelexes: alternativesFor(caseNumber, { documentType }), joinedCaseNumbers: siblingsOf(caseNumber), ...pinpointFor(index, index + match[0].length),
+      alternativeCelexes: alternativesFor(caseNumber, { documentType }), joinedCaseNumbers: siblingsOf(caseNumber), ...pinpointFor(index, index + match[0].length, caseNumber),
     });
   }
 
@@ -1317,7 +1325,7 @@ export function detectCitations(text: string): CitationMatch[] {
       label: labelForDocumentType(documentType, 'CJEU case number'), value: caseNumber, index, source: 'curia', caseNumber,
       caseName: caseNameBefore(text, index, segment.start) ?? caseNameAfter(text, index + match[0].length, segment.end),
       documentType, documentTypeStated: stated || undefined, celex: celexForCase(caseNumber, { documentType }),
-      alternativeCelexes: alternativesFor(caseNumber, { documentType }), joinedCaseNumbers: siblingsOf(caseNumber), ...pinpointFor(index, index + match[0].length),
+      alternativeCelexes: alternativesFor(caseNumber, { documentType }), joinedCaseNumbers: siblingsOf(caseNumber), ...pinpointFor(index, index + match[0].length, caseNumber),
     });
   }
 
