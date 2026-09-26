@@ -1687,3 +1687,12 @@ describe('"cited in note N" naming a document rather than the case in that note'
     assert.equal(found[0]?.pinpoint, undefined);
   });
 });
+
+test('a Treaty article bracketed in an act\'s title is not the act\'s', () => {
+  // "règlement no 17 du Conseil … : premier règlement d'application des articles 85 et 86 [CEE]"
+  // (Emiliou in Illumina/Grail, in French) opened Regulation No 17 at an Article 85 it has not.
+  const found = detectCitations('In primis, règlement no 17 du Conseil, du 6 février 1962 : premier règlement d’application des articles 85 et 86 [CEE] (JO 1962, no 13, p. 204).');
+  const act = found.find((citation) => citation.celex === '31962R0017');
+  assert.ok(act);
+  assert.equal(act?.locator, undefined);
+});

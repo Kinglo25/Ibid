@@ -1143,7 +1143,7 @@ function namedInAnotherActsTitle(text: string, index: number, segmentStart: numb
  */
 // A national code numbers with letters after the figure — "Article 39 CA of the General Tax
 // Code" — and the letters are stepped over to reach the "of" that says whose it is.
-const PROVISION_OF_ANOTHER_INSTRUMENT = /^(?:\s*\([^()\s]{1,4}\))*(?:\s+[A-Z]{1,4}\b)?\s*(?:(?:of|de|du|des)\b(?!\s+(?:that|this|which|the\s+same|ce|cette|ledit|ladite)\b)|(?:TFEU|TFUE|TEU|TUE|EC|EEC|CE|CEE|EEA|EEE)\b)/i;
+const PROVISION_OF_ANOTHER_INSTRUMENT = /^(?:\s*\([^()\s]{1,4}\))*(?:\s+[A-Z]{1,4}\b)?\s*(?:(?:of|de|du|des)\b(?!\s+(?:that|this|which|the\s+same|ce|cette|ledit|ladite)\b)|\[?(?:TFEU|TFUE|TEU|TUE|EC|EEC|CE|CEE|EEA|EEE)\]?(?![\p{L}]))/iu;
 
 function provisionOfAnotherInstrument(text: string, end: number, limit: number): boolean {
   const tail = text.slice(end, Math.min(limit, end + PINPOINT_SCAN_WINDOW));

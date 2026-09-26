@@ -2953,6 +2953,17 @@ describe('a document of another case than the footnote names', () => {
       }
     });
 
+    test('a judgment that lists the opinions delivered in its cases is not an opinion', async () => {
+      // Aalborg Portland (C-204/00 P, EU:C:2004:6): "Arrêt de la Cour Joined Cases C-204/00 P,
+      // C-205/00 P, … Opinion of Advocate General Ruiz-Jarabo Colomer delivered on 11 February
+      // 2003 in Case C-204/00 P …" — read as an opinion's heading, the judgment was said to be
+      // of cases C-211/00 P and others.
+      const aalborg = html('<p>Arrêt de la Cour Joined Cases C-204/00 P, C-205/00 P, C-211/00 P, C-213/00 P, C-217/00 P and C-219/00 P Aalborg Portland A/S and Others v Commission</p><p>Opinion of Advocate General Ruiz-Jarabo Colomer delivered on 11 February 2003 in Case C-204/00 P Opinion of Advocate General Ruiz-Jarabo Colomer delivered on 11 February 2003 in Case C-211/00 P</p><p>260 The paragraph cited.</p><p>261 Next.</p>');
+      const { resolver } = makeResolver({ fetcher: stubFetcher([aalborg]).fetcher });
+      const [preview] = await resolver.resolve(curiaJudgmentLookup({ ...lookup, documentType: 'judgment', caseNumber: 'C-204/00 P', celex: '62000CJ0204', ecli: 'ECLI:EU:C:2004:6', locator: { kind: 'point', start: 260 }, paragraphs: [260] }));
+      assert.equal(preview.caseMismatch, undefined);
+    });
+
     test('in the older format, which names its case at the end of the heading', async () => {
       // Léger in Wouters (C‑309/99): the heading runs "Opinion of Mr Advocate General Léger
       // delivered on 10 July 2001. - J. C. J. Wouters … - Case C-309/99." and the opinion then

@@ -958,7 +958,13 @@ const OPINION_CASE = /\b(?:Joined\s+)?(?:Cases?|Affaires?(?:\s+jointes)?)\s+((?:
 
 function caseNumbersIn(html: string): string[] {
   const opening = decodeHtml(html.slice(0, 60_000)).slice(0, 4_000);
-  const opinion = OPINION_OPENING.exec(opening);
+  // An opinion only where its heading comes first: a judgment of the Reports era lists the
+  // opinions delivered in its cases after its own heading — "Arrêt de la Cour Joined Cases
+  // C-204/00 P, … Opinion of Advocate General Ruiz-Jarabo Colomer delivered on 11 February 2003
+  // in Case C-204/00 P" (Aalborg Portland) — and that is not the document's heading.
+  const found = OPINION_OPENING.exec(opening);
+  const judgmentFirst = found ? /\b(?:JUDGMENT|Judgment|ARR[ÊE]T|Arr[êe]t|ORDER|Order|ORDONNANCE|Ordonnance)\b/.exec(opening.slice(0, found.index)) : null;
+  const opinion = found && !judgmentFirst ? found : null;
   const list = opinion
     ? OPINION_CASE.exec(opening.slice(opinion.index))?.[1] ?? ''
     : CASE_HEADING.exec(opening)?.[1] ?? '';
