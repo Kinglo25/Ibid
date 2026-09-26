@@ -13,7 +13,25 @@
  * faked, because a stub that answers questions the real Word would not is worse than none.
  */
 
-type FootnoteItem = { body: { text: string; load: (property: string) => void } };
+/**
+ * A range, as far as the pane compares one: Word answers `Equal` for two ranges over the same
+ * place and something else for any other pair. `at` names the place.
+ */
+type StubRange = { at: string; compareLocationWith: (other: StubRange) => { value: string } };
+let comparisonBroken = false;
+const rangeAt = (at: string): StubRange => ({
+  at,
+  compareLocationWith: (other) => {
+    if (comparisonBroken) throw new Error('compareLocationWith is not supported by this build');
+    return { value: other.at === at ? 'Equal' : 'Unrelated' };
+  },
+});
+
+type FootnoteItem = {
+  body: { text: string; load: (property: string) => void; getRange: (location?: string) => StubRange };
+  /** The reference mark in the body text. */
+  reference: StubRange;
+};
 
 export type WordStub = {
   /** Put the caret on a footnote's reference mark, or nowhere with `null`. */
@@ -68,6 +86,8 @@ export type WordStub = {
   putCursorInBodyParagraph: (text: string, following?: string) => void;
   /** Make `body.paragraphs` throw, the way a build without `isListItem` would. */
   breakParagraphs: () => void;
+  /** Make every range comparison throw, so Word cannot say which of two notes is which. */
+  breakRangeComparison: () => void;
   /** Whether the pane registered a selection handler, i.e. whether it is following. */
   isFollowing: () => boolean;
   /**
@@ -110,7 +130,10 @@ export function installWordStub(
    */
   numbered: readonly { label?: string; text: string; size?: number }[] = [],
 ): WordStub {
-  const items: FootnoteItem[] = footnoteTexts.map((text) => ({ body: { text, load: noop } }));
+  const items: FootnoteItem[] = footnoteTexts.map((text, index) => ({
+    body: { text, load: noop, getRange: () => rangeAt(`note ${index}`) },
+    reference: rangeAt(`mark ${index}`),
+  }));
   let cursor: number | null = null;
   let handler: (() => void) | undefined;
   let registrations = 0;
@@ -162,7 +185,7 @@ export function installWordStub(
           return {
             text: '', load: noop,
             footnotes: { items: [], load: noop },
-            parentBody: { text: items[cursor].body.text, type: 'Footnote', load: noop },
+            parentBody: { text: items[cursor].body.text, type: 'Footnote', load: noop, getRange: items[cursor].body.getRange },
             paragraphs: { items: [], load: noop },
           };
         }
@@ -324,6 +347,7 @@ export function installWordStub(
       mode = 'bodyParagraph'; cursor = null; selectedText = text; followingText = following; handler?.();
     },
     breakParagraphs: () => { paragraphsBroken = true; },
+    breakRangeComparison: () => { comparisonBroken = true; },
     selectWithinFootnote: (footnote, characters, spelling = (text) => text) => {
       mode = 'within';
       cursor = footnote;
@@ -336,6 +360,6 @@ export function installWordStub(
     isFollowing: () => handler !== undefined,
     handlerChurn: () => ({ registrations, removals }),
     documentTextLoads: () => documentTextLoads,
-    remove: () => { delete globals.Office; delete globals.Word; },
+    remove: () => { comparisonBroken = false; delete globals.Office; delete globals.Word; },
   };
 }

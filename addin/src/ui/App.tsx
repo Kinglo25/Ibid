@@ -4,7 +4,7 @@ import { prefetchStatus, prefetchTargets, startConfirmations, startPrefetch, typ
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
   autoSelectable, bodyProseLines, inlineFootnotesInBody, INLINE_NOTE_CEILING, INLINE_NOTE_FLOOR, INLINE_NOTE_SHAPE, needsReview, officialSourceUrl, parentheticalsInBody,
-  documentTypeNote, excerptPassages, followingNote, numberMismatchNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
+  documentTypeNote, excerptPassages, followingNote, numberMismatchNote, outstandingNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
   unresolvedMessage, verificationNote, type ReviewFootnote,
 } from './citation-view';
 
@@ -260,7 +260,9 @@ export type CursorLocation =
    * `selection` is text the reviewer deliberately selected that belongs to no footnote the
    * pane holds — still a passage, and possibly still a citation. See `stray` in the pane.
    */
-  | { kind: 'unidentified'; selection?: string }
+  | { kind: 'unidentified'; selection?: string;
+    /** Set where the footnote was read but shares its text with another, and Word did not say which. */
+    duplicate?: boolean }
   | { kind: 'outside'; selection?: string };
 
 const FOOTNOTE_BODIES = ['Footnote', 'Endnote', 'NoteItem'];
@@ -326,6 +328,44 @@ function comparisonKey(value: string): string {
 }
 
 /**
+ * What each footnote cites, in a form two footnotes can be compared in.
+ *
+ * Two footnotes with the same text do not say the same thing when that text is a
+ * back-reference. `Ibid.` after Google Spain and `Ibid.` after Digital Rights Ireland are the
+ * same five characters and different authorities, and a document holds dozens of each. So a
+ * duplicate is only interchangeable with another where both resolve to the same authorities
+ * at the same pinpoints; anything unresolved is never interchangeable, since what it will come
+ * to mean is not known yet. Computed once per document read, and only when texts collide.
+ */
+const meaningCache = new WeakMap<readonly string[], string[]>();
+
+function meaningsOf(texts: readonly string[]): string[] {
+  const held = meaningCache.get(texts);
+  if (held) return held;
+  const meanings = getCitationContextsForFootnotes(texts).map((citations, index) => JSON.stringify(citations.map((citation) =>
+    citation.status === 'resolved'
+      ? [citation.source, citation.celex ?? citation.ecli ?? citation.caseNumber ?? citation.value, citation.locator?.start, citation.pinpoint?.paragraphs]
+      : ['unresolved', index])));
+  meaningCache.set(texts, meanings);
+  return meanings;
+}
+
+/**
+ * One footnote out of several the text alone cannot tell apart, or none.
+ *
+ * Taking the first was what the pane did, and on the sample built to test back-references it
+ * showed footnote 5's Google Spain, at point 97, with the cursor on footnote 11 — whose
+ * `Ibid.` follows Digital Rights Ireland. Where the candidates all mean the same thing any of
+ * them answers; otherwise nothing does, and the pane says it cannot tell.
+ */
+function interchangeable(candidates: readonly number[], meanings: () => readonly string[]): number | undefined {
+  if (candidates.length === 1) return candidates[0];
+  if (!candidates.length) return undefined;
+  const held = meanings();
+  return candidates.every((index) => held[index] === held[candidates[0]]) ? candidates[0] : undefined;
+}
+
+/**
  * Which known footnote a piece of text belongs to, in either direction.
  *
  * A caret inside a footnote yields text that the footnote contains. A selection dragged
@@ -335,9 +375,9 @@ function comparisonKey(value: string): string {
  * wins: it is the one the selection is about, and the short notes it also swallowed are
  * incidental to it.
  */
-function findFootnote(keys: readonly string[], text: string): number {
+function findFootnote(keys: readonly string[], text: string, meanings: () => readonly string[]): number {
   const inside = footnotesContaining(keys, text);
-  if (inside.length) return inside[0];
+  if (inside.length) return interchangeable(inside, meanings) ?? -1;
   const key = comparisonKey(text);
   if (key.length < SUBSTRING_FLOOR) return -1;
   let longest = -1;
@@ -389,15 +429,53 @@ function distinguishByNextParagraph(
   return narrowed.length === 1 ? narrowed[0] : undefined;
 }
 
-/** A footnote read back from Word, matched to the list the pane already holds. */
-function identify(known: readonly string[], keys: readonly string[], text: string): number {
-  const exact = known.indexOf(normaliseText(text));
-  return exact >= 0 ? exact : findFootnote(keys, text);
+/**
+ * The footnotes a text read back from Word could be, matched to the list the pane already
+ * holds: every footnote with exactly that text, or failing that the one it is part of.
+ */
+function candidatesFor(known: readonly string[], keys: readonly string[], text: string, meanings: () => readonly string[]): number[] {
+  const normalised = normaliseText(text);
+  const exact = known.flatMap((candidate, index) => (candidate === normalised ? [index] : []));
+  if (exact.length) return exact;
+  const found = findFootnote(keys, text, meanings);
+  return found >= 0 ? [found] : [];
+}
+
+/**
+ * Which of several footnotes with the same text Word is actually pointing at, by asking Word
+ * to compare where they are rather than what they say. `range` is the one the cursor is on;
+ * `rangeOf` gives the same kind of range for a footnote of the document, and a footnote the
+ * pane found in the body text, past Word's own, has none. Only ever asked about a collision,
+ * so a document without duplicates pays nothing for it.
+ */
+async function locateAmong(
+  context: Word.RequestContext,
+  candidates: readonly number[],
+  range: Word.Range,
+  rangeOf: (note: Word.NoteItem) => Word.Range,
+): Promise<number | undefined> {
+  try {
+    const notes = context.document.body.footnotes;
+    notes.load('items');
+    await context.sync();
+    const compared = candidates
+      .filter((index) => index < notes.items.length)
+      .map((index) => ({ index, relation: range.compareLocationWith(rangeOf(notes.items[index])) }));
+    await context.sync();
+    const equal = compared.filter(({ relation }) => relation.value === 'Equal');
+    return equal.length === 1 ? equal[0].index : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function readCursorLocation(knownTexts: readonly string[]): Promise<CursorLocation> {
   const known = knownTexts.map(normaliseText);
   const keys = known.map(comparisonKey);
+  const meanings = () => meaningsOf(knownTexts);
+  // Set when the cursor was plainly in a footnote the text cannot single out. Said as such,
+  // rather than falling through to routes that would only guess at it again.
+  let collided = false;
 
   return Word.run(async (context) => {
     const selection = context.document.getSelection();
@@ -413,10 +491,18 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
     if (contained.items.length) {
       contained.items.forEach((footnote) => footnote.body.load('text'));
       await context.sync();
-      const hits = contained.items
-        .map((footnote) => identify(known, keys, footnote.body.text))
-        .filter((index) => index >= 0);
+      const hits: number[] = [];
+      for (const footnote of contained.items) {
+        const candidates = candidatesFor(known, keys, footnote.body.text, meanings);
+        // Word's own answer first, since it names the very footnote; sameness of meaning only
+        // where Word cannot say, since it answers right but may put another number on it.
+        const settled = (candidates.length > 1 ? await locateAmong(context, candidates, footnote.reference, (note) => note.reference) : undefined)
+          ?? interchangeable(candidates, meanings);
+        if (settled !== undefined) hits.push(settled);
+        else if (candidates.length > 1) collided = true;
+      }
       if (hits.length) return { kind: 'footnotes' as const, indexes: hits };
+      if (collided) return { kind: 'unidentified' as const, duplicate: true };
     }
 
     // The parent body's own text — but never the document's or a section's. With the cursor
@@ -431,14 +517,18 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
       parent.load('text');
       await context.sync();
       const parentText = normaliseText(parent.text ?? '');
-      const exact = parentText ? identify(known, keys, parentText) : -1;
-      if (exact >= 0) return { kind: 'footnotes' as const, indexes: [exact] };
+      const candidates = parentText ? candidatesFor(known, keys, parentText, meanings) : [];
+      const settled = (candidates.length > 1 && FOOTNOTE_BODIES.includes(parentType)
+        ? await locateAmong(context, candidates, parent.getRange('Whole'), (note) => note.body.getRange('Whole'))
+        : undefined) ?? interchangeable(candidates, meanings);
+      if (settled !== undefined) return { kind: 'footnotes' as const, indexes: [settled] };
+      if (candidates.length > 1) return { kind: 'unidentified' as const, duplicate: true };
     }
 
     // What is actually selected. Survives a parent body that is a paragraph, a section or
     // the main document body rather than the footnote itself.
     const selectedText = normaliseText(selection.text ?? '');
-    const selected = findFootnote(keys, selectedText);
+    const selected = findFootnote(keys, selectedText, meanings);
     if (selected >= 0) return { kind: 'footnotes' as const, indexes: [selected] };
 
     // The paragraphs the caret actually sits in.
@@ -487,14 +577,15 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
           if (exact.length === 1) return { kind: 'footnotes' as const, indexes: exact };
           const settled = distinguishByNextParagraph(keys, containing, text, next);
           if (settled !== undefined) return { kind: 'footnotes' as const, indexes: [settled] };
-          // Several notes hold this text and nothing separates them. Where they all say the
+          // Several notes hold this text and nothing separates them. Where they all mean the
           // same thing that is not a problem — a decision repeats a footnote verbatim often —
-          // and any of them answers. Where they differ, no answer is the honest one.
-          const texts = new Set(containing.map((index) => keys[index]));
-          if (texts.size === 1) return { kind: 'footnotes' as const, indexes: [containing[0]] };
+          // and any of them answers. Where they differ, no answer is the honest one; and the
+          // same text is not the same meaning, since two `Ibid.`s cite what precedes each.
+          const same = interchangeable(containing, meanings);
+          if (same !== undefined) return { kind: 'footnotes' as const, indexes: [same] };
           continue;
         }
-        const contained = findFootnote(keys, text);
+        const contained = findFootnote(keys, text, meanings);
         if (contained >= 0) return { kind: 'footnotes' as const, indexes: [contained] };
       }
     }
@@ -787,7 +878,9 @@ export default function App() {
   const [focused, setFocused] = useState<number | null>(null);
   // The cursor is in a footnote Ibid could not identify. Distinct from `focused === null`,
   // which is the ordinary case of a cursor somewhere that is not a footnote at all.
-  const [unidentified, setUnidentified] = useState(false);
+  // Why the cursor's footnote could not be named: one the pane never read, or one whose text
+  // several footnotes share with nothing to say which.
+  const [unidentified, setUnidentified] = useState<false | 'unread' | 'duplicate'>(false);
   /**
    * Text the reviewer selected that belongs to no footnote the pane holds.
    *
@@ -1037,7 +1130,7 @@ export default function App() {
         .then((location) => {
           if (cancelled) return;
           setFocused(location.kind === 'footnotes' ? location.indexes[0] : null);
-          setUnidentified(location.kind === 'unidentified');
+          setUnidentified(location.kind === 'unidentified' ? (location.duplicate ? 'duplicate' : 'unread') : false);
           setStray(location.kind === 'footnotes' ? null : location.selection ?? null);
         })
         // Silent by design: this fires on every cursor movement, so a failure must not
@@ -1237,8 +1330,9 @@ export default function App() {
     .map((footnote, index) => ({ footnote, index, citations: citationsByFootnote[index] ?? [] }))
     .filter((entry) => entry.footnote.text && (!entry.footnote.inText || entry.citations.length > 0))
     .filter((entry) => showAll || needsReview(entry.citations) || entry.index === focused);
-  const outstanding = footnotes
-    .filter((footnote, index) => footnote.text && needsReview(citationsByFootnote[index] ?? [])).length;
+  const waiting = footnotes
+    .filter((footnote, index) => footnote.text && needsReview(citationsByFootnote[index] ?? []));
+  const outstanding = waiting.length;
 
   const footnoteIndex = <>
     <div className="panel-title">
@@ -1313,9 +1407,15 @@ export default function App() {
           not the citation the cursor is on now.
         </p>}
 
-        {!selected && unidentified && <p className="error">
+        {!selected && unidentified === 'unread' && <p className="error">
           The cursor is in a footnote Ibid could not match to one it has read. Use Refresh if the
           document has changed since the pane was opened.
+        </p>}
+
+        {!selected && unidentified === 'duplicate' && <p className="error">
+          The cursor is in a footnote whose text other footnotes repeat, and they cite different
+          authorities, so Ibid cannot tell which one this is. Put the cursor on its number in the
+          text instead.
         </p>}
 
         {!selected && !unidentified && <p className="muted">{following
@@ -1410,9 +1510,7 @@ export default function App() {
                 but that there is anything waiting at all is not — a reviewer moving through
                 a document has no way to discover it, and would finish believing every
                 citation had resolved. One line, and only when the answer is not zero. */}
-            {following && outstanding > 0 && <p className="status">
-              {outstanding} citation{outstanding === 1 ? '' : 's'} still need{outstanding === 1 ? 's' : ''} a decision.
-            </p>}
+            {following && outstanding > 0 && <p className="status">{outstandingNote(waiting)}</p>}
           </div>
           <button type="button" onClick={() => void refresh()}>Refresh</button>
         </div>

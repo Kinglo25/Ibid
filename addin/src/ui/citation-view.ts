@@ -281,6 +281,16 @@ export function candidateLabel(candidate: CitationCandidate): string {
  * forced click on the ones that are not in doubt.
  */
 export function resolutionNote(citation: CitationContext): string {
+  const how = resolvedBy(citation);
+  // "Intel v Commission, cited in footnote 15" where footnote 15 cites something else: the
+  // name still says which case, and the cross-reference is the drafter's to fix.
+  const citedIn = citation.citedIn;
+  return citedIn && !citedIn.agrees
+    ? `${how} It says it was cited in footnote ${citedIn.footnote}, which does not cite this authority — check that cross-reference.`
+    : how;
+}
+
+function resolvedBy(citation: CitationContext): string {
   const footnote = citation.backReference?.footnote;
   switch (citation.resolutionMethod) {
     case 'user_confirmed': return citation.backReference
@@ -338,6 +348,35 @@ export function unresolvedMessage(citation: CitationContext): string {
  */
 export function needsReview(citations: readonly CitationContext[]): boolean {
   return citations.some((citation) => citation.status !== 'resolved');
+}
+
+/**
+ * The one line that says what is still waiting, while the pane follows the cursor.
+ *
+ * It counted footnotes and called them citations — a footnote holding two unconfirmed
+ * citations was one of "4 citations" — and it named none of them, so a reviewer told that
+ * four things were waiting had to walk the whole document with the cursor to find out which.
+ * The numbers are what the list would have shown, written the way the list writes them (`12*`
+ * for a note the conversion left in the body); a citation in the running text has no number,
+ * so those are counted instead. A long tail is cut, because this is a line and not the list.
+ */
+const OUTSTANDING_NAMED = 12;
+
+export function outstandingNote(footnotes: readonly Pick<ReviewFootnote, 'number' | 'inBody' | 'inText'>[]): string | undefined {
+  const numbered = footnotes.filter((footnote) => !footnote.inText).map((footnote) => `${footnote.number}${footnote.inBody ? '*' : ''}`);
+  const inText = footnotes.length - numbered.length;
+  const parts: string[] = [];
+  if (numbered.length) {
+    const named = numbered.slice(0, OUTSTANDING_NAMED);
+    const rest = numbered.length - named.length;
+    const list = rest > 0 ? `${named.join(', ')} and ${rest} more`
+      : named.length > 1 ? `${named.slice(0, -1).join(', ')} and ${named[named.length - 1]}` : named[0];
+    parts.push(`${numbered.length === 1 ? 'Footnote' : 'Footnotes'} ${list}`);
+  }
+  if (inText) parts.push(`${inText} citation${inText === 1 ? '' : 's'} in the running text`);
+  if (!parts.length) return undefined;
+  const plural = numbered.length + inText > 1;
+  return `${parts.join(', and ')} still need${plural ? '' : 's'} a decision.`;
 }
 
 /**

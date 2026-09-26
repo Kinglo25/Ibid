@@ -1186,3 +1186,18 @@ describe('case names that carry a nickname', () => {
     assert.equal(citation.celex, '62014CC0413');
   });
 });
+
+describe('the footnote a short form says it was cited in', () => {
+  test('is checked against what that footnote cites', () => {
+    const [, , right, wrong] = detectCitationsAcrossFootnotes([
+      'Judgment of 6 September 2017, Intel v Commission, C-413/14 P, EU:C:2017:632, paragraph 138.',
+      'Judgment of 3 July 1991, AKZO v Commission, C-62/86, EU:C:1991:286, paragraph 60.',
+      'Intel v Commission, cited in footnote 1, paragraph 139.',
+      'Intel v Commission, cited in footnote 2, paragraph 140.',
+    ]);
+    assert.deepEqual(right[0].citedIn, { footnote: 1, agrees: true });
+    // The name still resolves it; the number is reported as not matching.
+    assert.equal(wrong[0].celex, '62014CJ0413');
+    assert.deepEqual(wrong[0].citedIn, { footnote: 2, agrees: false });
+  });
+});

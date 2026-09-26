@@ -151,6 +151,16 @@ export type CitationMatch = {
    * confidently-wrong citation the rest of this module refuses to produce.
    */
   backReference?: { footnote?: number };
+  /**
+   * The footnote a short form says its authority was cited in — "Intel v Commission, cited in
+   * footnote 2" — and whether that footnote does cite it. Set only where the text names one.
+   *
+   * The name is what resolves the citation; the number is the drafter's cross-reference, and
+   * it goes wrong on its own when footnotes are added or moved. A number pointing at a
+   * footnote that cites something else is not a reason to doubt the name, but it is a
+   * drafting error the reviewer will want to hear about.
+   */
+  citedIn?: { footnote: number; agrees: boolean };
 };
 
 export type CitationContext = CitationMatch & { context: string };
@@ -2038,10 +2048,15 @@ function resolveShortForms(
       : [];
     if (authorities.length === 1 || inNote.length === 1) {
       const [authority] = authorities.length === 1 ? authorities : inNote;
+      const citedIn = note === undefined ? undefined : {
+        footnote: note,
+        agrees: note >= 1 && note < footnoteNumber
+          && (history[note - 1] ?? []).some((established) => sameAuthority(established.citation, authority.citation)),
+      };
       resolved.push({
         ...authority.citation, value: span.value, index: span.index, status: 'resolved',
         resolutionMethod: authorities.length === 1 ? authority.method : 'numbered_footnote',
-        locator: parsed?.locator, pinpoint: parsed?.pinpoint,
+        locator: parsed?.locator, pinpoint: parsed?.pinpoint, ...(citedIn ? { citedIn } : {}),
       });
     } else {
       resolved.push(ambiguous(span, authorities.map((authority) => authority.citation), parsed));

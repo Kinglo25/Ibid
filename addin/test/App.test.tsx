@@ -722,14 +722,15 @@ describe('following the cursor', () => {
   });
 
   test('what is outstanding is said in one line rather than listed', async () => {
-    // Which footnotes they are is a question the cursor answers. That anything is waiting
-    // at all is not — without this a reviewer moves through the document and finishes
-    // believing every citation resolved.
+    // That anything is waiting at all is not something the cursor can tell a reviewer —
+    // without this they move through the document and finish believing every citation
+    // resolved. The line names the footnotes, so finding them is not a walk through the
+    // whole document either.
     word = installWordStub([googleSpain, 'See Akzo Nobel, para. 40.']);
     render(<App />);
     await paneReady();
 
-    await screen.findByText(/1 citation still needs a decision\./);
+    await screen.findByText('Footnote 2 still needs a decision.');
     absent(screen.queryByRole('heading', { name: 'Needs review' }), 'said, not listed');
   });
 
@@ -1114,6 +1115,88 @@ describe('finding the footnote the cursor is actually in', () => {
     word.putCursorInUnknownFootnote('');
     await screen.findByText(/could not match to one it has read/);
     absent(screen.queryByText('Footnote 1 context'));
+  });
+});
+
+/**
+ * Footnotes whose text is the same and whose meaning is not.
+ *
+ * Found by walking the back-reference sample in a browser: with the cursor on footnote 11,
+ * an `Ibid.` following Digital Rights Ireland, the pane showed footnote 5 — also `Ibid.`, and
+ * Google Spain at point 97 — because it matched the cursor's footnote by its text and took the
+ * first footnote with that text.
+ */
+describe('footnotes that read the same', () => {
+  const googleSpain = 'Judgment of 13 May 2014, Google Spain SL and Google Inc. v AEPD, C-131/12, ECLI:EU:C:2014:317, paras 80-82.';
+  const digitalRights = 'Judgment of 8 April 2014, Digital Rights Ireland, Joined Cases C-293/12 and C-594/12, ECLI:EU:C:2014:238, paras 57-65.';
+  const notes = [googleSpain, 'Ibid.', digitalRights, 'Ibid.'];
+
+  let word: ReturnType<typeof installWordStub> | undefined;
+  afterEach(() => { word?.remove(); word = undefined; });
+
+  test('the reference mark names its own footnote, not the first with its text', async () => {
+    word = installWordStub(notes);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(3);
+    await screen.findByText('Footnote 4', { selector: '.count' });
+    await screen.findByText(/in footnote 3\./);
+    absent(screen.queryByText(/in footnote 1\./));
+  });
+
+  test('so does a caret inside the footnote\'s own text', async () => {
+    word = installWordStub(notes);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorInFootnoteText(3);
+    await screen.findByText('Footnote 4', { selector: '.count' });
+    await screen.findByText(/in footnote 3\./);
+  });
+
+  test('where Word cannot say which, the pane says so rather than guessing', async () => {
+    word = installWordStub(notes);
+    render(<App />);
+    await paneReady();
+
+    // Two footnotes read `Ibid.` and cite different judgments, and this build cannot compare
+    // ranges, so nothing says which of the two the caret is on.
+    word.breakRangeComparison();
+    word.putCursorOn(3);
+    await screen.findByText(/other footnotes repeat/);
+    absent(screen.queryByText('Footnote 2', { selector: '.count' }));
+    absent(screen.queryByText(/in footnote 1\./));
+  });
+
+  test('a caret in a paragraph too short to tell anything by is not guessed at either', async () => {
+    word = installWordStub(notes);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorInFootnoteParagraph(3);
+    // Given time to answer, it has claimed neither footnote reading `Ibid.`.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    absent(screen.queryByText('Footnote 2', { selector: '.count' }));
+    absent(screen.queryByText('Footnote 4', { selector: '.count' }));
+  });
+
+  test('a footnote repeating another word for word is still named by its own number', async () => {
+    word = installWordStub([googleSpain, 'Google Spain, para. 81.', 'Google Spain, para. 81.']);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorOn(2);
+    await screen.findByText('Footnote 3', { selector: '.count' });
+  });
+
+  test('footnotes repeating one another word for word and in meaning are still answered', async () => {
+    word = installWordStub([googleSpain, googleSpain]);
+    render(<App />);
+    await paneReady();
+
+    word.putCursorInFootnoteParagraph(1);
+    await screen.findByText(/Footnote [12] context/);
   });
 });
 

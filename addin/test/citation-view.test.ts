@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, documentTypeNote, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, parentheticalsInBody, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
+import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, documentTypeNote, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, outstandingNote, parentheticalsInBody, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -439,5 +439,36 @@ describe('a court document that is not what the footnote called it', () => {
   test('says nothing where the two agree, or where the document said nothing', () => {
     assert.equal(documentTypeNote({ documentType: 'opinion', documentTypeStated: true }, 'opinion'), undefined);
     assert.equal(documentTypeNote({ documentType: 'judgment', documentTypeStated: true }, undefined), undefined);
+  });
+});
+
+describe('what is still waiting, in one line', () => {
+  test('names the footnotes, and counts footnotes as footnotes', () => {
+    assert.equal(outstandingNote([{ number: 13 }]), 'Footnote 13 still needs a decision.');
+    assert.equal(outstandingNote([{ number: 13 }, { number: 20 }, { number: 21 }, { number: 22 }]), 'Footnotes 13, 20, 21 and 22 still need a decision.');
+    assert.equal(outstandingNote([]), undefined);
+  });
+
+  test('marks a note left in the body the way the list does, and counts running-text citations', () => {
+    assert.equal(outstandingNote([{ number: 4 }, { number: 12, inBody: true }, { number: 30, inText: true }]),
+      'Footnotes 4 and 12*, and 1 citation in the running text still need a decision.');
+    assert.equal(outstandingNote([{ number: 30, inText: true }]), '1 citation in the running text still needs a decision.');
+  });
+
+  test('cuts a long tail rather than becoming the list', () => {
+    const many = Array.from({ length: 15 }, (_, index) => ({ number: index + 1 }));
+    assert.equal(outstandingNote(many), 'Footnotes 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 and 3 more still need a decision.');
+  });
+});
+
+describe('a cross-reference that points at the wrong footnote', () => {
+  test('is pointed out, without doubting the name that resolved it', () => {
+    const [, , citation] = detectCitationsAcrossFootnotes([
+      'Judgment of 6 September 2017, Intel v Commission, C-413/14 P, EU:C:2017:632, paragraph 138.',
+      'Judgment of 3 July 1991, AKZO v Commission, C-62/86, EU:C:1991:286, paragraph 60.',
+      'Intel v Commission, cited in footnote 2, paragraph 140.',
+    ]).map((citations) => citations[0]);
+    assert.equal(resolutionNote({ ...citation, context: '' }),
+      'Inferred from a case name this document cites in full earlier. It says it was cited in footnote 2, which does not cite this authority — check that cross-reference.');
   });
 });
