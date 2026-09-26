@@ -642,6 +642,10 @@ const JUDGMENT_POINT_HEADINGS = [
   // text, shown as though it were the one cited. Requiring `&nbsp;` or whitespace directly
   // after the number rules them out a second time: a headnote number carries a period.
   /<P[^>]*class="C\d+Pointnumerote[^"]*"[^>]*>\s*(\d+)(?:&nbsp;|\s)/gi,
+  // The opinions' sibling class, unanchored, the number taking a period: Kokott in Cementbouw
+  // (62006CC0202), `<P class="C01PointAltN">44.&nbsp;&nbsp;&nbsp;However, in order to…`, was
+  // answered with its opening. `C` keeps the `S` headnote classes out, as above.
+  /<P[^>]*class="C\d+PointAltN"[^>]*>\s*(\d+)\.(?:&nbsp;|\s)/gi,
   /<dt>\s*(\d+)\s*<dd>\s*<\/dd>\s*<\/dt>/gi,
   // Legacy EUR-Lex "TexteOnly" rendering, where a numbered point has no anchor, no class
   // and no wrapper of any kind: the number simply opens the paragraph, `<p>46 According to

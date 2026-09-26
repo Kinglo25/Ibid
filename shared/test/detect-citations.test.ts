@@ -1451,3 +1451,12 @@ describe('an act defined in the memo, cited by its provision', () => {
     assert.deepEqual([second[0]?.locator?.start, second[0]?.locator?.paragraph], [5, 2]);
   });
 });
+
+describe('a paper is not a case', () => {
+  test('"the 1996 Green Paper, paragraph 29" is not offered as a case', () => {
+    // From Emiliou's opinion in Illumina/Grail: it was reported as an unconfirmed short form of
+    // a court judgment, with a link to search the Court's register for "Green Paper".
+    const [found] = detectCitationsAcrossFootnotes(['See also the 1996 Green Paper, paragraph 29.']);
+    assert.deepEqual(found.filter((citation) => /Paper/.test(citation.value)), []);
+  });
+});

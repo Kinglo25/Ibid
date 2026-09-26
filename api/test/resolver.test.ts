@@ -2778,6 +2778,19 @@ describe('a judgment whose operative part opens on a paragraph of its own', () =
   });
 });
 
+describe('an opinion of the Reports era, its points classed but not anchored', () => {
+  // Kokott in Cementbouw (62006CC0202): "<P class="C01PointAltN">44.&nbsp;&nbsp;&nbsp;However,
+  // in order to ensure…" — the class the anchored pattern reads, with no anchor, and the
+  // number taking a period. Point 44 was answered with the opening.
+  test('is read', async () => {
+    const opinion = html('<P class="S01PointAltN">1.&nbsp;Headnote one.</P><P class="C01PointAltN">43.&nbsp;&nbsp;&nbsp;The point before.</P><P class="C01PointAltN">44.&nbsp;&nbsp;&nbsp;However, in order to ensure maximum legal certainty.</P><P class="C01PointAltN">45.&nbsp;&nbsp;&nbsp;Next.</P>');
+    const { resolver } = makeResolver({ fetcher: stubFetcher([opinion]).fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: 'C-202/06 P', celex: '62006CC0202', ecli: 'ECLI:EU:C:2007:255', documentType: 'opinion', locator: { kind: 'point', start: 44 }, paragraphs: [44] }));
+    assert.equal(preview.passage, 'cited');
+    assert.match(preview.excerpt, /^44\.\s+However, in order to ensure maximum legal certainty\.$/);
+  });
+});
+
 describe('an opinion numbered with a spaced period', () => {
   // Darmon in Wood Pulp (61985CC0089): "<p>1 . By order of 16 December 1987 the Court
   // decided…", all 82 points so — the shape the parties list of that era takes too.

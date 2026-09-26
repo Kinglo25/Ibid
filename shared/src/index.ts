@@ -2528,7 +2528,7 @@ function resolveBackReferences(
  * with nothing behind it — never turn a resolved citation into a missed one.
  */
 const DEFINITE_ARTICLE_BEFORE = /(?:\b(?:the|les|la|le|des|du)\s+|\bl['’])$/i;
-const DOCUMENT_NOUN = /\b(?:findings?|decisions?|d[ée]cisions?|rules?|guidelines?|reports?|notices?|communications?|analys[ei]s|memorand(?:um|a)|submissions?|repl(?:y|ies)|responses?|objections?|annexes?|minutes|questionnaires?|agreements?|undertakings?)$/i;
+const DOCUMENT_NOUN = /\b(?:findings?|decisions?|d[ée]cisions?|rules?|guidelines?|reports?|notices?|communications?|analys[ei]s|memorand(?:um|a)|submissions?|repl(?:y|ies)|responses?|objections?|annexes?|minutes|questionnaires?|agreements?|undertakings?|papers?)$/i;
 
 function readsAsDocumentReference(text: string, index: number, value: string): boolean {
   return DEFINITE_ARTICLE_BEFORE.test(text.slice(0, index)) || DOCUMENT_NOUN.test(value);
