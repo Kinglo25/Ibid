@@ -138,6 +138,13 @@ export type SourcePreview = {
    */
   caseMismatch?: { cited: string; named: string[] };
   /**
+   * The footnote's ECLI is another case's, and the document shown is the one its case number
+   * and name agree on instead: `named` is the case the ECLI belongs to. Set only where the
+   * document filed under the cited number carries that number and the cited name in its own
+   * heading; otherwise the ECLI's document is shown, with `caseMismatch`.
+   */
+  ecliOfAnotherCase?: { ecli: string; named: string[] };
+  /**
    * Where the full text is, when `url` leads to something less than it.
    *
    * Set only alongside `passage: 'summary'`, where EUR-Lex published a summary of the
@@ -984,6 +991,17 @@ function sharingTheirYear(list: string): string[] {
     ranging = false;
   }
   return found;
+}
+
+/**
+ * Whether a court document's opening names the case the footnote named: every word of four
+ * letters or more in the name, found in the heading. "Paint Graphos" is in "Ministero
+ * dell’Economia e delle Finanze v Paint Graphos Soc. coop. arl".
+ */
+function headingNames(html: string, caseName: string): boolean {
+  const opening = decodeHtml(html.slice(0, 60_000)).slice(0, 6_000).toLowerCase();
+  const words = caseName.toLowerCase().match(/\p{L}{4,}/gu) ?? [];
+  return words.length > 0 && words.every((word) => opening.includes(word));
 }
 
 /** A case number as the court files it, without the procedural suffix: `C-413/14 P` is case `C-413/14`. */
@@ -1938,6 +1956,25 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       const frenchLaw = french ? extractJudgmentPoint(french.html, lookup) : undefined;
       if (french && frenchLaw?.passage === 'cited') ({ html, language, verifiedAt, url, caseLaw } = { ...french, caseLaw: frenchLaw });
     }
+    // An ECLI can be the one thing wrong in a footnote: "C-78/08 to C-80/08 Paint Graphos
+    // ECLI:EU:C:2009:417", in the Commission's Amazon and Starbucks decisions, is an ECLI of Har
+    // Vaessen Douane Service (C-7/08). Where the document the ECLI names is another case's, and
+    // the one filed under the cited number carries that number and the cited name in its own
+    // heading, the number and the name agree against the ECLI, and theirs is the document shown.
+    // Without a name to agree, nothing is switched: the ECLI's document is shown, warned of.
+    let ecliOfAnotherCase: SourcePreview['ecliOfAnotherCase'];
+    if (caseLaw && lookup.ecli && lookup.caseNumber && lookup.caseName) {
+      const byEcli = caseNumbersIn(html);
+      if (byEcli.length && !byEcli.some((number) => caseKey(number) === caseKey(lookup.caseNumber!))) {
+        const byNumber = await loadCellarDocument(celex, undefined, lookup.alternativeCelexes).catch(() => undefined);
+        if (byNumber && caseNumbersIn(byNumber.html).some((number) => caseKey(number) === caseKey(lookup.caseNumber!))
+            && headingNames(byNumber.html, lookup.caseName)) {
+          ({ html, language, verifiedAt, url } = byNumber);
+          caseLaw = extractJudgmentPoint(html, lookup);
+          ecliOfAnotherCase = { ecli: lookup.ecli, named: byEcli };
+        }
+      }
+    }
     // What the document says it is, where that is not what the citation called it — which is
     // how a footnote calling an Opinion a judgment reaches the pane, now that the ECLI decides
     // which document is fetched. Titled as what it is, and the reviewer told.
@@ -1953,6 +1990,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       ? {
           title: describeDocument(differs ? { ...lookup, documentType: differs } : lookup), ...caseLaw,
           ...(differs ? { documentType: differs } : {}), ...(caseMismatch ? { caseMismatch } : {}),
+          ...(ecliOfAnotherCase ? { ecliOfAnotherCase } : {}),
           url, source, locator: locatorLabel(lookup), language,
           // The grounds this document does not contain, on the service that has them. Only
           // here: everywhere else `url` already leads to the whole text, and a second link

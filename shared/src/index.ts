@@ -1134,7 +1134,9 @@ function namedInAnotherActsTitle(text: string, index: number, segmentStart: numb
  * act, so they do not count. Wrong in the safe direction: the act keeps its citation and loses
  * only a pinpoint.
  */
-const PROVISION_OF_ANOTHER_INSTRUMENT = /^(?:\s*\([^()\s]{1,4}\))*\s*(?:(?:of|de|du|des)\b(?!\s+(?:that|this|which|the\s+same|ce|cette|ledit|ladite)\b)|(?:TFEU|TFUE|TEU|TUE|EC|EEC|CE|CEE|EEA|EEE)\b)/i;
+// A national code numbers with letters after the figure — "Article 39 CA of the General Tax
+// Code" — and the letters are stepped over to reach the "of" that says whose it is.
+const PROVISION_OF_ANOTHER_INSTRUMENT = /^(?:\s*\([^()\s]{1,4}\))*(?:\s+[A-Z]{1,4}\b)?\s*(?:(?:of|de|du|des)\b(?!\s+(?:that|this|which|the\s+same|ce|cette|ledit|ladite)\b)|(?:TFEU|TFUE|TEU|TUE|EC|EEC|CE|CEE|EEA|EEE)\b)/i;
 
 function provisionOfAnotherInstrument(text: string, end: number, limit: number): boolean {
   const tail = text.slice(end, Math.min(limit, end + PINPOINT_SCAN_WINDOW));
@@ -2592,6 +2594,22 @@ function resolveBackReferences(
 const DEFINITE_ARTICLE_BEFORE = /(?:\b(?:the|les|la|le|des|du)\s+|\bl['’])$/i;
 const DOCUMENT_NOUN = /\b(?:findings?|decisions?|d[ée]cisions?|rules?|guidelines?|reports?|notices?|communications?|analys[ei]s|memorand(?:um|a)|submissions?|repl(?:y|ies)|responses?|objections?|annexes?|minutes|questionnaires?|agreements?|undertakings?|papers?)$/i;
 
+/**
+ * Three more shapes that are not a court's case, found in the Commission's tax-ruling decisions
+ * (Apple, Amazon, Starbucks), each of which was reported as an unconfirmed short form of one:
+ * a word that opens a sentence ("However, paragraph 4.9 of the 1995 OECD TP Guidelines"), a
+ * paragraph numbered with a decimal, which no judgment has ("CSA, paragraph 1.13", "Service
+ * Agreement between Amazon.fr Sarl and LuxOpCo, paragraphs 2.2"), and recitals, which no
+ * judgment has either, where they are the document's own ("the answer of Melitta at recitals
+ * 207 to 209") — a name that runs across the end of a sentence ("… the case for AOE. See recital
+ * 101") is not a name at all.
+ */
+// "at recitals 207 to 209" is the document's own recitals, the way the Commission refers a
+// reader back to them; "EUMR, recital 28" is an act's, and is still reported.
+const OWN_RECITALS = /^[\s,;:]*at\s+(?:recitals?|consid[ée]rants?)\b/i;
+const SENTENCE_OPENER = /^(?:However|Moreover|Furthermore|Further|See|Cf|Also|Thus|Therefore|Accordingly|Similarly|Indeed|Nevertheless|Nonetheless|Consequently|Finally|First|Second|Third|In|On|At|For|By|As|The|This|That|These|Those|It|Its|Such|Here|There|Where|When|While|Although|Since|Because|If|Under)$/;
+const DECIMAL_PINPOINT = new RegExp(String.raw`^[\s,;:]*(?:\([^)]*\)[\s,;:]*)?(?:at\s+)?${PINPOINT_KEYWORD}\s*\d+\.\d`, 'iu');
+
 function readsAsDocumentReference(text: string, index: number, value: string): boolean {
   return DEFINITE_ARTICLE_BEFORE.test(text.slice(0, index)) || DOCUMENT_NOUN.test(value);
 }
@@ -2613,6 +2631,9 @@ function unresolvedShortForms(
       const value = tidyCaseName(match[1]);
       if (!looksLikeCaseName(value)) continue;
       if (readsAsDocumentReference(text, index, value)) continue;
+      if (SENTENCE_OPENER.test(value)) continue;
+      const after = index + match[1].length;
+      if (OWN_RECITALS.test(text.slice(after, segment.end)) || /\.\s+\p{Lu}/u.test(value) || DECIMAL_PINPOINT.test(text.slice(after, segment.end))) continue;
 
       const span: ShortFormSpan = { index, value, key: value.toLowerCase() };
       const parsed = parsePinpoint(text, index + match[1].length, segment.end);

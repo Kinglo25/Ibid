@@ -71,7 +71,14 @@ function isDocument(html) {
 export function notesFromCellar(html) {
   if (!isDocument(html)) return undefined;
   const notes = [];
-  for (const match of html.matchAll(/<p class="(?:coj-)?note"[^>]*>([\s\S]*?)<\/p>/gi)) {
+  for (const match of html.matchAll(/<p class="(?:coj-|oj-)?note"[^>]*>([\s\S]*?)<\/p>/gi)) {
+    // The Official Journal's own acts and decisions mark their notes `oj-note`, and read for the
+    // Court's classes alone the Commission's Apple, Amazon, Fiat and Starbucks decisions had no
+    // notes at all — 392 in Apple. A note marked `(*1)`, the Journal's statement that the text
+    // was redacted, is not one of the numbered footnotes, and counting it would put every note
+    // after it one place off the number the text refers to it by.
+    const marker = /^\s*<a[^>]*>\s*\(?\s*<span class="oj-super"[^>]*>([^<]*)<\/span>/i.exec(match[1]);
+    if (marker && !/^\d+$/.test(marker[1].trim())) continue;
     const withoutMarker = match[1]
       .replace(/^\s*\(\s*<span class="(?:coj-)?note"[^>]*>[\s\S]*?<\/span>\s*\)/i, '')
       .replace(/^\s*<a[^>]*>[\s\S]*?<\/a>\s*[).\u2013-]*/i, '');

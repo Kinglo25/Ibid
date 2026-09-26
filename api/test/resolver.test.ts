@@ -2964,6 +2964,37 @@ describe('a document of another case than the footnote names', () => {
     });
   });
 
+  describe('where the ECLI is the one mistake', () => {
+    // The Commission's Amazon and Starbucks decisions cite "C-78/08 to C-80/08 Paint Graphos
+    // ECLI:EU:C:2009:417, paragraph 50". That ECLI is Har Vaessen Douane Service (C-7/08), and
+    // its paragraph 50 was shown, warned of. The case number and the name agree with each other
+    // against the ECLI, and the document filed under that number is the one they name.
+    const vaessen = () => html('<p>JUDGMENT OF THE COURT (Third Chamber)</p><p>In Case C‑7/08,</p><p>Har Vaessen Douane Service BV v Staatssecretaris van Financiën</p><p class="count" id="point50">50</p><p>Har Vaessen’s paragraph.</p>');
+    const paintGraphos = (name = 'Ministero dell’Economia e delle Finanze v Paint Graphos Soc. coop. arl') => html(`<p>JUDGMENT OF THE COURT (First Chamber)</p><p>In Joined Cases C‑78/08 to C‑80/08,</p><p>${name}</p><p class="count" id="point50">50</p><p>The paragraph filed under the number.</p>`);
+    const lookup = (caseName?: string) => curiaJudgmentLookup({ caseNumber: 'C-78/08', celex: '62008CJ0078', ecli: 'ECLI:EU:C:2009:417', ...(caseName ? { caseName } : {}), locator: { kind: 'point', start: 50 }, paragraphs: [50] });
+
+    test('the case the footnote names by number and name is shown, and the ECLI said to be another case\'s', async () => {
+      const { fetcher, calls } = stubFetcher([vaessen(), paintGraphos()]);
+      const { resolver } = makeResolver({ fetcher });
+      const [preview] = await resolver.resolve(lookup('Paint Graphos'));
+      assert.ok(preview.excerpt.includes('The paragraph filed under the number.'), preview.excerpt);
+      assert.deepEqual(preview.ecliOfAnotherCase, { ecli: 'ECLI:EU:C:2009:417', named: ['C-7/08'] });
+      assert.equal(preview.caseMismatch, undefined);
+      assert.ok(calls[1].url.includes('62008CJ0078'));
+    });
+
+    test('but not where the name does not agree, nor where there is no name', async () => {
+      for (const name of ['Paint Graphos', undefined]) {
+        const { fetcher } = stubFetcher([vaessen(), paintGraphos('Some Other Party v Ministero')]);
+        const { resolver } = makeResolver({ fetcher });
+        const [preview] = await resolver.resolve(lookup(name));
+        assert.ok(preview.excerpt.includes('Har Vaessen’s paragraph.'), String(name));
+        assert.ok(preview.caseMismatch, 'the warning stands');
+        assert.equal(preview.ecliOfAnotherCase, undefined);
+      }
+    });
+  });
+
   test('a table of contents naming the judgment under appeal is not the heading', async () => {
     // ISU v Commission (C-124/21 P): the Grand Chamber's table of contents, before the heading,
     // lists "V. The action in Case T‑93/18", and the judgment was said to be of that case.

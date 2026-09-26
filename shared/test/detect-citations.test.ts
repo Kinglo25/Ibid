@@ -1524,3 +1524,40 @@ describe('a case name with a bracket after it and no "v"', () => {
 test('a bracketed name after a date is the name, without the bracket', () => {
   assert.equal(detectCitations('Judgment of 14 September 2022 (Google Android), T-604/18, EU:T:2022:541.')[0]?.caseName, 'Google Android');
 });
+
+describe('what is not a case, in the Commission\'s tax-ruling decisions', () => {
+  // Apple (2017/1283), Amazon (2018/859) and Starbucks (2017/502): each of these was reported
+  // to the reviewer as an unconfirmed short form of a judgment.
+  const unconfirmed = (note: string) => detectCitationsAcrossFootnotes([note])[0].filter((citation) => citation.status !== 'resolved');
+  test('a word opening the sentence', () => {
+    assert.deepEqual(unconfirmed('However, paragraph 4.9 of the 1995 OECD TP Guidelines refer to situations where an honest mistake is made.'), []);
+  });
+  test('a paragraph numbered with a decimal, which no judgment has', () => {
+    assert.deepEqual(unconfirmed('CSA, paragraph 1.13 on the ‘Licensed Purpose’.'), []);
+    assert.deepEqual(unconfirmed('Service Agreement between Amazon.fr. Sarl and LuxOpCo, paragraphs 2.2 (Fulfillment Services) and 2.3 (Customer and Merchant Services).'), []);
+    assert.deepEqual(unconfirmed('Starbucks specified that the agreements are standardised, cf. observations of Starbucks, recital 6.14.'), []);
+  });
+  test('recitals, which no judgment has', () => {
+    assert.deepEqual(unconfirmed('Cf. the answer of Melitta at recitals 207 to 209.'), []);
+    assert.deepEqual(unconfirmed('This was also the case for AOE. See recital 101.'), []);
+  });
+  test('a name that could be a case is still reported', () => {
+    assert.equal(unconfirmed('Akzo Nobel, paragraph 40.').length, 1);
+  });
+});
+
+test('an act defined outside the notes, cited by recital, is still reported', () => {
+  // The merger guidelines define "EUMR" in their body text, which the notes do not show:
+  // "EUMR, recital 28" is a citation Ibid cannot identify, and has to say so.
+  const [found] = detectCitationsAcrossFootnotes(['EUMR, recital 28.']);
+  assert.equal(found.length, 1);
+});
+
+test('an article of a national code named in an act\'s title is not the act\'s', () => {
+  // Amazon (2018/859), footnote 320: "Commission Decision 2007/256/EC … on the aid scheme
+  // implemented by France under Article 39 CA of the General Tax Code" opened the decision at
+  // an Article 39 it was never cited for.
+  const [act] = detectCitations('Commission Decision 2007/256/EC of 20 December 2006 on the aid scheme implemented by France under Article 39 CA of the General Tax Code — State aid C 46/2004 (OJ L 112, 30.4.2007, p. 41), paragraph 86.');
+  assert.equal(act.celex, '32007D0256');
+  assert.notEqual(act.locator?.kind, 'article');
+});

@@ -577,6 +577,17 @@ export function caseMismatchNote(mismatch: { cited: string; named: string[] } | 
   return `The footnote gives case number ${mismatch.cited}, but the document ${ecli ? `its ECLI (${ecli.replace(/^ECLI:/, '')})` : 'retrieved'} names is ${named}. The passage shown is from that case — check the ECLI and the case number.`;
 }
 
+/**
+ * Says that the footnote's ECLI is another case's, and that the passage shown is from the case
+ * its number and name agree on. The one error in "C-78/08 to C-80/08 Paint Graphos
+ * ECLI:EU:C:2009:417" is the ECLI, and the reviewer is told which to correct.
+ */
+export function ecliOfAnotherCaseNote(mismatch: { ecli: string; named: string[] } | undefined, caseNumber?: string): string | undefined {
+  if (!mismatch) return undefined;
+  const named = mismatch.named.length === 1 ? `Case ${mismatch.named[0]}` : `Cases ${listed(mismatch.named)}`;
+  return `The footnote's ECLI (${mismatch.ecli.replace(/^ECLI:/, '')}) is that of ${named}. The passage shown is from ${caseNumber ? `Case ${caseNumber}` : 'the case'}, which the footnote names by its number and its name — correct the ECLI.`;
+}
+
 export type NumberMismatch = { cited: string; citedTitle?: string; name: string; caseNumber?: string };
 
 /**
