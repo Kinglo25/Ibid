@@ -1139,9 +1139,18 @@ export function detectCitations(text: string): CitationMatch[] {
   // The provision-then-act form binds more tightly than a trailing pinpoint, so it is
   // tried first: in "Article 6(5) of Regulation (EU) 2022/1925, as amended", the article
   // is unambiguously this act's, while anything trailing may belong to the sentence.
+  // A pinpoint written after an authority is that authority's up to where the next begins, and
+  // no further: "See Alpha (C-1/10, EU:C:2011:1) and Beta (C-2/10, EU:C:2012:2, paragraph 7)"
+  // opened Alpha at Beta's paragraph 7, and "Regulation (EU) 2016/679 and Directive
+  // 2002/58/EC, Article 15" the GDPR at the directive's Article 15. A Commission case already
+  // stopped there (`commissionCaseTail`); this is the same rule for the rest.
   const pinpointFor = (start: number, end: number) => {
     const segment = segmentAt(segments, start);
-    const parsed = parsePinpointBefore(text, start, segment.start) ?? parsePinpoint(text, end, segment.end);
+    // The rest of a joined group is the same judgment, not the next authority: "Joined Cases
+    // C-87/90 to C-89/90 Verholen, paragraph 13" is C-87/90's paragraph 13.
+    const from = end + (GROUP_CONTINUATION.exec(text.slice(end, segment.end))?.[0].length ?? 0);
+    const next = text.slice(from, segment.end).search(NEXT_AUTHORITY);
+    const parsed = parsePinpointBefore(text, start, segment.start) ?? parsePinpoint(text, end, next >= 0 ? from + next : segment.end);
     return { locator: parsed?.locator, pinpoint: parsed?.pinpoint };
   };
   const actPinpointFor = (start: number, end: number) => {
@@ -1421,7 +1430,37 @@ export function detectCitations(text: string): CitationMatch[] {
     });
   }
 
-  return matches.sort((a, b) => a.index - b.index);
+  matches.sort((a, b) => a.index - b.index);
+  assignRespectively(text, segments, matches);
+  return matches;
+}
+
+/**
+ * "Alpha …, and Beta …, paragraphs 5 and 6 respectively": one pinpoint list for several
+ * authorities, taken in order. Read as the last authority's alone it gave Beta both 5 and 6
+ * and Alpha nothing, or, before the pinpoint stopped at the next authority, both of them both.
+ * Where the list has exactly as many items as there are court citations before it in the
+ * segment with no pinpoint of their own, each takes its item; where the count does not match,
+ * none takes any, since which item is whose is then not written down.
+ */
+const RESPECTIVELY = new RegExp(String.raw`${PINPOINT_KEYWORD}\s*((?:\d+(?:\s*(?:[–—‑-]|\bto\b|à)\s*\d+)?)(?:\s*(?:,|\band\b|\bet\b|&)\s*\d+(?:\s*(?:[–—‑-]|\bto\b|à)\s*\d+)?)+)\s*,?\s*(?:respectively|respectivement)\b`, 'gi');
+
+function assignRespectively(text: string, segments: Array<{ start: number; end: number }>, matches: CitationMatch[]): void {
+  for (const list of text.matchAll(RESPECTIVELY)) {
+    const at = list.index ?? 0;
+    const segment = segmentAt(segments, at);
+    const cited = matches.filter((citation) => citation.source === 'curia' && citation.index >= segment.start && citation.index < at);
+    const items = [...list[1].matchAll(PINPOINT_LIST_ITEM)];
+    // The last of them took the whole list as its own pinpoint; the others took nothing.
+    const owners = cited.filter((citation, position) => position === cited.length - 1 || !citation.pinpoint);
+    for (const citation of owners) { citation.pinpoint = undefined; citation.locator = undefined; }
+    if (items.length !== owners.length || owners.length < 2) continue;
+    owners.forEach((citation, position) => {
+      const parsed = parsePinpoint(`paragraph ${items[position][0]}`, 0);
+      citation.pinpoint = parsed?.pinpoint;
+      citation.locator = parsed?.locator;
+    });
+  }
 }
 
 function escapeRegExp(value: string): string {

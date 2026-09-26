@@ -1310,3 +1310,31 @@ describe('a party that writes its name in lower case', () => {
     assert.equal(detectCitations('and so on v Commission, EU:C:2022:202')[0].caseName, undefined);
   });
 });
+
+describe('a pinpoint belongs to the authority it follows, and to no other', () => {
+  const pins = (text: string) => detectCitations(text).map((citation) => [citation.value, citation.pinpoint?.paragraphs ?? citation.locator?.start ?? null]);
+
+  test('not to an authority cited before another', () => {
+    assert.deepEqual(pins('See Alpha (C-1/10, EU:C:2011:1) and Beta (C-2/10, EU:C:2012:2, paragraph 7).'),
+      [['EU:C:2011:1', null], ['EU:C:2012:2', [7]]]);
+    assert.deepEqual(pins('Alpha, C-1/10, EU:C:2011:1, as confirmed by Beta, C-2/10, EU:C:2012:2, paragraph 9.'),
+      [['EU:C:2011:1', null], ['EU:C:2012:2', [9]]]);
+    assert.deepEqual(pins('Case C-1/10 Alpha and Case C-2/10 Beta, paragraph 5.'), [['C-1/10', null], ['C-2/10', [5]]]);
+    assert.deepEqual(pins('Regulation (EU) 2016/679 and Directive 2002/58/EC, Article 15.'),
+      [['Regulation (EU) 2016/679', null], ['Directive 2002/58/EC', 15]]);
+  });
+
+  test('each its own, where each states one', () => {
+    assert.deepEqual(pins('Judgment of 1 May 2011, Alpha, C-1/10, EU:C:2011:1, paragraph 3, and judgment of 2 June 2012, Beta, C-2/10, EU:C:2012:2, paragraph 40.'),
+      [['EU:C:2011:1', [3]], ['EU:C:2012:2', [40]]]);
+    assert.deepEqual(pins('Article 5(1) of Regulation (EU) 2016/679 and Article 15 of Directive 2002/58/EC.'),
+      [['Regulation (EU) 2016/679', 5], ['Directive 2002/58/EC', 15]]);
+  });
+
+  test('"respectively" gives each its own, in order, or none where the count does not match', () => {
+    assert.deepEqual(pins('Judgments in Alpha, C-1/10, EU:C:2011:1, and Beta, C-2/10, EU:C:2012:2, paragraphs 5 and 6 respectively.'),
+      [['EU:C:2011:1', [5]], ['EU:C:2012:2', [6]]]);
+    assert.deepEqual(pins('Judgments in Alpha, C-1/10, EU:C:2011:1, and Beta, C-2/10, EU:C:2012:2, paragraphs 5, 6 and 7 respectively.'),
+      [['EU:C:2011:1', null], ['EU:C:2012:2', null]]);
+  });
+});
