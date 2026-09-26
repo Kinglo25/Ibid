@@ -386,10 +386,13 @@ describe('pre-2015 regulations (number/year, marked by "No")', () => {
  * implied.
  */
 describe('known detection gaps', () => {
-  test('does not resolve the two-digit year of the old EEC convention', () => {
-    // "Regulation (EEC) No 2913/92" predates the four-digit-year convention;
-    // resolving the implied century (19xx) is not attempted.
-    assert.deepEqual(detectCitations('Regulation (EEC) No 2913/92'), []);
+  test('does not read a two-digit year the text does not mark as one', () => {
+    // "No" marks a regulation's year as the second number and a suffix marks a directive's as
+    // the first; with neither, "4064/89" says nothing about which is which. See the tests for
+    // acts adopted before 1999 for the forms that are read.
+    assert.deepEqual(detectCitations('Council Regulation 4064/89 applies.'), []);
+    // Nor an ECSC act, which runs on into a suffix of its own and is numbered apart.
+    assert.deepEqual(detectCitations('Decision No 2064/86/ECSC'), []);
   });
 
   test('does not take a four-digit regulation number for its year', () => {
@@ -1199,5 +1202,59 @@ describe('the footnote a short form says it was cited in', () => {
     // The name still resolves it; the number is reported as not matching.
     assert.equal(wrong[0].celex, '62014CJ0413');
     assert.deepEqual(wrong[0].citedIn, { footnote: 2, agrees: false });
+  });
+});
+
+describe('acts adopted before 1999, with two-digit years', () => {
+  test('reads the year where the text marks it', () => {
+    // The Data Protection Directive and the first Merger Regulation, cited as they are written.
+    assert.equal(find('Directive 95/46/EC of the European Parliament and of the Council, Article 7(f).', 'Directive 95/46/EC')?.celex, '31995L0046');
+    assert.equal(find('Council Regulation (EEC) No 4064/89 of 21 December 1989, Article 2(3).', 'Regulation (EEC) No 4064/89')?.celex, '31989R4064');
+    assert.equal(find('Regulation (EEC) No 2913/92', 'Regulation (EEC) No 2913/92')?.celex, '31992R2913');
+    assert.equal(find('Council Directive 85/374/EEC', 'Directive 85/374/EEC')?.celex, '31985L0374');
+  });
+
+  test('only for the years that were written that way', () => {
+    // Four digits from 1999; nothing before the first acts of 1958.
+    assert.deepEqual(detectCitations('Directive 99/44/EC'), []);
+    assert.deepEqual(detectCitations('Directive 45/12/EEC'), []);
+  });
+});
+
+describe('found by a third batch of Commission-style footnotes', () => {
+  test('the next citation\'s wording does not retype this one', () => {
+    const [judgment, order] = detectCitations('Judgment of 11 September 2014, MasterCard and Others v Commission, C‑382/12 P, EU:C:2014:2201, paragraph 161; Order of 29 February 2024, X v Commission, C‑1/24 P(R), EU:C:2024:180, paragraph 3.');
+    assert.equal(judgment.documentType, 'judgment');
+    assert.equal(judgment.celex, '62012CJ0382');
+    assert.equal(order.documentType, 'order');
+  });
+
+  test('a recital numbered in brackets, the way the Commission numbers them', () => {
+    assert.deepEqual(find('Commission Decision of 27 June 2017 in Case AT.39740 – Google Search (Shopping), recitals (344) to (350).', 'AT.39740')?.pinpoint?.paragraphs, [344, 345, 346, 347, 348, 349, 350]);
+    assert.deepEqual(find('Case M.8677 – Siemens/Alstom, recitals (12), (15) and (20).', 'M.8677')?.pinpoint?.paragraphs, [12, 15, 20]);
+    assert.deepEqual(find('Regulation (EU) 2022/1925, recital (14).', 'Regulation (EU) 2022/1925')?.pinpoint?.paragraphs, [14]);
+    // Only the recital's own number: a bracketed aside is still an aside.
+    assert.deepEqual(find('Case M.1616 – BSCH/Champalimaud (Article 21(3) decision of 20.07.1999), paragraphs 65-67.', 'M.1616')?.pinpoint?.paragraphs, [65, 66, 67]);
+  });
+
+  test('several articles of one treaty, named once', () => {
+    const citations = detectCitations('Articles 101(1) and 102 TFEU; Articles 7 and 8 of the Charter.');
+    assert.deepEqual(citations.map((citation) => citation.celex), ['12016E101', '12016E102', '12016P007', '12016P008']);
+    assert.deepEqual(citations[0].locator, { kind: 'article', start: 101, paragraph: 1 });
+  });
+
+  test('Regulation No 17, cited by its number alone', () => {
+    const [citation] = detectCitations('Regulation No 17, Article 15(2).');
+    assert.equal(citation.celex, '31962R0017');
+    assert.equal(citation.locator?.kind, 'article');
+    assert.equal(citation.locator?.start, 15);
+    assert.equal(citation.locator?.paragraph, 2);
+    assert.equal(detectCitations('Regulation No 170/2000')[0]?.celex, '32000R0170');
+  });
+
+  test('a procedural suffix written without its space', () => {
+    const [citation] = detectCitations('Case C‑413/14P Intel v Commission, EU:C:2017:632, paragraph 139.');
+    assert.equal(citation.caseNumber, 'C-413/14 P');
+    assert.equal(citation.caseName, 'Intel v Commission');
   });
 });

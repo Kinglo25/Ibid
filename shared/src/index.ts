@@ -297,8 +297,24 @@ function expandPinpointList(list: string): Pinpoint {
  */
 export type ParsedPinpoint = { locator: CitationLocator; pinpoint?: Pinpoint };
 
+/**
+ * `recitals (344) to (350)` read as `recitals 344 to 350`.
+ *
+ * A Commission decision numbers its recitals in brackets, and cites them — its own and other
+ * decisions' — the same way, so "Case AT.39740 – Google Search (Shopping), recital (344)" is
+ * how the Commission writes it. The pinpoint grammar reads a bare number, and a bracketed one
+ * after "recital" is not the sub-paragraph `(3)` of `Article 2(3)`, so the brackets are taken
+ * off where they stand for the recital's own number and nowhere else.
+ */
+function unbracketRecitals(text: string): string {
+  return text.replace(
+    /\b(recitals?|consid[ée]rants?)(\s+)((?:\(\d+\)(?:\s*(?:,|and|et|&|to|à|[–—‑-])\s*)?)+)/gi,
+    (_, word: string, space: string, list: string) => `${word}${space}${list.replace(/\((\d+)\)/g, '$1')}`,
+  );
+}
+
 export function parsePinpoint(text: string, index: number, limit = text.length): ParsedPinpoint | undefined {
-  const tail = text.slice(index, Math.min(limit, index + PINPOINT_SCAN_WINDOW));
+  const tail = unbracketRecitals(text.slice(index, Math.min(limit, index + PINPOINT_SCAN_WINDOW)));
   const match = PINPOINT_PATTERN.exec(tail);
   if (match && endsOnLetteredNumber(tail, match)) return undefined;
   return fromPinpointMatch(match);
@@ -439,6 +455,11 @@ const CASE_SUFFIX = String.raw`P\(R\)|RENV|DEP|REV|OP|P|R`;
  * the citation entirely, which reads as "no citation in this footnote".
  */
 const CASE_HYPHENS = String.raw`[-‑–—]`;
+/*
+ * The suffix may follow with no space — "C‑413/14P" is common enough in drafts — and then
+ * the letter was dropped from the number and read as the start of the case name instead:
+ * "P Intel v Commission".
+ */
 /**
  * Where a court's case number cannot be, however much it looks like one.
  *
@@ -450,9 +471,9 @@ const CASE_HYPHENS = String.raw`[-‑–—]`;
  */
 const NOT_A_CASE_NUMBER_BEFORE = String.raw`(?<!\/)`;
 const NOT_A_CASE_NUMBER_AFTER = String.raw`(?!\d|[.,]\d)`;
-const CASE_NUMBER_SOURCE = String.raw`${NOT_A_CASE_NUMBER_BEFORE}\b([CT])${CASE_HYPHENS}?(\d{1,4})\/(\d{2})${NOT_A_CASE_NUMBER_AFTER}(?:\s+(${CASE_SUFFIX})(?![\w(]))?`;
+const CASE_NUMBER_SOURCE = String.raw`${NOT_A_CASE_NUMBER_BEFORE}\b([CT])${CASE_HYPHENS}?(\d{1,4})\/(\d{2})${NOT_A_CASE_NUMBER_AFTER}(?:\s*(${CASE_SUFFIX})(?![\w(]))?`;
 /** The same pattern with no capture groups, so it can be embedded in a larger one. */
-const CASE_NUMBER_INLINE = String.raw`${NOT_A_CASE_NUMBER_BEFORE}\b[CT]${CASE_HYPHENS}?\d{1,4}\/\d{2}${NOT_A_CASE_NUMBER_AFTER}(?:\s+(?:${CASE_SUFFIX})(?![\w(]))?`;
+const CASE_NUMBER_INLINE = String.raw`${NOT_A_CASE_NUMBER_BEFORE}\b[CT]${CASE_HYPHENS}?\d{1,4}\/\d{2}${NOT_A_CASE_NUMBER_AFTER}(?:\s*(?:${CASE_SUFFIX})(?![\w(]))?`;
 
 // The separator list includes the range forms, because a joined-cases group is routinely
 // written as a span rather than a list — "Joined Cases C-87/90 to C-89/90 Verholen and
@@ -606,7 +627,14 @@ const JUDGMENT_SIGNAL = /\bjudgment of (?:the (?:court|general court)|\d{1,2}\s+
  */
 function documentTypeNear(text: string, index: number, matchLength: number): { documentType: CuriaDocumentType; stated: boolean } {
   const from = Math.max(0, index - 200);
-  const window = text.slice(from, Math.min(text.length, index + matchLength + 100));
+  // What follows the citation describes it only until the next authority begins, or a
+  // semicolon moves on to one. "Judgment of 11 September 2014, MasterCard …, EU:C:2014:2201,
+  // paragraph 161; Order of 29 February 2024, …" had the second citation's "Order" nearer to
+  // the first ECLI than its own "Judgment", and derived the CELEX of an order that does not
+  // exist.
+  const after = text.slice(index + matchLength, Math.min(text.length, index + matchLength + 100));
+  const stop = /;|\b(?:ECLI:)?EU:[CT]:\d{4}:\d+|\b[CT][-‑–—]?\d{1,4}\/\d{2}(?!\d)/i.exec(after);
+  const window = text.slice(from, index + matchLength + (stop ? stop.index : after.length));
   // Nearest signal wins, not a fixed order of preference. One footnote routinely cites a
   // judgment and the Advocate General's opinion in the same case — "judgment of 21 May 2015,
   // CDC Hydrogen Peroxide (C-352/13, EU:C:2015:335) … which Advocate General Jääskinen
@@ -861,18 +889,43 @@ function celexForTreatyArticle(treaty: string, articleNumber: string): string {
  * regulation's year comes first only in the convention that began in 2015:
  * before it the number led, so `Regulation 1998/2006` — the de minimis
  * regulation of 2006 — must not be read as a regulation of 1998, which would
- * be another document entirely. Neither is reported at all,
- * the same as a two-digit year (see "known detection gaps" in the tests):
- * reading a bracket-less number/year is not attempted.
+ * be another document entirely. Neither is reported at all (see "known detection gaps" in the
+ * tests): with no "No" and no suffix to say which number is the year, it is not guessed at. A
+ * two-digit year is read only where one of them does — see `twoDigitActYear`.
  */
 const FIRST_ACT_YEAR = 1952;
 const CURRENT_CONVENTION_FROM = 2015;
 
+/**
+ * The two-digit year of an act adopted before 1999, as a year, or nothing.
+ *
+ * Until the end of 1998 an act's year was written in two digits — `Directive 95/46/EC`,
+ * `Regulation (EEC) No 4064/89` — and all of them are this century's predecessor: the first
+ * acts date from 1958 and the four-digit form began in 1999. Read only where the text itself
+ * says which number is the year, which is the suffix after a directive's or decision's
+ * numbers (year first) or the "No" before a regulation's (year second); a bare `4064/89` says
+ * neither, and stays unread.
+ */
+function twoDigitActYear(value: string): string | undefined {
+  if (!/^\d{2}$/.test(value)) return undefined;
+  const year = 1900 + Number(value);
+  return year >= 1958 && year <= 1998 ? String(year) : undefined;
+}
+
 function parseActNumbers(kind: string, hasSuffix: boolean, hasNo: boolean, first: string, second: string): { year: string; number: string } | undefined {
   const isYear = (value: string, from = FIRST_ACT_YEAR) =>
     value.length === 4 && Number(value) >= from && Number(value) <= new Date().getFullYear();
-  if (hasSuffix) return isYear(first) ? { year: first, number: second } : undefined;
-  if (hasNo) return isYear(second) ? { year: second, number: first } : undefined;
+  if (hasSuffix && hasNo) return isYear(first) ? { year: first, number: second } : undefined;
+  if (hasSuffix) {
+    if (isYear(first)) return { year: first, number: second };
+    const old = twoDigitActYear(first);
+    return old ? { year: old, number: second } : undefined;
+  }
+  if (hasNo) {
+    if (isYear(second)) return { year: second, number: first };
+    const old = twoDigitActYear(second);
+    return old ? { year: old, number: first } : undefined;
+  }
   const from = REGULATION_WORDS.test(kind) ? CURRENT_CONVENTION_FROM : FIRST_ACT_YEAR;
   return isYear(first, from) ? { year: first, number: second } : undefined;
 }
@@ -909,7 +962,9 @@ const NEXT_AUTHORITY = new RegExp(
  * Blanked rather than cut out, so every index inside the tail stays the index it was.
  */
 function commissionCaseTail(text: string, from: number, limit: number): string {
-  const rest = text.slice(from, limit);
+  // A recital's own bracketed number is the pinpoint, not an aside, so it is unbracketed before
+  // the asides are blanked. `(344)` would otherwise go with them.
+  const rest = unbracketRecitals(text.slice(from, limit));
   const next = rest.search(NEXT_AUTHORITY);
   const own = next >= 0 ? rest.slice(0, next) : rest;
   let depth = 0;
@@ -937,7 +992,7 @@ function commissionCaseTail(text: string, from: number, limit: number): string {
  * draft merger guidelines cite an annex this way.
  */
 function commissionCasePinpoint(own: string): ParsedPinpoint | undefined {
-  const window = own.slice(0, PINPOINT_SCAN_WINDOW);
+  const window = unbracketRecitals(own.slice(0, PINPOINT_SCAN_WINDOW));
   const match = PINPOINT_PATTERN.exec(window);
   if (!match || endsOnLetteredNumber(window, match)) return undefined;
   if (/\bannex\b/i.test(window.slice(0, match.index))) return undefined;
@@ -1213,6 +1268,10 @@ export function detectCitations(text: string): CitationMatch[] {
   for (const match of text.matchAll(new RegExp(String.raw`\b(${ACT_KEYWORDS})\s*(?:\((EU|EC|CE|EEC|EWG|UE|CEE)\)\s*)?(No\.?\s*)?(\d{1,4})\/(\d{1,4})(?:\/(EU|EC|CE|EEC|UE|CEE))?\b`, 'gi'))) {
     const index = match.index ?? 0;
     const [, kind, , no, first, second, suffix] = match;
+    // `Decision No 2064/86/ECSC` runs on into a suffix this pattern does not know, and the ECSC
+    // numbered its acts under a sector of their own: read as a Community decision it would name
+    // another document. Whatever continues past the numbers with a slash is left alone.
+    if (text[index + match[0].length] === '/') continue;
     const parsed = parseActNumbers(kind, Boolean(suffix), Boolean(no), first, second);
     if (!parsed) continue;
     add({
@@ -1241,6 +1300,37 @@ export function detectCitations(text: string): CitationMatch[] {
       label, value: match[0], index, source: 'eur-lex', celex: celexForTreatyArticle(treaty, articleNumber),
       locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined },
     });
+  }
+
+  // Regulation No 17 of 1962, the Council's first regulation implementing the competition rules
+  // and the one every decision before May 2004 was adopted under. Numbered before the year was
+  // part of a regulation's number, so it is cited by its number alone and the pattern above,
+  // which wants two numbers, never saw it. It is the only such regulation cited this way in
+  // competition law, and its CELEX is fixed: 31962R0017.
+  for (const match of text.matchAll(/\b(?:Regulation|Règlement)\s+(?:\((?:EEC|CEE)\)\s+)?(?:No\.?|n[°º]|nr\.?)\s*17(?![\d/]|[.,]\d)/gi)) {
+    const index = match.index ?? 0;
+    add({
+      label: 'EU regulation', value: match[0], index, source: 'eur-lex', celex: '31962R0017',
+      ...(namedInAnotherActsTitle(text, index, segmentAt(segments, index).start) ? {} : actPinpointFor(index, index + match[0].length)),
+    });
+  }
+
+  // "Articles 101(1) and 102 TFEU", "Articles 7 and 8 of the Charter": several articles of one
+  // treaty, named once at the end. The pattern above wants the treaty straight after a number,
+  // so it read neither of them — in the form competition law cites its two articles in more
+  // often than any other. Each article is its own citation, placed at its own number.
+  for (const match of text.matchAll(/\bArticles\s+((?:\d+(?:\(\d+\))?\s*(?:,|and|et|&)\s*)+\d+(?:\(\d+\))?)\s+(?:of\s+the\s+|de\s+la\s+)?(TFEU|TFUE|TEU|TUE|CFR|CDFUE|Charter(?:\s+of\s+Fundamental\s+Rights)?|Charte(?:\s+des\s+droits\s+fondamentaux)?)\b/gi)) {
+    const [, list, treaty] = match;
+    const listStart = (match.index ?? 0) + match[0].indexOf(list);
+    const label = /^(?:TFEU|TFUE)$/i.test(treaty) ? 'TFEU article' : /^(?:TEU|TUE)$/i.test(treaty) ? 'TEU article' : 'Charter article';
+    for (const item of list.matchAll(/(\d+)(?:\((\d+)\))?/g)) {
+      const [written, articleNumber, paragraph] = item;
+      add({
+        label, value: `Article ${written} ${/^Charter\b/i.test(treaty) ? `of the ${treaty}` : /^Charte\b/i.test(treaty) ? `de la ${treaty}` : treaty}`, index: listStart + (item.index ?? 0), source: 'eur-lex',
+        celex: celexForTreatyArticle(treaty, articleNumber),
+        locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined },
+      });
+    }
   }
 
   // DG Competition's own case-number convention, distinct from the C(yyyy) decision

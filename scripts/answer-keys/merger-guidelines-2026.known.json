@@ -653,12 +653,6 @@
    "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
-   "note": "434",
-   "outcome": "missed",
-   "identity": "TFEU art 52, art 65",
-   "reason": "\"Articles 52 and 65 TFEU\": a list of Treaty articles is not read"
-  },
-  {
    "note": "440",
    "outcome": "pinpoint-missing",
    "identity": "32024R1083 European Media Freedom Act",
