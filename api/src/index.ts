@@ -1119,6 +1119,63 @@ function retryDelay(response: Response | undefined, attempt: number): number {
   return Math.min(8_000, 400 * 2 ** attempt);
 }
 
+/**
+ * A lookup as the pane sends it, or nothing if this is not one.
+ *
+ * The server took anything carrying a `source` and a `value`, whatever they were, and passed it
+ * on: a number or an object as `value` came back as the preview's title — an object the pane
+ * cannot render — and an object as `celex` failed inside the resolver and put its internal
+ * message ("celex.slice is not a function") on the wire as a 502, the status that means an
+ * official source failed. Each field is now checked against the type the pane sends and a size
+ * no real citation reaches, and only the named fields are kept, so anything else a caller adds
+ * goes no further than this. A lookup that fails is the caller's mistake: a 400.
+ */
+const LOOKUP_SOURCES: readonly EuLookup['source'][] = ['curia', 'eur-lex', 'commission'];
+const DOCUMENT_TYPES: readonly NonNullable<EuLookup['documentType']>[] = ['judgment', 'opinion', 'order'];
+const LOCATOR_KINDS: readonly NonNullable<EuLookup['locator']>['kind'][] = ['point', 'article', 'section'];
+const ECLI_SHAPE = /^ECLI:EU:[A-Z]:\d{4}:\d{1,6}$/i;
+
+export function parseLookup(input: unknown): EuLookup | undefined {
+  const record = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+  const text = (value: unknown, max: number): value is string =>
+    typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+  const whole = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 1_000_000;
+  // Absent is always allowed; present and wrong is not.
+  const optional = <T,>(value: unknown, valid: (value: unknown) => value is T): value is T | undefined =>
+    value === undefined || valid(value);
+
+  if (!record(input)) return undefined;
+  const { source, value, celex, ecli, alternativeCelexes, caseNumber, caseName, documentType, locator, paragraphs } = input;
+  if (!LOOKUP_SOURCES.includes(source as EuLookup['source']) || !text(value, 500)) return undefined;
+  if (!optional(celex, (v): v is string => typeof v === 'string' && CELEX_SHAPE.test(v))) return undefined;
+  if (!optional(ecli, (v): v is string => typeof v === 'string' && ECLI_SHAPE.test(v))) return undefined;
+  if (!optional(caseNumber, (v): v is string => text(v, 40))) return undefined;
+  if (!optional(caseName, (v): v is string => text(v, 600))) return undefined;
+  if (!optional(documentType, (v): v is EuLookup['documentType'] => DOCUMENT_TYPES.includes(v as never))) return undefined;
+  if (!optional(alternativeCelexes, (v): v is string[] =>
+    Array.isArray(v) && v.length <= 20 && v.every((item) => typeof item === 'string' && item.length <= 30))) return undefined;
+  if (!optional(paragraphs, (v): v is number[] => Array.isArray(v) && v.length <= 2000 && v.every(whole))) return undefined;
+  if (!optional(locator, (v): v is EuLookup['locator'] => record(v)
+    && LOCATOR_KINDS.includes(v.kind as never) && whole(v.start)
+    && optional(v.end, whole) && optional(v.paragraph, whole)
+    && optional(v.sections, (sections): sections is Array<{ from: string; to?: string }> => Array.isArray(sections) && sections.length <= 20
+      && sections.every((section) => record(section) && text(section.from, 30) && optional(section.to, (to): to is string => text(to, 30)))))) return undefined;
+
+  return {
+    source: source as EuLookup['source'], value,
+    ...(celex !== undefined ? { celex } : {}),
+    ...(ecli !== undefined ? { ecli } : {}),
+    ...(alternativeCelexes !== undefined ? { alternativeCelexes } : {}),
+    ...(caseNumber !== undefined ? { caseNumber } : {}),
+    ...(caseName !== undefined ? { caseName } : {}),
+    ...(documentType !== undefined ? { documentType } : {}),
+    ...(locator !== undefined ? { locator } : {}),
+    ...(paragraphs !== undefined ? { paragraphs } : {}),
+  };
+}
+
 export function createApiHealthCheck() { return { status: 'ok' as const }; }
 
 /**

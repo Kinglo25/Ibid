@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { pipeline } from 'node:stream/promises';
-import { createCommissionCaseIndexLoader, createEuSourceResolver, createFileDocumentStore, createStaticFiles, defaultCacheDirectory } from './dist/index.js';
+import { createCommissionCaseIndexLoader, createEuSourceResolver, createFileDocumentStore, createStaticFiles, defaultCacheDirectory, parseLookup } from './dist/index.js';
 
 const eurLexHeaders = {};
 if (process.env.IBID_EURLEX_API_KEY) eurLexHeaders['X-API-Key'] = process.env.IBID_EURLEX_API_KEY;
@@ -107,11 +107,11 @@ const server = http.createServer(async (request, response) => {
     // failed official source, so it is a 400 like any other malformed lookup — not a 502.
     let lookup;
     try {
-      lookup = JSON.parse(url.searchParams.get('lookup') ?? '{}');
+      lookup = parseLookup(JSON.parse(url.searchParams.get('lookup') ?? '{}'));
     } catch {
       lookup = undefined;
     }
-    if (!lookup?.source || !lookup.value) return json(400, { error: 'A source and citation are required.' });
+    if (!lookup) return json(400, { error: 'A source and citation are required, in the form the pane sends them.' });
     try {
       // `confirm=later` is the pane asking for a decision already held to be answered from at
       // once and confirmed on a second request — see `ResolveOptions` in `src/index.ts`.
