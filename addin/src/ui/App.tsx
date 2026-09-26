@@ -4,7 +4,7 @@ import { prefetchStatus, prefetchTargets, startConfirmations, startPrefetch, typ
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
   autoSelectable, bodyProseLines, inlineFootnotesInBody, INLINE_NOTE_CEILING, INLINE_NOTE_FLOOR, INLINE_NOTE_SHAPE, needsReview, officialSourceUrl, parentheticalsInBody,
-  documentTypeNote, excerptPassages, followingNote, numberMismatchNote, outstandingNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
+  documentTypeNote, draftingNotes, excerptPassages, followingNote, numberMismatchNote, outstandingNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
   unresolvedMessage, verificationNote, type ReviewFootnote,
 } from './citation-view';
 
@@ -1446,6 +1446,7 @@ export default function App() {
         {selected && <>
           <p className="selected-citation">{selected.citation.value}</p>
           {selected.citation.status === 'resolved' && <p className="resolution-note">{resolutionNote(selected.citation)}</p>}
+          {draftingNotes(selected.citation).map((note) => <p key={note} className="source-warning" role="alert">{note}</p>)}
           <p className="context-label">{!selected.footnote.number
             ? 'What you selected'
             : selected.footnote.inBody

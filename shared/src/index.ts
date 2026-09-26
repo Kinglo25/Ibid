@@ -161,7 +161,19 @@ export type CitationMatch = {
    * drafting error the reviewer will want to hear about.
    */
   citedIn?: { footnote: number; agrees: boolean };
+  /**
+   * Where the footnote contradicts the identifier it gives: a date whose year is not the
+   * ECLI's, or a case number of one court beside an ECLI of the other. The identifier is what
+   * was retrieved by — an ECLI is the court's own name for the document — so these change
+   * nothing about what is shown; they are drafting errors, reported for the reviewer to fix.
+   * The Commission's 2026 draft merger guidelines carry nine in 478 footnotes.
+   */
+  drafting?: DraftingProblem[];
 };
+
+export type DraftingProblem =
+  | { kind: 'date'; written: string; ecli: string }
+  | { kind: 'court'; written: string; ecli: string };
 
 export type CitationContext = CitationMatch & { context: string };
 
@@ -456,6 +468,9 @@ const CASE_SUFFIX = String.raw`P\(R\)|RENV|DEP|REV|OP|P|R`;
  */
 const CASE_HYPHENS = String.raw`[-‑–—]`;
 /*
+ * A PDF conversion breaks a case number across a line after its hyphen, leaving "C- 265/17",
+ * and the number was then not read at all; one space after the hyphen is allowed.
+ *
  * The suffix may follow with no space — "C‑413/14P" is common enough in drafts — and then
  * the letter was dropped from the number and read as the start of the case name instead:
  * "P Intel v Commission".
@@ -471,9 +486,9 @@ const CASE_HYPHENS = String.raw`[-‑–—]`;
  */
 const NOT_A_CASE_NUMBER_BEFORE = String.raw`(?<!\/)`;
 const NOT_A_CASE_NUMBER_AFTER = String.raw`(?!\d|[.,]\d)`;
-const CASE_NUMBER_SOURCE = String.raw`${NOT_A_CASE_NUMBER_BEFORE}\b([CT])${CASE_HYPHENS}?(\d{1,4})\/(\d{2})${NOT_A_CASE_NUMBER_AFTER}(?:\s*(${CASE_SUFFIX})(?![\w(]))?`;
+const CASE_NUMBER_SOURCE = String.raw`${NOT_A_CASE_NUMBER_BEFORE}\b([CT])(?:${CASE_HYPHENS}\s?)?(\d{1,4})\/(\d{2})${NOT_A_CASE_NUMBER_AFTER}(?:\s*(${CASE_SUFFIX})(?![\w(]))?`;
 /** The same pattern with no capture groups, so it can be embedded in a larger one. */
-const CASE_NUMBER_INLINE = String.raw`${NOT_A_CASE_NUMBER_BEFORE}\b[CT]${CASE_HYPHENS}?\d{1,4}\/\d{2}${NOT_A_CASE_NUMBER_AFTER}(?:\s*(?:${CASE_SUFFIX})(?![\w(]))?`;
+const CASE_NUMBER_INLINE = String.raw`${NOT_A_CASE_NUMBER_BEFORE}\b[CT](?:${CASE_HYPHENS}\s?)?\d{1,4}\/\d{2}${NOT_A_CASE_NUMBER_AFTER}(?:\s*(?:${CASE_SUFFIX})(?![\w(]))?`;
 
 // The separator list includes the range forms, because a joined-cases group is routinely
 // written as a span rather than a list — "Joined Cases C-87/90 to C-89/90 Verholen and
@@ -701,7 +716,9 @@ const NOT_A_CASE_NAME = /^(?:ecli|celex|case|cases|joined|affaire|affaires|judgm
 
 function looksLikeCaseName(candidate: string): boolean {
   if (candidate.length < 3 || candidate.length > 120) return false;
-  if (!/^[A-ZÀ-Þ]/.test(candidate)) return false;
+  // A party that writes its own name in lower case — thyssenkrupp, bpost, eDreams — still
+  // names a case where "v" follows it straight away; anywhere else a lower-case start is prose.
+  if (!/^[A-ZÀ-Þ]/.test(candidate) && !/^[a-zà-ÿ][\p{L}\d'’&.-]*\s+v\.?\s+[A-ZÀ-Þ]/u.test(candidate)) return false;
   // A bare Roman numeral names no case. Reached through Strasbourg reports cited in EU
   // pleadings — "ECHR 2002-VII, §§ 45 to 48" put a capitalised "VII" in front of a pinpoint,
   // the exact shape of a short-form citation, and reported it as an authority to resolve.
@@ -1083,6 +1100,34 @@ function preGeneralCourtNumbers(scanned: string, ecliYear: number): NumberAt[] {
   return found.filter((_, at) => accepted[at]).map(({ index, length, caseNumber }) => ({ index, length, caseNumber }));
 }
 
+/**
+ * What a citation's own words say that its ECLI contradicts. See `CitationMatch.drafting`.
+ *
+ * The date is the last one written before the ECLI, and only where it is the decision's: a
+ * document word ("Judgment of", "Opinion … delivered on", "arrêt du") stands before it, and
+ * no other authority stands between it and the ECLI — so a regulation's date, or an earlier
+ * citation's, is never taken for this one's. The year is compared as written, so "20224" is
+ * reported too.
+ */
+const DECISION_DATE = /\b(\d{1,2})(?:er)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December|janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[ûu]t|septembre|octobre|novembre|d[ée]cembre)\s+(\d{3,5})(?!\d)/gi;
+const DECISION_WORD_BEFORE = /\b(?:judgments?|orders?|opinions?|arr[êe]ts?|ordonnances?|conclusions|delivered|rendu(?:e|es)?)\b[^.;]{0,90}$/i;
+const OTHER_AUTHORITY_BETWEEN = /\b(?:ECLI:)?EU:[CT]:\d|\b(?:COMP\/)?(?:AT|SA|M)\.\d|\b(?:Directive|Regulation|Règlement|Decision|Décision)\b/i;
+
+function draftingProblems(before: string, ecli: string, caseNumber: string | undefined): DraftingProblem[] {
+  const problems: DraftingProblem[] = [];
+  const [, court, year] = /^ECLI:EU:([A-Z]):(\d{4}):/.exec(ecli) ?? [];
+  const date = [...before.matchAll(DECISION_DATE)].at(-1);
+  if (date && year && date[2] !== year
+      && DECISION_WORD_BEFORE.test(before.slice(0, date.index))
+      && !OTHER_AUTHORITY_BETWEEN.test(before.slice((date.index ?? 0) + date[0].length))) {
+    problems.push({ kind: 'date', written: date[0], ecli });
+  }
+  if (caseNumber && court && (court === 'C' || court === 'T') && caseNumber[0] !== court) {
+    problems.push({ kind: 'court', written: caseNumber, ecli });
+  }
+  return problems;
+}
+
 export function detectCitations(text: string): CitationMatch[] {
   const matches: CitationMatch[] = [];
   const segments = citationSegments(text);
@@ -1208,7 +1253,9 @@ export function detectCitations(text: string): CitationMatch[] {
     const caseNumber = caseMatches[lead]?.caseNumber;
     const { documentType, stated } = documentTypeNear(text, index, match[0].length);
     const ecli = `ECLI:${match[0].toUpperCase().replace(/^ECLI:/, '')}`;
+    const drafting = draftingProblems(before, ecli, caseNumber);
     add({
+      ...(drafting.length ? { drafting } : {}),
       label: labelForDocumentType(documentType, 'CJEU judgment'), value: match[0].toUpperCase(), index, source: 'curia', ecli,
       caseNumber, caseName: caseNameBefore(text, index, segment.start), documentType, documentTypeStated: stated || undefined,
       celex: caseNumber ? celexForCase(caseNumber, { documentType, court: courtFromEcli(ecli) }) : undefined,
@@ -1624,7 +1671,9 @@ function stripCorporateSuffixes(value: string): string {
 
 function isUsableVariant(value: string): boolean {
   if (value.length < 3 || value.length > 120) return false;
-  if (!/^[A-ZÀ-Þ0-9]/.test(value)) return false;
+  // Lower case only for a party that writes itself so — thyssenkrupp, bpost — which is the
+  // only way a name reaching here can start with one (see `looksLikeCaseName`).
+  if (!/^[\p{L}0-9]/u.test(value) || (/^[a-zà-ÿ]/.test(value) && value.length < 4)) return false;
   if (GENERIC_PARTY_NAMES.has(value.toLowerCase())) return false;
   if (NOT_A_CASE_NAME.test(value)) return false;
   return /[A-Za-zÀ-ÿ]{2}/.test(value);

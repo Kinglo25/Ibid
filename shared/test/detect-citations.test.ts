@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { detectCitations, detectCitationsAcrossFootnotes, getCitationContexts, getCitationContextsForFootnotes, resolveTwoDigitYear, celexForCase } from '../src/index.ts';
 
 const find = (text: string, value: string) =>
@@ -1256,5 +1257,56 @@ describe('found by a third batch of Commission-style footnotes', () => {
     const [citation] = detectCitations('Case C‑413/14P Intel v Commission, EU:C:2017:632, paragraph 139.');
     assert.equal(citation.caseNumber, 'C-413/14 P');
     assert.equal(citation.caseName, 'Intel v Commission');
+  });
+});
+
+describe('what a footnote contradicts about its own ECLI', () => {
+  test('a date of another year, and a case number of the other court', () => {
+    const [citation] = detectCitations('Judgment of 22 June 2002, thyssenkrupp v Commission, T-584/19, EU:T:2022:386, paragraph 514.');
+    assert.deepEqual(citation.drafting, [{ kind: 'date', written: '22 June 2002', ecli: 'ECLI:EU:T:2022:386' }]);
+    const [court] = detectCitations('Judgment of 22 June 2022, thyssenkrupp v Commission, C-584/19 P, EU:T:2022:386, paragraph 246.');
+    assert.deepEqual(court.drafting, [{ kind: 'court', written: 'C-584/19 P', ecli: 'ECLI:EU:T:2022:386' }]);
+    // What is retrieved still follows the ECLI.
+    assert.equal(court.celex, '62019TJ0584');
+  });
+
+  test('a date that is not the decision\'s is not held against it', () => {
+    assert.equal(detectCitations('Judgment of 6 September 2017, Intel v Commission, C-413/14 P, EU:C:2017:632.')[0].drafting, undefined);
+    // A regulation's date, before a judgment that names no date of its own.
+    assert.equal(detectCitations('Regulation (EC) No 1/2003 of 16 December 2002 and the judgment in Intel v Commission, C-413/14 P, EU:C:2017:632.')
+      .find((citation) => citation.ecli)?.drafting, undefined);
+    assert.equal(detectCitations('Opinion of Advocate General Wahl delivered on 20 October 2016 in Intel, EU:C:2016:788, point 93.')[0].drafting, undefined);
+  });
+
+  test('in the Commission\'s draft merger guidelines, exactly the errors the answer key records', () => {
+    // The key was written by hand from the published PDF; every date and court contradiction
+    // it records is found, and nothing else in 478 footnotes is.
+    const notes = JSON.parse(readFileSync(new URL('../../scripts/answer-keys/merger-guidelines-2026.notes.json', import.meta.url), 'utf8')).notes as Record<string, string>;
+    const numbers = Object.keys(notes).sort((a, b) => Number(a) - Number(b));
+    const flagged = detectCitationsAcrossFootnotes(numbers.map((number) => notes[number]))
+      .flatMap((citations, index) => citations.flatMap((citation) => (citation.drafting ?? []).map((problem) => `${numbers[index]} ${problem.kind}`)));
+    assert.deepEqual(flagged, ['40 date', '46 date', '56 court', '60 date', '62 date', '200 date', '201 date', '294 date', '389 date', '460 date', '460 date', '463 date']);
+  });
+
+  test('a case number a PDF broke after its hyphen', () => {
+    const [citation] = detectCitations('Judgment of 23 January 2019, Commission v United Parcel Service, C- 265/17P, EU:C:2019:23, paragraphs 53-54.');
+    assert.equal(citation.caseNumber, 'C-265/17 P');
+    assert.equal(citation.celex, '62017CJ0265');
+  });
+});
+
+describe('a party that writes its name in lower case', () => {
+  test('still names its case, and the case can be cited again by it', () => {
+    const [first, again] = detectCitationsAcrossFootnotes([
+      'Judgment of 22 June 2022, thyssenkrupp v Commission, T-584/19, EU:T:2022:386, paragraph 514.',
+      'thyssenkrupp, paragraph 515.',
+    ]);
+    assert.equal(first[0].caseName, 'thyssenkrupp v Commission');
+    assert.equal(again[0].celex, '62019TJ0584');
+    assert.deepEqual(again[0].pinpoint?.paragraphs, [515]);
+  });
+
+  test('but lower-case prose is not a name', () => {
+    assert.equal(detectCitations('and so on v Commission, EU:C:2022:202')[0].caseName, undefined);
   });
 });

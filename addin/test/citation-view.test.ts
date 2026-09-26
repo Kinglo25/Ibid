@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, documentTypeNote, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, outstandingNote, parentheticalsInBody, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
+import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, documentTypeNote, draftingNotes, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, outstandingNote, parentheticalsInBody, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -470,5 +470,18 @@ describe('a cross-reference that points at the wrong footnote', () => {
     ]).map((citations) => citations[0]);
     assert.equal(resolutionNote({ ...citation, context: '' }),
       'Inferred from a case name this document cites in full earlier. It says it was cited in footnote 2, which does not cite this authority — check that cross-reference.');
+  });
+});
+
+describe('what a footnote contradicts about its own ECLI, said to the reviewer', () => {
+  test('a date and a court', () => {
+    assert.deepEqual(draftingNotes({ drafting: [
+      { kind: 'date', written: '22 June 2002', ecli: 'ECLI:EU:T:2022:386' },
+      { kind: 'court', written: 'C-584/19 P', ecli: 'ECLI:EU:T:2022:386' },
+    ] }), [
+      'The footnote dates this 22 June 2002, but its ECLI (EU:T:2022:386) is of 2022 — check the date.',
+      "The footnote gives case number C-584/19 P, a Court of Justice number, but its ECLI (EU:T:2022:386) is the General Court's — check the case number.",
+    ]);
+    assert.deepEqual(draftingNotes({}), []);
   });
 });

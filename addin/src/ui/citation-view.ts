@@ -528,6 +528,22 @@ export function documentTypeNote(citation: Pick<CitationContext, 'documentType' 
     : `The document this citation names is ${what}.`;
 }
 
+/**
+ * What the footnote says that its own identifier contradicts, in words a reviewer can act on.
+ *
+ * The passage shown is the one the ECLI names, since the ECLI is the court's own name for the
+ * document; these say what in the footnote needs correcting, not that anything else was shown.
+ */
+export function draftingNotes(citation: Pick<CitationContext, 'drafting'>): string[] {
+  return (citation.drafting ?? []).map((problem) => {
+    const ecli = problem.ecli.replace(/^ECLI:/, '');
+    const year = /:(\d{4}):/.exec(ecli)?.[1];
+    return problem.kind === 'date'
+      ? `The footnote dates this ${problem.written}, but its ECLI (${ecli}) is of ${year} — check the date.`
+      : `The footnote gives case number ${problem.written}, ${problem.written.startsWith('C') ? 'a Court of Justice number' : 'a General Court number'}, but its ECLI (${ecli}) is the ${ecli.startsWith('EU:T') ? 'General Court' : 'Court of Justice'}'s — check the case number.`;
+  });
+}
+
 export type NumberMismatch = { cited: string; citedTitle?: string; name: string; caseNumber?: string };
 
 /**

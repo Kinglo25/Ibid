@@ -533,9 +533,12 @@ describe('a decision answered from what the server holds', () => {
 
     word.putCursorOn(0);
     await screen.findByText('251 The Advocate General says this.');
-    const [warning, ...more] = screen.getAllByRole('alert');
-    assert.equal(more.length, 0);
-    assert.equal(warning.textContent, 'The footnote calls this a judgment, but the document its ECLI names is an Advocate General’s Opinion, and that is what is shown here.');
+    // Two things wrong with how the footnote wrote it, each said once: the year, which the
+    // ECLI contradicts, and the kind of document, which the retrieved heading does.
+    assert.deepEqual(screen.getAllByRole('alert').map((alert) => alert.textContent), [
+      'The footnote dates this 15 December 2002, but its ECLI (EU:C:2022:993) is of 2022 — check the date.',
+      'The footnote calls this a judgment, but the document its ECLI names is an Advocate General’s Opinion, and that is what is shown here.',
+    ]);
     assert.ok(screen.getByRole('link', { name: 'Superleague v FIFA, C-333/21 (opinion)' }));
   });
 
