@@ -1338,3 +1338,41 @@ describe('a pinpoint belongs to the authority it follows, and to no other', () =
       [['EU:C:2011:1', null], ['EU:C:2012:2', null]]);
   });
 });
+
+describe('a recital or an article is never a judgment\'s', () => {
+  const intel = [
+    'Judgment of 12 June 2014, Intel v Commission, T-286/09, EU:T:2014:547, paragraph 76.',
+    'Commission Decision of 13 May 2009 in Case COMP/C-3/37.990 – Intel, recital 916.',
+  ];
+
+  test('a short form naming a judgment but citing a recital is left unresolved, and says why', () => {
+    const [, , recital, paragraph] = detectCitationsAcrossFootnotes([...intel, 'Intel, recital 920.', 'Intel, paragraph 80.']);
+    assert.equal(recital[0].status, 'unresolved_not_found');
+    assert.equal(recital[0].pinpointMismatch, 'recital');
+    assert.equal(recital[0].celex, undefined);
+    // A paragraph is a judgment's, and still resolves.
+    assert.equal(paragraph[0].celex, '62009TJ0286');
+  });
+
+  test('nor an article, nor after "Ibid."', () => {
+    const [, article, , ibid] = detectCitationsAcrossFootnotes([
+      'Judgment of 13 May 2014, Google Spain and Google, C-131/12, EU:C:2014:317, paragraph 80.',
+      'Google Spain, Article 17.',
+      'Judgment of 13 May 2014, Google Spain and Google, C-131/12, EU:C:2014:317, paragraph 81.',
+      'Ibid., recital 5.',
+    ]);
+    assert.equal(article[0].pinpointMismatch, 'article');
+    assert.equal(ibid[0].pinpointMismatch, 'recital');
+    assert.equal(ibid[0].status, 'unresolved_not_found');
+  });
+
+  test('an act\'s recitals and articles still resolve', () => {
+    const [, recital, article] = detectCitationsAcrossFootnotes(['Regulation (EU) 2016/679 (the "GDPR"), Article 17.', 'GDPR, recital 65.', 'Ibid., Article 18.']);
+    assert.equal(recital[0].celex, '32016R0679');
+    assert.deepEqual(recital[0].pinpoint?.paragraphs, [65]);
+    // And a new pinpoint replaces the old one whole: Article 18, not Article 18 with recital 65.
+    assert.equal(article[0].locator?.kind, 'article');
+    assert.equal(article[0].locator?.start, 18);
+    assert.equal(article[0].pinpoint, undefined);
+  });
+});

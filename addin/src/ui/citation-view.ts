@@ -324,6 +324,13 @@ export function unresolvedMessage(citation: CitationContext): string {
   const suggested = citation.candidates ?? [];
   const footnote = citation.backReference?.footnote;
 
+  if (citation.pinpointMismatch) {
+    const what = citation.pinpointMismatch === 'recital' ? 'a recital' : 'an article';
+    const meant = citation.pinpointMismatch === 'recital' ? 'a Commission decision or an act' : 'an act';
+    return citation.backReference
+      ? `"${citation.value}" cites ${what}, but what it points back to is a judgment, which has none — ${meant} is meant, and the document does not say which.`
+      : `"${citation.value}" cites ${what}, but the authority this document gives that name is a judgment, which has none — ${meant} is meant, and the document does not say which.`;
+  }
   if (citation.status === 'unconfirmed_suggestion') {
     return `This document does not define "${citation.value}". Ibid recognises the name from its list of frequently cited cases — confirm before relying on it.`;
   }

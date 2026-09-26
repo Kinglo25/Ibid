@@ -169,6 +169,14 @@ export type CitationMatch = {
    * The Commission's 2026 draft merger guidelines carry nine in 478 footnotes.
    */
   drafting?: DraftingProblem[];
+  /**
+   * Set on a short form or back-reference left unresolved because what it cites cannot be in
+   * the authority its name or position points to: a recital or an article, where the only
+   * authority there is a judgment, which has neither. "Intel, recital 920", in a document
+   * citing both the General Court's Intel judgment and the Commission's Intel decision, means
+   * the decision — and was opened as the judgment's paragraph 920.
+   */
+  pinpointMismatch?: 'recital' | 'article';
 };
 
 export type DraftingProblem =
@@ -2152,6 +2160,16 @@ function borrowCaseNumberForRelatedDocument(citation: CitationMatch, registry: R
   return { ...citation, caseNumber, celex: celexForCase(caseNumber, { documentType: citation.documentType }) };
 }
 
+/** What kind of passage a pinpoint names, read from its keyword. */
+function pinpointKind(text: string, from: number, limit: number): 'recital' | 'article' | undefined {
+  const word = /^[\s,;:]*(?:at\s+)?(recitals?|consid[ée]rants?|articles?|art\.)(?![\p{L}])/iu.exec(text.slice(from, limit))?.[1];
+  if (!word) return undefined;
+  return /^(?:recital|consid)/i.test(word) ? 'recital' : 'article';
+}
+
+/** Judgments, opinions and orders are numbered in paragraphs: a recital or an article is never theirs. */
+const onlyCourtDocuments = (citations: readonly { source: EuSource }[]) => citations.length > 0 && citations.every((citation) => citation.source === 'curia');
+
 function resolveShortForms(
   text: string,
   segments: Array<{ start: number; end: number }>,
@@ -2216,6 +2234,18 @@ function resolveShortForms(
     // declared against the footnote that has the ECLI, while the case number came from a
     // different footnote entirely.
     for (const authority of authorities) authority.citation = enrichFromRegistry(authority.citation, registry);
+
+    // "Intel, recital 920": the name is a judgment's in this document, and a judgment has no
+    // recitals, so the name cannot mean it here. Reported as unresolved, never as the judgment.
+    const kind = pinpointKind(text, spanEnd + (cited?.length ?? 0), segment.end);
+    if (kind && onlyCourtDocuments(authorities.map((authority) => authority.citation))) {
+      const parsed = parsePinpoint(text, spanEnd + (cited?.length ?? 0), segment.end);
+      resolved.push({
+        label: 'Unconfirmed short-form citation', value: span.value, index: span.index, source: 'curia',
+        status: 'unresolved_not_found', pinpointMismatch: kind, locator: parsed?.locator, pinpoint: parsed?.pinpoint,
+      });
+      continue;
+    }
 
     // A footnote can name a source both by its short form and by its full identifier in
     // the same sentence ("See Akzo Nobel, ECLI:EU:C:2010:512, para. 40", or "Case
@@ -2355,6 +2385,17 @@ function resolveBackReferences(
 
     const backReference = { footnote: referencedFootnote };
     const parsed = parsePinpoint(text, index + value.length, segment.end);
+    // "Ibid., recital 5" after a judgment: a judgment has no recitals, so the reference cannot
+    // be to it, and it is left unresolved rather than opened at the judgment's paragraph 5.
+    const kind = pinpointKind(text, index + value.length, segment.end);
+    if (kind && onlyCourtDocuments(source.map((authority) => authority.citation))) {
+      found.push({
+        label: 'Unresolved back-reference', value, index, source: 'curia',
+        status: 'unresolved_not_found', backReference, pinpointMismatch: kind,
+        locator: parsed?.locator, pinpoint: parsed?.pinpoint,
+      });
+      continue;
+    }
     if (source.length === 1) {
       const [authority] = source;
       found.push({
@@ -2365,8 +2406,10 @@ function resolveBackReferences(
         // keeps the authority and states a new one. Inherited as a pair, never mixed: a
         // new locator with a stale pinpoint would report paragraphs the footnote does not
         // cite, which is the one failure this tool exists to prevent.
-        locator: parsed?.locator ?? authority.locator,
-        pinpoint: parsed?.pinpoint ?? authority.pinpoint,
+        // As a pair: `Ibid., Article 18` after `GDPR, recital 65` kept the new article and the
+        // old recital, field by field, and sent paragraph 65 alongside Article 18.
+        locator: parsed ? parsed.locator : authority.locator,
+        pinpoint: parsed ? parsed.pinpoint : authority.pinpoint,
       });
     } else if (source.length > 1) {
       found.push({

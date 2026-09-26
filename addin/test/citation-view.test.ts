@@ -492,3 +492,15 @@ describe('a paragraph number the document uses more than once', () => {
     assert.equal(repeatedNote(undefined), undefined);
   });
 });
+
+describe('a recital or an article cited under a judgment\'s name', () => {
+  test('is explained, not left as "nothing defines it"', () => {
+    const [, , citation] = detectCitationsAcrossFootnotes([
+      'Judgment of 12 June 2014, Intel v Commission, T-286/09, EU:T:2014:547, paragraph 76.',
+      'Commission Decision of 13 May 2009 in Case COMP/C-3/37.990 – Intel, recital 916.',
+      'Intel, recital 920.',
+    ]).map((citations) => citations[0]);
+    assert.equal(unresolvedMessage({ ...citation, context: '' }),
+      '"Intel" cites a recital, but the authority this document gives that name is a judgment, which has none — a Commission decision or an act is meant, and the document does not say which.');
+  });
+});
