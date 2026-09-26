@@ -1749,3 +1749,25 @@ test('"article 94, paragraphe 2, du RGPD": the French way of writing Article 94(
   const [act] = detectCitations('conformément à l’article 26, paragraphe 4, de la directive 95/46/CE.');
   assert.deepEqual([act.locator?.kind, act.locator?.start, act.locator?.paragraph], ['article', 26, 4]);
 });
+
+describe('a provision cited down to its point', () => {
+  // "Article 107(3)(c) TFEU" was not detected at all, and "Article 6(1)(f) of Regulation (EU)
+  // 2016/679" lost its whole pinpoint: the point letter after the paragraph stopped both.
+  for (const [text, start, paragraph, point] of [
+    ['Article 107(3)(c) TFEU.', 107, 3, 'c'],
+    ['Article 6(1)(f) of Regulation (EU) 2016/679.', 6, 1, 'f'],
+    ['Article 3(1)(b) of Regulation (EC) No 139/2004.', 3, 1, 'b'],
+    ['Regulation (EU) 2022/1925, Article 5(2)(b).', 5, 2, 'b'],
+    ['Article 9(1) of Council Regulation (EC) No 1/2003.', 9, 1, undefined],
+    ['Voir article 6, paragraphe 1, sous f), du règlement (UE) 2016/679.', 6, 1, 'f'],
+  ] as const) {
+    test(text, () => {
+      const [citation] = detectCitations(text);
+      assert.deepEqual([citation?.locator?.kind, citation?.locator?.start, citation?.locator?.paragraph, citation?.locator?.point], ['article', start, paragraph, point]);
+    });
+  }
+  test('"Articles 101(1)(a) and 102(b) TFEU"', () => {
+    const found = detectCitations('Articles 101(1)(a) and 102(b) TFEU.');
+    assert.deepEqual(found.map((citation) => [citation.locator?.start, citation.locator?.paragraph, citation.locator?.point]), [[101, 1, 'a'], [102, undefined, 'b']]);
+  });
+});

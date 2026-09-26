@@ -61,6 +61,11 @@ export type CitationLocator = {
   kind: 'point' | 'article' | 'section';
   start: number;
   paragraph?: number;
+  /**
+   * The lettered point within the article's paragraph: "Article 6(1)(f)" is Article 6,
+   * paragraph 1, point (f). An article's alone; a judgment's paragraphs have none.
+   */
+  point?: string;
   end?: number;
   /**
    * The numbered sections a Commission decision is cited by — `section 9.1.3.3.7`, `Sections
@@ -279,7 +284,7 @@ const PINPOINT_JOINER = String.raw`(?:\s*(?:,\s*(?:and|et)\b|,|\band\b|\bet\b|&)
  * list needs its own small grammar — a number, an optional range, joined by
  * commas and/or "and".
  */
-const PINPOINT_PATTERN = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})`, 'i');
+const PINPOINT_PATTERN = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?(?:\\([a-z]{1,3}\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})`, 'i');
 /**
  * The other half of how legislation is actually cited: the provision comes
  * first and the act follows it ("Article 6(5) of Regulation (EU) 2022/1925",
@@ -287,7 +292,9 @@ const PINPOINT_PATTERN = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?
  * citation, so a provision belonging to some earlier act in the same sentence
  * can never be attached to this one.
  */
-const PINPOINT_BEFORE = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})\\s*(?:of|de\\s+la|de|du)\\s+$`, 'i');
+// "of Council Regulation (EC) No 1/2003", "of Commission Regulation …": the institution
+// stands between the "of" and the act's own name.
+const PINPOINT_BEFORE = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?(?:\\([a-z]{1,3}\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})\\s*(?:of|de\\s+la|de|du)\\s+(?:the\\s+)?(?:(?:Council|Commission)(?:\\s+(?:Implementing|Delegated))?\\s+)?$`, 'i');
 /**
  * Bare "para", taken only where it follows the citation directly: ", para 62", ", at para 62".
  * UK and Brussels drafting writes it without a full stop, and `PINPOINT_KEYWORD` refuses it
@@ -296,7 +303,7 @@ const PINPOINT_BEFORE = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?$
  * first, since it is the pinpoint nearest the citation.
  */
 const ADJACENT_BARE_PARA = new RegExp(`^[\\s,;:]*(?:at\\s+)?para\\s+(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${PINPOINT_JOINER})`, 'i');
-const PINPOINT_ITEM = /^(\d+)(?:\((\d+)\))?(?:\s*(?:[–—‑-]|\bto\b|à)\s*(\d+))?/i;
+const PINPOINT_ITEM = /^(\d+)(?:\((\d+)\))?(?:\(([a-z]{1,3})\))?(?:\s*(?:[–—‑-]|\bto\b|à)\s*(\d+))?/i;
 const PINPOINT_SCAN_WINDOW = 160;
 const PINPOINT_BEFORE_WINDOW = 80;
 
@@ -387,11 +394,13 @@ export function parsePinpointBefore(text: string, index: number, floor = 0): Par
  * paragraphe 4, de la directive 95/46". The paragraph written out between the article and the
  * act lost the article altogether (Schrems II, in French).
  */
-const FRENCH_ARTICLE_BEFORE = /\barticles?\s+(\d+)\s*,\s*paragraphes?\s+(\d+)(?:\s*,\s*(?:sous|point)\s+[a-z0-9]{1,4}\)?)?\s*,?\s*(?:du|de\s+la|de\s+l['’]|des)\s*$/i;
+const FRENCH_ARTICLE_BEFORE = /\barticles?\s+(\d+)\s*,\s*paragraphes?\s+(\d+)(?:\s*,\s*(?:sous|point)\s+([a-z]{1,3}|\d{1,3})\)?)?\s*,?\s*(?:du|de\s+la|de\s+l['’]|des)\s*$/i;
 
 function frenchArticleBefore(head: string): ParsedPinpoint | undefined {
   const match = FRENCH_ARTICLE_BEFORE.exec(head);
-  return match ? { locator: { kind: 'article', start: Number(match[1]), paragraph: Number(match[2]), end: undefined } } : undefined;
+  if (!match) return undefined;
+  const point = match[3] && /^[a-z]+$/i.test(match[3]) ? match[3].toLowerCase() : undefined;
+  return { locator: { kind: 'article', start: Number(match[1]), paragraph: Number(match[2]), end: undefined, ...(point ? { point } : {}) } };
 }
 
 function fromPinpointMatch(match: RegExpExecArray | null): ParsedPinpoint | undefined {
@@ -409,8 +418,9 @@ function fromPinpointMatch(match: RegExpExecArray | null): ParsedPinpoint | unde
     // paragraph 5. Without this the excerpt shows the whole article when the
     // lawyer asked for one paragraph of it.
     paragraph: first[2] ? Number(first[2]) : undefined,
-    end: first[3] ? Number(first[3]) : undefined,
+    end: first[4] ? Number(first[4]) : undefined,
   };
+  if (kind === 'article' && first[3]) locator.point = first[3].toLowerCase();
   // An article locator's own sub-numbering is already carried by `paragraph`;
   // `pinpoint` is the judgment-paragraph list, so it would be meaningless here.
   return { locator, pinpoint: kind === 'point' ? expandPinpointList(match[1]) : undefined };
@@ -1476,13 +1486,13 @@ export function detectCitations(text: string): CitationMatch[] {
   // for how the CELEX is derived; a parenthesised number directly after the
   // article number is a paragraph within it, same convention as ordinary
   // legislation locators.
-  for (const match of text.matchAll(/\b(?:Articles?|Art\.)\s+(\d+)(?:\((\d+)\))?\s+(?:of\s+the\s+|de\s+la\s+)?(TFEU|TFUE|TEU|TUE|CFR|CDFUE|Charter(?:\s+of\s+Fundamental\s+Rights)?|Charte(?:\s+des\s+droits\s+fondamentaux)?)\b/gi)) {
+  for (const match of text.matchAll(/\b(?:Articles?|Art\.)\s+(\d+)(?:\((\d+)\))?(?:\(([a-z]{1,3})\))?\s+(?:of\s+the\s+|de\s+la\s+)?(TFEU|TFUE|TEU|TUE|CFR|CDFUE|Charter(?:\s+of\s+Fundamental\s+Rights)?|Charte(?:\s+des\s+droits\s+fondamentaux)?)\b/gi)) {
     const index = match.index ?? 0;
-    const [, articleNumber, paragraph, treaty] = match;
+    const [, articleNumber, paragraph, point, treaty] = match;
     const label = /^(?:TFEU|TFUE)$/i.test(treaty) ? 'TFEU article' : /^(?:TEU|TUE)$/i.test(treaty) ? 'TEU article' : 'Charter article';
     add({
       label, value: match[0], index, source: 'eur-lex', celex: celexForTreatyArticle(treaty, articleNumber),
-      locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined },
+      locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined, ...(point ? { point } : {}) },
     });
   }
 
@@ -1503,16 +1513,16 @@ export function detectCitations(text: string): CitationMatch[] {
   // treaty, named once at the end. The pattern above wants the treaty straight after a number,
   // so it read neither of them — in the form competition law cites its two articles in more
   // often than any other. Each article is its own citation, placed at its own number.
-  for (const match of text.matchAll(/\bArticles\s+((?:\d+(?:\(\d+\))?\s*(?:,|and|et|&)\s*)+\d+(?:\(\d+\))?)\s+(?:of\s+the\s+|de\s+la\s+)?(TFEU|TFUE|TEU|TUE|CFR|CDFUE|Charter(?:\s+of\s+Fundamental\s+Rights)?|Charte(?:\s+des\s+droits\s+fondamentaux)?)\b/gi)) {
+  for (const match of text.matchAll(/\bArticles\s+((?:\d+(?:\(\d+\))?(?:\([a-z]{1,3}\))?\s*(?:,|and|et|&)\s*)+\d+(?:\(\d+\))?(?:\([a-z]{1,3}\))?)\s+(?:of\s+the\s+|de\s+la\s+)?(TFEU|TFUE|TEU|TUE|CFR|CDFUE|Charter(?:\s+of\s+Fundamental\s+Rights)?|Charte(?:\s+des\s+droits\s+fondamentaux)?)\b/gi)) {
     const [, list, treaty] = match;
     const listStart = (match.index ?? 0) + match[0].indexOf(list);
     const label = /^(?:TFEU|TFUE)$/i.test(treaty) ? 'TFEU article' : /^(?:TEU|TUE)$/i.test(treaty) ? 'TEU article' : 'Charter article';
-    for (const item of list.matchAll(/(\d+)(?:\((\d+)\))?/g)) {
-      const [written, articleNumber, paragraph] = item;
+    for (const item of list.matchAll(/(\d+)(?:\((\d+)\))?(?:\(([a-z]{1,3})\))?/g)) {
+      const [written, articleNumber, paragraph, point] = item;
       add({
         label, value: `Article ${written} ${/^Charter\b/i.test(treaty) ? `of the ${treaty}` : /^Charte\b/i.test(treaty) ? `de la ${treaty}` : treaty}`, index: listStart + (item.index ?? 0), source: 'eur-lex',
         celex: celexForTreatyArticle(treaty, articleNumber),
-        locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined },
+        locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined, ...(point ? { point } : {}) },
       });
     }
   }
@@ -1694,8 +1704,8 @@ function pinpointAfterDefinedTerm(text: string, end: number, limit: number): Par
  * "Article 102 TFEU". Read only for a term that names an act; a court document's name is never
  * cited so.
  */
-const LISTED_PROVISIONS = String.raw`(?:\s*(?:,\s*(?:and|et)\b|,|\band\b|\bet\b|&)\s*\d+(?:\(\d+\))?${PINPOINT_RANGE})*`;
-const PROVISION_BEFORE_TERM = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${LISTED_PROVISIONS})\\s*(?:(?:of|in)\\s+(?:the\\s+)?|de\\s+la\\s+|du\\s+|de\\s+l['’]\\s*)?$`, 'i');
+const LISTED_PROVISIONS = String.raw`(?:\s*(?:,\s*(?:and|et)\b|,|\band\b|\bet\b|&)\s*\d+(?:\(\d+\))?(?:\([a-z]{1,3}\))?${PINPOINT_RANGE})*`;
+const PROVISION_BEFORE_TERM = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?(?:\\([a-z]{1,3}\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${LISTED_PROVISIONS})\\s*(?:(?:of|in)\\s+(?:the\\s+)?|de\\s+la\\s+|du\\s+|de\\s+l['’]\\s*)?$`, 'i');
 
 /**
  * A court document's paragraphs written before its defined term, with the word that says

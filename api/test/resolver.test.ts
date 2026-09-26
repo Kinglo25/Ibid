@@ -2761,6 +2761,52 @@ describe('a long paragraph', () => {
  * heading, and where that is not the footnote's, the reviewer has to be told: the passage on
  * screen is from a different case than the footnote names.
  */
+describe('an act\'s article, down to its point', () => {
+  // As the Official Journal sets them: each point's number or letter alone in a cell, its text
+  // in the next. "Article 4(11)" of the GDPR showed all 26 definitions; "Article 5(2)(b)" of the
+  // DMA the act's opening; a whole article ran on into the next chapter's heading.
+  const article = (number: number, body: string) => `<p class="oj-ti-art">Article ${number}</p>${body}`;
+  const point = (label: string, text: string) => `<table><tbody><tr><td><p class="oj-normal">(${label})</p></td><td><p class="oj-normal">${text}</p></td></tr></tbody></table>`;
+  const act = () => html([
+    article(4, `<p class="oj-normal">For the purposes of this Regulation:</p>${point('10', '‘third party’ means a person.')}${point('11', '‘consent’ means any freely given indication.')}${point('12', '‘breach’ means a breach.')}`),
+    article(5, `<p class="oj-normal">1. The gatekeeper shall comply.</p><p class="oj-normal">2. The gatekeeper shall not do any of the following:</p>${point('a', 'process personal data;')}${point('b', 'combine personal data;')}${point('c', 'cross-use personal data;')}<p class="oj-normal">3. Next paragraph.</p>`),
+    '<p class="oj-ti-section-1">CHAPTER II</p><p class="oj-ti-section-2">GATEKEEPERS</p>',
+    article(6, '<p class="oj-normal">1. Obligations.</p>'),
+  ].join(''));
+  const resolve = async (locator: EuLookup['locator']) => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([act()]).fetcher });
+    const [preview] = await resolver.resolve(eurLexLookup({ value: 'Regulation (EU) 2022/1925', celex: '32022R1925', locator }));
+    return preview;
+  };
+
+  test('a numbered definition', async () => {
+    const preview = await resolve({ kind: 'article', start: 4, paragraph: 11 });
+    assert.match(preview.excerpt, /^\(11\) ‘consent’ means any freely given indication\.$/);
+  });
+
+  test('a lettered point of a paragraph, labelled as cited', async () => {
+    const preview = await resolve({ kind: 'article', start: 5, paragraph: 2, point: 'b' });
+    assert.match(preview.excerpt, /^\(b\) combine personal data;$/);
+    assert.equal(preview.locator, 'Article 5(2)(b)');
+  });
+
+  test('a point keeps its own sub-points', async () => {
+    const { resolver } = makeResolver({ fetcher: stubFetcher([html(`${article(6, `<p class="oj-normal">1. Processing shall be lawful where:</p>${point('a', 'consent;')}${point('b', 'necessary for:')}${point('i', 'a contract;')}${point('ii', 'a request;')}${point('c', 'a legal obligation;')}`)}`)]).fetcher });
+    const [preview] = await resolver.resolve(eurLexLookup({ value: 'Regulation (EU) 2016/679', celex: '32016R0679', locator: { kind: 'article', start: 6, paragraph: 1, point: 'b' } }));
+    assert.match(preview.excerpt, /^\(b\) necessary for:[\s\S]*\(ii\) a request;$/);
+  });
+
+  test('a point not there shows the paragraph', async () => {
+    const preview = await resolve({ kind: 'article', start: 5, paragraph: 2, point: 'z' });
+    assert.match(preview.excerpt, /^2\. The gatekeeper shall not do any of the following:/);
+  });
+
+  test('a whole article stops before the next chapter', async () => {
+    const preview = await resolve({ kind: 'article', start: 5 });
+    assert.ok(!preview.excerpt.includes('CHAPTER'), preview.excerpt);
+  });
+});
+
 describe('a citation that gives its ECLI and no case number', () => {
   // Wahl's opinion in Intel, in French, defines the judgment under appeal as ", EU:T:2014:547,
   // ci-après l’« arrêt attaqué »", and over sixty footnotes cite its points. With no case

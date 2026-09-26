@@ -66,6 +66,8 @@ export type EuLookup = {
   caseName?: string;
   locator?: {
     kind: 'point' | 'article' | 'section'; start: number; paragraph?: number; end?: number;
+    /** The lettered point of an article's paragraph: `f` in "Article 6(1)(f)". */
+    point?: string;
     /** A Commission decision's numbered sections, as cited: `9.1.3.3.7`, or `7.5` to `7.7`. */
     sections?: Array<{ from: string; to?: string }>;
   };
@@ -608,6 +610,28 @@ const RECITAL_HEADING = /<p[^>]*>\s*\(\s*(\d+)\s*\)/gi;
  */
 const ARTICLE_PARAGRAPH_HEADING = /<p[^>]*>\s*(\d+)\.\s/gi;
 
+/** A numbered point or definition set as the Official Journal sets it: `(11)` alone in its cell. */
+const NUMBERED_POINT_HEADING = /<p[^>]*>\s*\((\d+)\)\s*<\/p>/gi;
+
+/** A chapter, section or title of an act: the Journal's section classes, or the heading's own words. */
+const DIVISION_HEADING = /<p[^>]*class="oj-ti-section-\d"|<p[^>]*>\s*(?:CHAPTER|SECTION|TITLE|PART)\s+[IVXLC\d]+\s*</;
+
+/**
+ * The lettered point of a paragraph: from `(f)` alone in its cell to the letter after it.
+ * "Article 5(2)(b)" of the DMA, where the paragraph lists (a) to (i). Nothing where the letter
+ * is not there, and the paragraph is shown in its place.
+ */
+function letteredPoint(html: string, letter: string): string | undefined {
+  const start = new RegExp(`<p[^>]*>\\s*\\(${letter}\\)\\s*<\\/p>`, 'i').exec(html);
+  if (!start) return undefined;
+  const rest = html.slice(start.index + start[0].length);
+  // Ended by the next letter in sequence, not by any bracketed letters: a point's own
+  // sub-points are "(i)", "(ii)", and "(b)" would have stopped at its first one.
+  const successor = String.fromCharCode(letter.toLowerCase().charCodeAt(letter.length - 1) + 1);
+  const next = new RegExp(`<p[^>]*>\\s*\\(${letter.length === 1 ? successor : '[a-z]{2,3}'}\\)\\s*<\\/p>|<p[^>]*>\\s*\\d+\\.\\s`, 'i').exec(rest);
+  return html.slice(start.index, start.index + start[0].length + (next ? next.index : rest.length));
+}
+
 /**
  * Tried in order; the first pattern that anchors the target point number
  * wins. Several real, distinct markup conventions across document eras were
@@ -824,11 +848,25 @@ function extractLegislativeLocator(html: string, locator?: EuLookup['locator'], 
   // excerpt shown — articles with many paragraphs carry a lot of markup overhead
   // before reaching a later paragraph, so this must stay well above the final
   // excerpt-length cap applied below.
-  const articleHtml = sliceByHeadingAnchor(html, ARTICLE_HEADING, locator.start, { through: locator.end, maxLength: 200_000 });
-  if (!articleHtml) return documentOpening(html, true);
+  const sliced = sliceByHeadingAnchor(html, ARTICLE_HEADING, locator.start, { through: locator.end, maxLength: 200_000 });
+  if (!sliced) return documentOpening(html, true);
+  // Up to the next chapter, section or title: the last article of a chapter ran on into the
+  // next one's heading ("… CHAPTER II GATEKEEPERS").
+  const division = DIVISION_HEADING.exec(sliced.slice(1));
+  const articleHtml = division ? sliced.slice(0, division.index + 1) : sliced;
   if (locator.paragraph) {
-    const paragraphHtml = sliceByHeadingAnchor(articleHtml, ARTICLE_PARAGRAPH_HEADING, locator.paragraph, { maxLength: 60_000 });
-    if (paragraphHtml) return cited(decodeHtml(paragraphHtml).trim());
+    // A paragraph is "2." at the head of its text; the Official Journal's definitions and
+    // numbered points are "(11)" alone in a cell, and "Article 4(11)" of the GDPR showed all
+    // twenty-six definitions under that label.
+    const paragraphHtml = sliceByHeadingAnchor(articleHtml, ARTICLE_PARAGRAPH_HEADING, locator.paragraph, { maxLength: 60_000 })
+      ?? sliceByHeadingAnchor(articleHtml, NUMBERED_POINT_HEADING, locator.paragraph, { maxLength: 60_000 });
+    if (paragraphHtml) {
+      const pointHtml = locator.point ? letteredPoint(paragraphHtml, locator.point) : undefined;
+      return cited(decodeHtml(pointHtml ?? paragraphHtml).trim());
+    }
+  } else if (locator.point) {
+    const pointHtml = letteredPoint(articleHtml, locator.point);
+    if (pointHtml) return cited(decodeHtml(pointHtml).trim());
   }
   // The article was found and a numbered sub-paragraph within it was not, so this is the
   // cited provision shown whole rather than a different part of the document: a wider
@@ -1298,7 +1336,7 @@ const runLabel = (run: { from: number; to: number }) => (run.from === run.to ? `
 function locatorLabel(lookup: EuLookup): string | undefined {
   const locator = lookup.locator;
   if (!locator) return undefined;
-  if (locator.kind === 'article') return `Article ${locator.start}${locator.paragraph ? `(${locator.paragraph})` : ''}${locator.end ? `–${locator.end}` : ''}`;
+  if (locator.kind === 'article') return `Article ${locator.start}${locator.paragraph ? `(${locator.paragraph})` : ''}${locator.point ? `(${locator.point})` : ''}${locator.end ? `–${locator.end}` : ''}`;
   if (locator.kind === 'section') {
     const sections = (locator.sections ?? []).map((section) => (section.to ? `${section.from}–${section.to}` : section.from));
     if (!sections.length) return undefined;
@@ -1467,6 +1505,7 @@ export function parseLookup(input: unknown): EuLookup | undefined {
   if (!optional(locator, (v): v is EuLookup['locator'] => record(v)
     && LOCATOR_KINDS.includes(v.kind as never) && whole(v.start)
     && optional(v.end, whole) && optional(v.paragraph, whole)
+    && optional(v.point, (point): point is string => typeof point === 'string' && /^[a-z]{1,3}$/.test(point))
     && optional(v.sections, (sections): sections is Array<{ from: string; to?: string }> => Array.isArray(sections) && sections.length <= 20
       && sections.every((section) => record(section) && text(section.from, 30) && optional(section.to, (to): to is string => text(to, 30)))))) return undefined;
 
