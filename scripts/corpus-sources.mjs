@@ -10,6 +10,9 @@
 
 import { inflateRawSync } from 'node:zlib';
 import { readFile } from 'node:fs/promises';
+import { httpsOnly } from '../api/src/https-only.ts';
+
+const fetchOverHttps = httpsOnly(fetch);
 
 const CELLAR = 'https://publications.europa.eu/resource/celex/';
 const FORMATS = ['application/xhtml+xml', 'text/html'];
@@ -24,7 +27,8 @@ const USER_AGENT = 'Ibid/0.1 (EU legal citation review; corpus harness)';
 export async function fetchCellar(celex, { accept = 'application/xhtml+xml', languages = ['en', 'fr'] } = {}) {
   for (const language of languages) {
     for (const format of accept === 'application/rdf+xml' ? [accept] : FORMATS) {
-      const response = await fetch(CELLAR + celex, {
+      // Over HTTPS only, as the resolver fetches: CELLAR redirects to a plain `http://` address.
+      const response = await fetchOverHttps(CELLAR + celex, {
         headers: { Accept: format, 'Accept-Language': language, 'User-Agent': USER_AGENT },
       });
       if (response.status === 404) continue;

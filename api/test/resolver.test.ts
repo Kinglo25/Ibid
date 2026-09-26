@@ -1935,13 +1935,15 @@ describe('EUR-Lex retry and backoff', () => {
   });
 
   test('gives up after the retry budget and reports the last status', async () => {
+    // A service in trouble (503); a plain 500 is one rendition's, and the next is asked — see
+    // "a rendition CELLAR fails on".
     const { fetcher, calls } = stubFetcher([
-      new Response('boom', { status: 500 }),
-      new Response('boom', { status: 500 }),
+      new Response('boom', { status: 503 }),
+      new Response('boom', { status: 503 }),
     ]);
     const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, maxRetries: 1 });
 
-    await assert.rejects(resolver.resolve(eurLexLookup()), /lookup failed \(500\)/);
+    await assert.rejects(resolver.resolve(eurLexLookup()), /lookup failed \(503\)/);
     assert.equal(calls.length, 2);
   });
 
@@ -2670,5 +2672,105 @@ describe('a document of another case than the footnote names', () => {
     const { resolver } = makeResolver({ fetcher });
     const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: 'C-85/76', celex: '61976CJ0085', ecli: 'ECLI:EU:C:1979:36', locator: { kind: 'point', start: 138 }, paragraphs: [138] }));
     assert.equal(preview.caseMismatch, undefined);
+  });
+});
+
+describe('fetching the official text', () => {
+  test('follows CELLAR’s redirect over HTTPS, never plain HTTP', async () => {
+    const { fetcher, calls } = stubFetcher([
+      new Response(null, { status: 303, headers: { location: 'http://publications.europa.eu/resource/cellar/abc.0015.05/DOC_1' } }),
+      html('<p class="count" id="point80">80</p><p>The cited paragraph.</p>'),
+    ]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 80 }, paragraphs: [80] }));
+    assert.equal(calls[1].url, 'https://publications.europa.eu/resource/cellar/abc.0015.05/DOC_1');
+    assert.ok(preview.excerpt.includes('The cited paragraph.'));
+  });
+
+  test('does not follow a redirect to another scheme', async () => {
+    const { fetcher, calls } = stubFetcher([new Response(null, { status: 302, headers: { location: 'ftp://example.test/doc' } })]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 80 }, paragraphs: [80] }));
+    assert.ok(calls.every((call) => !call.url.startsWith('ftp:')));
+    assert.equal(preview.source, 'CURIA');
+  });
+});
+
+describe('a rendition CELLAR fails on', () => {
+  test('is passed over for the next, rather than giving up on the document', async () => {
+    // Tele Columbus (EU:T:2024:816): the English answers 500 on every attempt, the French is there.
+    const serverError = () => new Response('String index out of range: -1', { status: 500 });
+    const { fetcher, calls } = stubFetcher([
+      serverError, serverError,
+      () => html('<p>ARRÊT DU TRIBUNAL</p><p class="count" id="point145">145</p><p>Le point cité.</p>'),
+    ]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, maxRetries: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 145 }, paragraphs: [145] }));
+    assert.ok(preview.excerpt.includes('Le point cité.'), preview.excerpt);
+    assert.equal(calls.length, 3, 'English in both formats, then French');
+  });
+
+  test('but a service in trouble is not asked for every rendition', async () => {
+    const { fetcher, calls } = stubFetcher([new Response('busy', { status: 503 })]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, maxRetries: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup());
+    assert.equal(calls.length, 1);
+    assert.equal(preview.source, 'CURIA');
+  });
+});
+
+describe('a document CELLAR holds twice', () => {
+  const choices = (items: Array<[string, string]>) => new Response(
+    `<html><body> List of URI's:<ul>${items.map(([doc, label]) => `<li title="manifestation">x<ul><li title="item"><a href="http://publications.europa.eu/resource/cellar/${doc}"><span class="url">(x)</span></a><ul><li title="stream_name">x.html</li><li title="stream_label">${label}</li></ul></li></ul></li>`).join('')}</ul></body></html>`,
+    { status: 300, headers: { 'content-type': 'application/xhtml+xml' } },
+  );
+
+  test('follows the one in the format asked for, over HTTPS', async () => {
+    const { fetcher, calls } = stubFetcher([
+      choices([['aaa.0002.01/DOC_3', 'celex-62012TJ0079.ENG.html.techmd.rdf'], ['aaa.0002.03/DOC_1', 'celex-62012TJ0079.ENG.xhtml.techmd.rdf']]),
+      html('<p class="count" id="point69">69</p><p>The Cisco paragraph.</p>'),
+    ]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, maxRetries: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62012TJ0079', locator: { kind: 'point', start: 69 }, paragraphs: [69] }));
+    assert.equal(calls[1].url, 'https://publications.europa.eu/resource/cellar/aaa.0002.03/DOC_1');
+    assert.ok(preview.excerpt.includes('The Cisco paragraph.'));
+  });
+
+  test('chooses nothing where two are in that format', async () => {
+    const { fetcher, calls } = stubFetcher([
+      choices([['a/DOC_1', 'celex-x.ENG.xhtml.techmd.rdf'], ['b/DOC_1', 'celex-y.ENG.xhtml.techmd.rdf']]),
+      noSuchDocument('62012TJ0079'),
+    ]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, maxRetries: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62012TJ0079', locator: { kind: 'point', start: 69 }, paragraphs: [69] }));
+    assert.ok(calls.every((call) => !call.url.includes('/cellar/')));
+    assert.equal(preview.source, 'CURIA');
+  });
+});
+
+describe('a judgment held in English only as a summary', () => {
+  // Commission v Spain (C-196/07, EU:C:2008:146): 5 KB of English headnotes, the text in French.
+  const summary = () => html('<!--Filename : JJA@TRA-DOC-EN-INF-C-0196-2007-200804278-05_00--><p>Judgment of the Court (Third Chamber) of 6 March 2008 – Commission v Spain</p><p>1. Actions for failure to fulfil obligations (see paras 25-26)</p>');
+
+  test('is shown from the French where the cited paragraph is there, and says so', async () => {
+    const { fetcher, calls } = stubFetcher([
+      summary(),
+      html('<!--Filename : JJA@TRA-DOC-FR-ARRET-C-0196-2007--><p>ARRÊT DE LA COUR (troisième chambre)</p><p class="count" id="point35">35</p><p>Le point trente-cinq.</p><p class="count" id="point36">36</p><p>Le point trente-six.</p><p class="count" id="point37">37</p><p>Suite.</p>'),
+    ]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, maxRetries: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62007CJ0196', locator: { kind: 'point', start: 35, end: 36 }, paragraphs: [35, 36] }));
+    assert.equal(preview.passage, 'cited');
+    assert.equal(preview.language, 'fr');
+    assert.ok(preview.excerpt.includes('Le point trente-cinq.') && preview.excerpt.includes('Le point trente-six.'), preview.excerpt);
+    assert.ok(!preview.excerpt.includes('Suite.'));
+    assert.equal(calls.length, 2);
+  });
+
+  test('is labelled a summary where the French does not have the paragraph either', async () => {
+    const { fetcher } = stubFetcher([summary(), noSuchDocument('62007CJ0196')]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, maxRetries: 0 });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62007CJ0196', locator: { kind: 'point', start: 35 }, paragraphs: [35] }));
+    assert.equal(preview.passage, 'summary');
+    assert.ok(preview.fullTextUrl);
   });
 });

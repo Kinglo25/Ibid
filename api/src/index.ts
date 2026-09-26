@@ -8,6 +8,7 @@ export type { StaticAsset } from './static-files.ts';
 
 import { identifyCommissionCase, type CommissionCaseIdentity, type CommissionCaseIndexLoader, type CommissionDecision } from './commission-cases.ts';
 import { boundedPassage, extractPdfText, locateRecitals, locateSections } from './pdf-text.ts';
+import { httpsOnly } from './https-only.ts';
 
 export { buildCommissionCaseIndex, createCommissionCaseIndexLoader, identifyCommissionCase, COMMISSION_CASE_DATASETS } from './commission-cases.ts';
 export type { CommissionCaseIdentity, CommissionCaseIndex, CommissionCaseIndexLoader, CommissionDecision } from './commission-cases.ts';
@@ -806,7 +807,9 @@ function isExtractJudgment(html: string): boolean {
  * Read only where a pinpoint has already failed, so — as with `isExtractJudgment` — a wrong
  * answer here costs a sentence and never a passage.
  */
-const SUMMARY_PUBLICATION = /TRA-DOC-[A-Z]{2}-REF-|class="C12DispositifIntroduction"/i;
+// `INF` too: the English of Commission v Spain (C-196/07, EU:C:2008:146) is 5 KB of headnotes
+// under `TRA-DOC-EN-INF-…`, "(see paras 25-26)", and was labelled as the document's opening.
+const SUMMARY_PUBLICATION = /TRA-DOC-[A-Z]{2}-(?:REF|INF)-|class="C12DispositifIntroduction"/i;
 
 function isSummaryPublication(html: string): boolean {
   return SUMMARY_PUBLICATION.test(html);
@@ -1297,7 +1300,7 @@ export function createApiHealthCheck() { return { status: 'ok' as const }; }
  * mistaken for a source.
  */
 export function createEuSourceResolver(options: ResolverOptions = {}) {
-  const fetcher = options.fetcher ?? fetch;
+  const fetcher = httpsOnly(options.fetcher ?? fetch);
   const userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
   const preferredLanguages = options.preferredLanguages?.length ? options.preferredLanguages : (['en', 'fr'] as SourceLanguage[]);
   const minRequestIntervalMs = options.minRequestIntervalMs ?? 1_000;
@@ -1533,7 +1536,25 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
    * because a different identifier will not fix a server that is failing for another
    * reason: the same rule the rendition chain follows, applied one level up.
    */
+  /**
+   * The one manifestation in a CELLAR `300` list that is in the format asked for, as an HTTPS
+   * address, or nothing where there is not exactly one. Each item is labelled with its format
+   * (`celex-62012TJ0079.ENG.xhtml.techmd.rdf`, `….ENG.html.techmd.rdf`).
+   */
+  function manifestationFor(list: string, rendition: Rendition): string | undefined {
+    const format = rendition.accept === 'application/xhtml+xml' ? 'xhtml' : 'html';
+    const items = [...list.matchAll(/<a href="(https?:\/\/publications\.europa\.eu\/resource\/cellar\/[^"]+)"[\s\S]*?<li title="stream_label">([^<]+)<\/li>/g)]
+      .filter((item) => item[2].split('.').includes(format));
+    return items.length === 1 ? items[0][1].replace(/^http:/, 'https:') : undefined;
+  }
+
   async function probeCellar(target: CellarTarget, renditions: readonly Rendition[]): Promise<LoadedDocument | undefined> {
+    // A server error on one rendition is that rendition's, not the document's: CELLAR answers
+    // the English of the General Court's Tele Columbus judgment (EU:T:2024:816) with a `500`
+    // ("String index out of range") and its French with the text, and giving up at the first
+    // left the reviewer a link where a labelled French passage was there to show. The error
+    // is kept, and reported only if no rendition answers.
+    let failure: Error | undefined;
     for (const rendition of renditions) {
       const response = await fetchEurLex(target.url, rendition);
       if (response.status === 404) {
@@ -1542,9 +1563,29 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
         if (NO_SUCH_DOCUMENT.test(await response.text().catch(() => ''))) return undefined;
         continue;
       }
+      // CELLAR holding two manifestations of the document answers `300` with a list of them
+      // rather than choosing: the General Court's Cisco judgment (62012TJ0079) is held as the
+      // Reports' `ECR_…_EN_01.html` and as the `…ENG.xhtml` rendition, the same text twice.
+      // The one in the format asked for is followed where there is exactly one; otherwise
+      // nothing is chosen, as before.
+      if (response.status === 300) {
+        const chosen = manifestationFor(await response.text().catch(() => ''), rendition);
+        if (chosen) {
+          const followed = await fetchEurLex(chosen, rendition);
+          if (followed.ok) return acceptDocument(target, documentKey(target, rendition), rendition, followed);
+        }
+        continue;
+      }
+      // Only a plain `500`: a `502`, `503` or `504` is the service in trouble, not one
+      // rendition, and asking it for three more would only add to the load.
+      if (response.status === 500) {
+        failure = new Error(`EUR-Lex/CELLAR lookup failed (${response.status}).`);
+        continue;
+      }
       if (!response.ok) throw new Error(`EUR-Lex/CELLAR lookup failed (${response.status}).`);
       return acceptDocument(target, documentKey(target, rendition), rendition, response);
     }
+    if (failure) throw failure;
     return undefined;
   }
 
@@ -1621,6 +1662,29 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       return loadHeldOrProbe(targets.slice(1));
     }
     return loadHeldOrProbe(targets);
+  }
+
+  /**
+   * The same document in one language only, or nothing. Asked for where the preferred
+   * language holds only a summary of a judgment and a paragraph of it was cited: the Court's
+   * text in another language has that paragraph, and the summary never will.
+   */
+  async function loadCellarDocumentIn(language: SourceLanguage, celex: string, ecli?: string, alternatives?: readonly string[]): Promise<LoadedDocument | undefined> {
+    const targets = cellarTargets(celex, ecli, alternatives);
+    const inLanguage = (target: CellarTarget) => renditionsFor(target.year).filter((rendition) => rendition.language === language);
+    for (const target of targets) {
+      for (const rendition of inLanguage(target)) {
+        const stored = await documentStore.get(documentKey(target, rendition));
+        if (stored) return { html: stored.html, language: languageOf(stored.html) ?? rendition.language, verifiedAt: stored.fetchedAt, url: target.url };
+      }
+    }
+    return onTheWire(async () => {
+      for (const target of targets) {
+        const found = await probeCellar(target, inLanguage(target)).catch(() => undefined);
+        if (found) return found;
+      }
+      return undefined;
+    });
   }
 
   async function isHeld(target: CellarTarget): Promise<boolean> {
@@ -1701,12 +1765,22 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     const cached = previewCache.get(key);
     if (cached) return cached;
 
-    const { html, language, verifiedAt, url } = await loadCellarDocument(celex, lookup.ecli, lookup.alternativeCelexes);
+    let { html, language, verifiedAt, url } = await loadCellarDocument(celex, lookup.ecli, lookup.alternativeCelexes);
 
     // Judgments and legislative acts use different paragraph-numbering
     // markup (see sliceByHeadingAnchor), so they need different extraction —
     // both run on the raw HTML, before it is decoded.
-    const caseLaw = source === 'CURIA' ? extractJudgmentPoint(html, lookup) : undefined;
+    let caseLaw = source === 'CURIA' ? extractJudgmentPoint(html, lookup) : undefined;
+    // Only a summary in the preferred language, and a paragraph cited: the Court's text is in
+    // French where the English is headnotes alone, and the cited paragraph is shown from it —
+    // labelled French, and translated where a translator is configured — rather than a
+    // summary that does not contain it. Where the French has no such paragraph either, the
+    // summary stands, labelled as what it is.
+    if (caseLaw?.passage === 'summary' && lookup.locator?.kind === 'point' && language !== 'fr' && preferredLanguages.includes('fr')) {
+      const french = await loadCellarDocumentIn('fr', celex, lookup.ecli, lookup.alternativeCelexes).catch(() => undefined);
+      const frenchLaw = french ? extractJudgmentPoint(french.html, lookup) : undefined;
+      if (french && frenchLaw?.passage === 'cited') ({ html, language, verifiedAt, url, caseLaw } = { ...french, caseLaw: frenchLaw });
+    }
     // What the document says it is, where that is not what the citation called it — which is
     // how a footnote calling an Opinion a judgment reaches the pane, now that the ECLI decides
     // which document is fetched. Titled as what it is, and the reviewer told.

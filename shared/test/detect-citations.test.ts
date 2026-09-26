@@ -1376,3 +1376,12 @@ describe('a recital or an article is never a judgment\'s', () => {
     assert.equal(article[0].pinpoint, undefined);
   });
 });
+
+describe('a case name whose parties carry their abbreviations', () => {
+  test('is the parties, not the last abbreviation', () => {
+    // Footnote 39 of the 2026 draft merger guidelines; the pane titled the judgment "UEFA)".
+    const [citation] = detectCitations('Judgment of 21 December 2023, European Superleague Company SL v Fédération internationale de football association (FIFA), Union of European Football Associations (UEFA), C-333/21, EU:C:2023:1011, paragraph 202.');
+    assert.ok(citation.caseName?.startsWith('European Superleague Company SL v Fédération internationale de football association'), citation.caseName);
+    assert.ok(!citation.caseName?.endsWith(')') || citation.caseName.includes('('), citation.caseName);
+  });
+});

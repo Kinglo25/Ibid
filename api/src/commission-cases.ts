@@ -1,3 +1,4 @@
+import { httpsOnly } from './https-only.ts';
 /**
  * Where a Commission decision actually is, read from the Commission's own open data.
  *
@@ -489,7 +490,7 @@ const EMPTY_INDEX: CommissionCaseIndex = { size: 0, find: () => [], title: () =>
  * without this each would fetch 42MB of its own.
  */
 export function createCommissionCaseIndexLoader(options: CaseIndexLoaderOptions = {}): CommissionCaseIndexLoader {
-  const fetcher = options.fetcher ?? fetch;
+  const fetcher = httpsOnly(options.fetcher ?? fetch);
   const datasets = options.datasets ?? COMMISSION_CASE_DATASETS;
   const refreshMs = options.refreshMs ?? DAY_MS;
   const now = options.now ?? Date.now;

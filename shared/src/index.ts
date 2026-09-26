@@ -795,6 +795,20 @@ function caseNameBefore(text: string, index: number, segmentStart: number): stri
   // A bracket naming the formation that sat — "(Grand Chamber)" — is not a nickname, and the
   // parties alone are the name.
   const nickname = /^([^()]+)\)$/.exec(fragments[cursor]);
+  // "… v Fédération internationale de football association (FIFA), Union of European Football
+  // Associations (UEFA), C-333/21": the last fragment is a party's abbreviation, and the name
+  // runs back to the fragment holding the "v". Read alone it titled the judgment "UEFA)".
+  if (nickname && cursor > 1 && !PARTY_SEPARATOR.test(fragments[cursor - 1])) {
+    for (let at = cursor - 1; at >= Math.max(0, cursor - 6); at -= 1) {
+      const parties = tidyCaseName(fragments[at]);
+      if (!PARTY_SEPARATOR.test(parties)) continue;
+      const from = before.lastIndexOf(fragments[at].trim());
+      const to = before.lastIndexOf(fragments[cursor].trim()) + fragments[cursor].trim().length;
+      const whole = from >= 0 && to > from ? tidyCaseName(before.slice(from, to)) : '';
+      if (whole && looksLikeCaseName(whole)) return whole;
+      return looksLikeCaseName(parties) ? parties : undefined;
+    }
+  }
   if (nickname && cursor > 0) {
     const parties = tidyCaseName(fragments[cursor - 1]);
     if (PARTY_SEPARATOR.test(parties) && looksLikeCaseName(parties)) {
