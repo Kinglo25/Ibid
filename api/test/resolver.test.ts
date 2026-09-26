@@ -2517,3 +2517,115 @@ describe('a document EUR-Lex holds only in summary', () => {
     assert.equal(preview.fullTextUrl, undefined);
   });
 });
+
+/**
+ * The passage shown must be the passage cited, and nothing else.
+ *
+ * Two ways a correct document could still put the wrong words on screen under a citation.
+ * The same number heads more than one paragraph — a provision quoted with its own numbering,
+ * a summary numbered from 1 above the grounds — and the first to appear is not always the
+ * Court's. And the last paragraph of a run has no next paragraph to stop at, so the excerpt
+ * ran on into whatever follows it: the operative part, the enacting formula and the articles,
+ * the signatures and the annexes.
+ */
+describe('the cited passage and nothing else', () => {
+  test('a quoted provision numbered like a paragraph is said to be there', async () => {
+    // Paragraph 1 of the grounds quotes a directive article, whose own paragraphs are numbered
+    // "1." and "2." exactly as this era numbers the grounds. The citation is to paragraph 2.
+    const { fetcher } = stubFetcher([html(
+      '<p>1. The directive provides, in Article 3:</p>'
+      + '<p>1. Member States shall ensure that the quoted provision applies.</p>'
+      + '<p>2. The quoted provision’s second paragraph.</p>'
+      + '<p>2. The grounds’ own second paragraph, the one cited.</p>'
+      + '<p>3. The third paragraph of the grounds.</p>'
+      + '<p>4. The fourth.</p>',
+    )]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62007CJ0202', locator: { kind: 'point', start: 2 }, paragraphs: [2] }));
+    // Which "2." is the Court's cannot be read off the numbering (see `headingRepeats`), so
+    // the first is shown as before — and the reviewer is told there is another.
+    assert.deepEqual(preview.repeated, ['2']);
+  });
+
+  test('so is a summary numbered from 1 above the grounds', async () => {
+    const summary = ['The right of access', 'Rights of defence', 'Fines'].map((text, index) => `<p>${index + 1}. Summary: ${text}.</p>`).join('');
+    const grounds = [1, 2, 3, 4, 5, 6].map((n) => `<p>${n}. Grounds paragraph ${n}${n === 2 ? ', the one cited' : ''}.</p>`).join('');
+    const { fetcher } = stubFetcher([html(summary + grounds)]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62007CJ0202', locator: { kind: 'point', start: 2 }, paragraphs: [2] }));
+    assert.deepEqual(preview.repeated, ['2']);
+  });
+
+  test('a paragraph whose number appears once is not flagged', async () => {
+    const { fetcher } = stubFetcher([html([1, 2, 3].map((n) => `<p>${n}. Grounds paragraph ${n}.</p>`).join(''))]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62007CJ0202', locator: { kind: 'point', start: 2 }, paragraphs: [2] }));
+    assert.ok(preview.excerpt.includes('Grounds paragraph 2'));
+    assert.equal(preview.repeated, undefined);
+  });
+
+  test('the last paragraph of the grounds stops where the operative part begins', async () => {
+    const { fetcher } = stubFetcher([html(
+      '<p class="count" id="point74">74</p><p>The penultimate paragraph.</p>'
+      + '<p class="count" id="point75">75</p><p>Since the Commission has been unsuccessful, it must be ordered to pay the costs.</p>'
+      + '<p>On those grounds, the Court (Grand Chamber) hereby:</p>'
+      + '<p>1. Sets aside the judgment of the General Court;</p><p>2. Orders the Commission to pay the costs.</p>',
+    )]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 75 }, paragraphs: [75] }));
+    assert.ok(preview.excerpt.includes('ordered to pay the costs'), preview.excerpt);
+    assert.ok(!preview.excerpt.includes('On those grounds'), preview.excerpt);
+    assert.ok(!preview.excerpt.includes('Sets aside'), preview.excerpt);
+  });
+
+  test('the last recital stops at the enacting formula, before the articles', async () => {
+    const { fetcher } = stubFetcher([html(
+      '<p>(49) The penultimate recital.</p>'
+      + '<p>(50) Since the objectives of this Regulation cannot be sufficiently achieved by the Member States.</p>'
+      + '<p>HAVE ADOPTED THIS REGULATION:</p>'
+      + '<p>Article 1</p><p>1. This Regulation lays down rules on something else entirely.</p>',
+    )]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(eurLexLookup({ locator: { kind: 'point', start: 50 }, paragraphs: [50] }));
+    assert.ok(preview.excerpt.includes('cannot be sufficiently achieved'), preview.excerpt);
+    assert.ok(!preview.excerpt.includes('HAVE ADOPTED'), preview.excerpt);
+    assert.ok(!preview.excerpt.includes('something else entirely'), preview.excerpt);
+  });
+
+  test('the last article stops before the signatures and the annexes', async () => {
+    const { fetcher } = stubFetcher([html(
+      '<p>Article 21</p><p>1. The penultimate article.</p>'
+      + '<p>Article 22</p><p>This Regulation shall enter into force on the twentieth day following that of its publication.</p>'
+      + '<p>This Regulation shall be binding in its entirety and directly applicable in all Member States.</p>'
+      + '<p>Done at Brussels, 27 April 2016.</p>'
+      + '<p>ANNEX I</p><p>1. A list that belongs to the annex.</p>',
+    )]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(eurLexLookup({ locator: { kind: 'article', start: 22 } }));
+    assert.ok(preview.excerpt.includes('twentieth day'), preview.excerpt);
+    assert.ok(!preview.excerpt.includes('Done at Brussels'), preview.excerpt);
+    assert.ok(!preview.excerpt.includes('belongs to the annex'), preview.excerpt);
+  });
+});
+
+describe('a long paragraph', () => {
+  test('is shown whole, however much markup it is wrapped in', async () => {
+    // Modern renderings wrap words in spans; a cap on raw markup cut this paragraph after
+    // under 2,000 characters of its text, mid-tag, and lost the qualification at its end.
+    const words = '<span class="bold">It</span> <span>follows</span> <span>from</span> <span>settled</span> <span>case-law.</span> '.repeat(60);
+    const { fetcher } = stubFetcher([html(`<p class="count" id="point7">7</p><p class="normal">${words} That is so, unless the contrary is shown.</p><p class="count" id="point8">8</p><p>Next.</p>`)]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 7 }, paragraphs: [7] }));
+    assert.ok(preview.excerpt.endsWith('unless the contrary is shown.'), preview.excerpt.slice(-80));
+    assert.equal(preview.truncated, undefined);
+  });
+
+  test('beyond what can be shown, is cut where a sentence ends and marked', async () => {
+    const sentences = Array.from({ length: 1200 }, (_, i) => `Sentence ${i} of a very long paragraph.`).join(' ');
+    const { fetcher } = stubFetcher([html(`<p class="count" id="point7">7</p><p>${sentences}</p><p class="count" id="point8">8</p><p>Next.</p>`)]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve(curiaJudgmentLookup({ locator: { kind: 'point', start: 7 }, paragraphs: [7] }));
+    assert.equal(preview.truncated, true);
+    assert.ok(preview.excerpt.endsWith('paragraph. […]'), preview.excerpt.slice(-40));
+  });
+});

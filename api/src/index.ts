@@ -7,7 +7,7 @@ export { createStaticFiles, contentTypeFor, resolveWithinRoot } from './static-f
 export type { StaticAsset } from './static-files.ts';
 
 import { identifyCommissionCase, type CommissionCaseIdentity, type CommissionCaseIndexLoader, type CommissionDecision } from './commission-cases.ts';
-import { extractPdfText, locateRecitals, locateSections } from './pdf-text.ts';
+import { boundedPassage, extractPdfText, locateRecitals, locateSections } from './pdf-text.ts';
 
 export { buildCommissionCaseIndex, createCommissionCaseIndexLoader, identifyCommissionCase, COMMISSION_CASE_DATASETS } from './commission-cases.ts';
 export type { CommissionCaseIdentity, CommissionCaseIndex, CommissionCaseIndexLoader, CommissionDecision } from './commission-cases.ts';
@@ -104,6 +104,18 @@ export type SourcePreview = {
    * without this they would be presented as the whole of what it cites.
    */
   unlocated?: string[];
+  /**
+   * The paragraphs shown whose number heads more than one passage of the document — a quoted
+   * provision, or a summary, numbered like the Court's own paragraphs. The first is what is
+   * shown, and it is usually the Court's; the reviewer is told so as to check it is. Set only
+   * alongside `passage: 'cited'`.
+   */
+  repeated?: string[];
+  /**
+   * The passage cited is longer than is shown, and the excerpt ends `[…]` where it was cut.
+   * Said so that what is on screen is never taken for the whole of what was cited.
+   */
+  truncated?: boolean;
   /**
    * Where the full text is, when `url` leads to something less than it.
    *
@@ -401,11 +413,56 @@ function decodeHtml(value: string): string {
  */
 type SliceRange = { through?: number; maxLength?: number };
 
+/**
+ * Whether more than one heading in a document carries this number.
+ *
+ * The first heading carrying the cited number is the one used, and it is not always the
+ * Court's: a judgment quotes a provision with its own numbering — `<p>1. Member States shall…`
+ * — in the very shape an older rendering numbers its grounds, and a summary numbered from 1
+ * can stand above them. The numbers alone cannot always say which is which: "1, 2, 1, 2, 3"
+ * is a paragraph 2 quoting a provision numbered 1 and 2, whose paragraph 2 is the first, and
+ * equally a summary of two points above the grounds, whose is the second. So nothing is
+ * chosen differently; the reviewer is told, and checks, instead of being shown one of the two
+ * with nothing to say that the other exists.
+ */
+function headingRepeats(html: string, pattern: RegExp, targetNumber: number): boolean {
+  let seen = 0;
+  for (const match of html.matchAll(pattern)) {
+    if (Number(match[1]) === targetNumber && ++seen > 1) return true;
+  }
+  return false;
+}
+
+/**
+ * Where the numbered text of a document ends, whatever the numbering does after it.
+ *
+ * The last paragraph of a run stops at the next heading numbered beyond it, and the last
+ * paragraph of a document has none: its excerpt ran on into the operative part of a judgment
+ * ("On those grounds, the Court … hereby: 1. Sets aside …"), past a regulation's last recital
+ * into its enacting formula and articles, past its last article into the signatures and the
+ * annexes — all of it shown as the passage cited. These are the fixed forms that close each
+ * of those, in English and French; a passage is cut at the first of them after it begins.
+ */
+const END_OF_NUMBERED_TEXT = new RegExp([
+  String.raw`>\s*On those grounds,?\s+the\s+(?:Court|General Court)\b[^<]{0,80}\bhereby`,
+  String.raw`>\s*Par ces motifs,?\s+(?:la Cour|le Tribunal)\b`,
+  String.raw`>\s*HA(?:S|VE) ADOPTED TH(?:IS|E PRESENT)\b`,
+  String.raw`>\s*(?:ONT|A) ADOPT(?:É|&Eacute;|&#201;)\s+(?:LE|LA|LES)\s+PR`,
+  String.raw`>\s*This (?:Regulation|Directive|Decision) shall be binding in its entirety`,
+  String.raw`>\s*Le pr(?:é|&eacute;|&#233;)sent r(?:è|&egrave;|&#232;)glement est obligatoire`,
+  String.raw`>\s*(?:Done at|Fait (?:à|&agrave;|&#224;))\s+(?:Brussels|Bruxelles|Luxembourg|Strasbourg)\b`,
+  String.raw`<p[^>]*>\s*ANNEXE?(?:\s+[IVXLC\d]+)?\s*<`,
+].join('|'), 'i');
+
 function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: number, range: SliceRange = {}): string | undefined {
   const last = Math.max(range.through ?? targetNumber, targetNumber);
   // The cap scales with the span asked for: one paragraph's worth of raw markup is no use
   // when nine were cited, and truncating mid-range is what this exists to stop.
-  const maxLength = range.maxLength ?? Math.min(60_000, 6_000 * (last - targetNumber + 1));
+  // Raw markup, so generous: modern renderings wrap words in spans, and 6,000 characters of
+  // markup held under 2,000 of text — a long paragraph lost its closing words, which is where
+  // a qualification usually sits. What the reader is shown is bounded after decoding, by
+  // `boundedPassage`, which says when it has cut.
+  const maxLength = range.maxLength ?? Math.min(400_000, 60_000 * (last - targetNumber + 1));
   let start = -1;
   let end = html.length;
   for (const match of html.matchAll(pattern)) {
@@ -417,7 +474,15 @@ function sliceByHeadingAnchor(html: string, pattern: RegExp, targetNumber: numbe
     if (number > last) { end = match.index; break; }
   }
   if (start < 0) return undefined;
-  return html.slice(start, Math.min(end, start + maxLength));
+  const closing = END_OF_NUMBERED_TEXT.exec(html.slice(start + 1, end));
+  if (closing) end = start + 1 + closing.index;
+  let stop = Math.min(end, start + maxLength);
+  // Never inside a tag: a cut there left "</s" in the text on screen.
+  if (stop < end) {
+    const open = html.lastIndexOf('<', stop);
+    if (open > html.lastIndexOf('>', stop) && open > start) stop = open;
+  }
+  return html.slice(start, stop);
 }
 
 /** The two renditions CELLAR serves, in the order to try when nothing is known about an era. */
@@ -602,20 +667,26 @@ const MAX_CACHED_PREVIEWS = 512;
  * intervening text had been cited, are both misrepresentations of what was written. The
  * ellipsis is what distinguishes them on screen.
  */
-function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly number[]): Excerpt | undefined {
+function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly number[], { flagRepeats = false } = {}): Excerpt | undefined {
   const runs = contiguousRuns(paragraphs).slice(0, MAX_RUNS);
   const passages: string[] = [];
   const unlocated: string[] = [];
+  const repeated: string[] = [];
   for (const run of runs) {
     const raw = sliceByHeadingAnchor(html, pattern, run.from, { through: run.to });
-    if (raw) passages.push(decodeHtml(raw).trim());
-    else unlocated.push(runLabel(run));
+    if (raw) {
+      passages.push(decodeHtml(raw).trim());
+      if (flagRepeats && headingRepeats(html, pattern, run.from)) repeated.push(String(run.from));
+    } else unlocated.push(runLabel(run));
   }
   if (!passages.length) return undefined;
+  const shown = boundedPassage(passages.join('\n\n…\n\n'), MAX_EXCERPT);
   return {
-    excerpt: passages.join('\n\n…\n\n').slice(0, MAX_EXCERPT),
+    excerpt: shown.text,
     passage: 'cited',
+    ...(shown.truncated ? { truncated: true } : {}),
     ...(unlocated.length ? { unlocated } : {}),
+    ...(repeated.length ? { repeated } : {}),
   };
 }
 
@@ -632,12 +703,18 @@ function extractCitedRuns(html: string, pattern: RegExp, paragraphs: readonly nu
  * `passage` is absent where the citation pinpointed nothing at all. Then the opening is
  * simply what there is to show, and there is nothing to admit.
  */
-type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' | 'unpublished' | 'summary' | 'unreadable'; unlocated?: string[] };
+type Excerpt = { excerpt: string; passage?: 'cited' | 'opening' | 'unpublished' | 'summary' | 'unreadable'; unlocated?: string[]; repeated?: string[]; truncated?: boolean };
 
 /** The opening of the document, marked as the fallback it is. */
 function documentOpening(html: string, cited: boolean): Excerpt {
   const excerpt = fromDocumentContent(decodeHtml(html)).slice(0, 900);
   return cited ? { excerpt, passage: 'opening' } : { excerpt };
+}
+
+/** A located passage, bounded for the screen and marked where it had to be cut. */
+function cited(text: string): Excerpt {
+  const shown = boundedPassage(text, MAX_EXCERPT);
+  return { excerpt: shown.text, passage: 'cited', ...(shown.truncated ? { truncated: true } : {}) };
 }
 
 function extractLegislativeLocator(html: string, locator?: EuLookup['locator'], paragraphs?: number[]): Excerpt {
@@ -652,16 +729,16 @@ function extractLegislativeLocator(html: string, locator?: EuLookup['locator'], 
   // excerpt shown — articles with many paragraphs carry a lot of markup overhead
   // before reaching a later paragraph, so this must stay well above the final
   // excerpt-length cap applied below.
-  const articleHtml = sliceByHeadingAnchor(html, ARTICLE_HEADING, locator.start, { through: locator.end, maxLength: 20_000 });
+  const articleHtml = sliceByHeadingAnchor(html, ARTICLE_HEADING, locator.start, { through: locator.end, maxLength: 200_000 });
   if (!articleHtml) return documentOpening(html, true);
   if (locator.paragraph) {
-    const paragraphHtml = sliceByHeadingAnchor(articleHtml, ARTICLE_PARAGRAPH_HEADING, locator.paragraph, { maxLength: 3_000 });
-    if (paragraphHtml) return { excerpt: decodeHtml(paragraphHtml).trim(), passage: 'cited' };
+    const paragraphHtml = sliceByHeadingAnchor(articleHtml, ARTICLE_PARAGRAPH_HEADING, locator.paragraph, { maxLength: 60_000 });
+    if (paragraphHtml) return cited(decodeHtml(paragraphHtml).trim());
   }
   // The article was found and a numbered sub-paragraph within it was not, so this is the
   // cited provision shown whole rather than a different part of the document: a wider
   // answer to the question asked, not an answer to another one.
-  return { excerpt: decodeHtml(articleHtml).slice(0, 6_000).trim(), passage: 'cited' };
+  return cited(decodeHtml(articleHtml).trim());
 }
 
 /**
@@ -761,7 +838,10 @@ function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
   // single-anchor view of the same citation, kept for callers that send nothing else.
   const cited = lookup.paragraphs?.length ? lookup.paragraphs : expandRange(locator.start, locator.end);
   for (const pattern of JUDGMENT_POINT_HEADINGS) {
-    const result = extractCitedRuns(html, pattern, cited);
+    // A court document's numbering is where a quoted provision or a summary can repeat a
+    // paragraph's number; see `headingRepeats`. An act's older rendering lists its footnotes
+    // as `(1) OJ …` after the recitals, which would say so of nearly every recital cited.
+    const result = extractCitedRuns(html, pattern, cited, { flagRepeats: true });
     if (result) return result;
   }
   const opening = documentOpening(html, true);

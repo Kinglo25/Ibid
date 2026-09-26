@@ -487,6 +487,19 @@ export function unlocatedNote(unlocated: readonly string[] | undefined, locator?
 }
 
 /**
+ * Says that the number of a paragraph shown heads more than one passage of the document.
+ *
+ * A quoted provision, or a summary, can be numbered exactly as the Court numbers its grounds,
+ * and nothing in the numbering says which is which. The first is shown — usually the Court's —
+ * and the reviewer is asked to check it rather than left to assume it.
+ */
+export function repeatedNote(repeated: readonly string[] | undefined): string | undefined {
+  if (!repeated?.length) return undefined;
+  const which = repeated.length === 1 ? `paragraph ${repeated[0]}` : `paragraphs ${listed(repeated)}`;
+  return `This document numbers more than one passage as ${which} — a quoted provision or a summary can be numbered like the Court's own paragraphs. Check that the passage shown is the Court's.`;
+}
+
+/**
  * Says so when the drafter cited a paragraph "et seq.".
  *
  * Where "et seq." stops is the drafter's judgment and is written nowhere, so Ibid shows the

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { bodyTextOf, extractPdfText, locateRecitals, locateSections, sliceRecitals } from '../src/pdf-text.ts';
+import { boundedPassage, bodyTextOf, extractPdfText, locateRecitals, locateSections, sliceRecitals } from '../src/pdf-text.ts';
 
 /**
  * A decision's text, in the shape a real one comes out in.
@@ -172,7 +172,17 @@ describe('the recital a Commission citation names', () => {
     const long = Array.from({ length: 400 }, (_, i) => `(${i + 1}) ${'text '.repeat(40)}`).join('\n');
     const passage = sliceRecitals(long, [{ from: 1, to: 399 }], { maxLength: 500 });
 
-    assert.equal(passage!.length, 500);
+    // Bounded, and saying so: a cut passage ends with the mark, never silently mid-word.
+    assert.ok(passage!.length <= 504, String(passage!.length));
+    assert.ok(passage!.endsWith(' […]'));
+  });
+
+  test('a decision\'s last recital stops where its operative part begins', () => {
+    const text = '(399) The penultimate recital.\n(400) The Commission therefore concludes that the infringement lasted until 2019.\nHAS ADOPTED THIS DECISION:\nArticle 1\nThe undertakings infringed Article 102 TFEU.';
+    const passage = sliceRecitals(text, [{ from: 400, to: 400 }]);
+    assert.ok(passage!.includes('lasted until 2019'));
+    assert.ok(!passage!.includes('HAS ADOPTED'));
+    assert.ok(!passage!.includes('infringed Article 102'));
   });
 });
 
@@ -291,5 +301,15 @@ describe('a decision’s numbered sections', () => {
     const { excerpt } = locateSections(DECISION, [{ from: '9.1.3.3' }], { maxLength: 120 });
     assert.ok(excerpt!.endsWith('\n[…]'));
     assert.ok(excerpt!.length <= 125);
+  });
+});
+
+describe('a passage too long to show whole', () => {
+  test('is cut at a sentence and marked, never silently mid-word', () => {
+    const text = 'The first sentence is complete. The second sentence is also complete. The third one runs on and on beyond the limit';
+    const { text: shown, truncated } = boundedPassage(text, 80);
+    assert.equal(truncated, true);
+    assert.equal(shown, 'The first sentence is complete. The second sentence is also complete. […]');
+    assert.deepEqual(boundedPassage('Short.', 80), { text: 'Short.', truncated: false });
   });
 });

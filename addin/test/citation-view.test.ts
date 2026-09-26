@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, documentTypeNote, draftingNotes, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, outstandingNote, parentheticalsInBody, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
+import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, documentTypeNote, draftingNotes, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, outstandingNote, parentheticalsInBody, repeatedNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -483,5 +483,12 @@ describe('what a footnote contradicts about its own ECLI, said to the reviewer',
       "The footnote gives case number C-584/19 P, a Court of Justice number, but its ECLI (EU:T:2022:386) is the General Court's — check the case number.",
     ]);
     assert.deepEqual(draftingNotes({}), []);
+  });
+});
+
+describe('a paragraph number the document uses more than once', () => {
+  test('is pointed out, so the reviewer checks the passage is the Court\'s', () => {
+    assert.equal(repeatedNote(['2']), "This document numbers more than one passage as paragraph 2 — a quoted provision or a summary can be numbered like the Court's own paragraphs. Check that the passage shown is the Court's.");
+    assert.equal(repeatedNote(undefined), undefined);
   });
 });

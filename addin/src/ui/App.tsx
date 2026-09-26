@@ -4,7 +4,7 @@ import { prefetchStatus, prefetchTargets, startConfirmations, startPrefetch, typ
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
   autoSelectable, bodyProseLines, inlineFootnotesInBody, INLINE_NOTE_CEILING, INLINE_NOTE_FLOOR, INLINE_NOTE_SHAPE, needsReview, officialSourceUrl, parentheticalsInBody,
-  documentTypeNote, draftingNotes, excerptPassages, followingNote, numberMismatchNote, outstandingNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
+  documentTypeNote, draftingNotes, excerptPassages, followingNote, numberMismatchNote, outstandingNote, repeatedNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
   unresolvedMessage, verificationNote, type ReviewFootnote,
 } from './citation-view';
 
@@ -16,6 +16,8 @@ type ReviewDocument = {
   passage?: 'cited' | 'opening' | 'unpublished' | 'summary' | 'unreadable';
   /** Paragraphs the citation named that the text does not have, where the others were found: `1398`, `40–44`. */
   unlocated?: string[];
+  repeated?: string[];
+  truncated?: boolean;
   /** A Commission case number that is not the case the citation names, and the case shown instead where one is. */
   numberMismatch?: NumberMismatch;
   /** What a court document is by its own heading, where the citation called it something else. */
@@ -758,7 +760,10 @@ function CitedScopeNotes({ document, citation }: { document: ReviewDocument; cit
   if (document.passage !== 'cited') return null;
   const missing = unlocatedNote(document.unlocated, document.locator);
   const following = followingNote(citation.pinpoint?.following, document.unlocated);
+  const repeated = repeatedNote(document.repeated);
   return <>
+    {repeated && <p className="source-warning" role="alert">{repeated}</p>}
+    {document.truncated && <p className="source-note">The passage cited is longer than is shown here; it is cut where marked […], and the rest is in the official source.</p>}
     {missing && <p className="source-note">{missing}</p>}
     {following && <p className="source-note">{following}</p>}
   </>;

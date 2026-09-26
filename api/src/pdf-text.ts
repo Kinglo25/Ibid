@@ -223,6 +223,28 @@ const RECITAL_ANCHOR = /^[ \t]*\((\d{1,4})\)/gm;
 export type RecitalRun = { from: number; to: number };
 
 /**
+ * A passage no longer than `maxLength`, cut where a reader would expect a cut — at a line, else
+ * a sentence, else a word — and marked `[…]` so that what is shown is never mistaken for all
+ * of it. A passage cut silently reads as complete, and the words dropped from the end of a
+ * paragraph are as often as not the ones that qualify it ("…, unless the contrary is shown").
+ */
+export function boundedPassage(text: string, maxLength: number): { text: string; truncated: boolean } {
+  if (text.length <= maxLength) return { text, truncated: false };
+  const window = text.slice(0, maxLength);
+  const floor = Math.floor(maxLength * 0.6);
+  const cut = [window.lastIndexOf('\n'), window.search(/[.;:](?=\s[^.;:]*$)/), window.lastIndexOf(' ')]
+    .find((at) => at > floor) ?? maxLength;
+  return { text: `${window.slice(0, cut + (window[cut] === '.' || window[cut] === ';' || window[cut] === ':' ? 1 : 0)).trimEnd()} […]`, truncated: true };
+}
+
+/**
+ * Where a Commission decision's recitals end: the formula that opens its operative part. A
+ * decision's last recital has no recital after it to stop at, so without this the passage
+ * ran on into Article 1 of the decision and was shown as the recital cited.
+ */
+export const END_OF_RECITALS = /\b(?:HA(?:S|VE) ADOPTED TH(?:IS|E PRESENT) DECISION|A ADOPT[ÉE] LA PR[ÉE]SENTE D[ÉE]CISION)\b/i;
+
+/**
  * The text of the recitals a citation actually named, and the ones it named that are not there.
  *
  * A run is sliced from its first recital to the first anchor numbered past its last, rather
@@ -260,10 +282,12 @@ export function locateRecitals(
     // checked as well as number because a decision's numbering is not globally ascending —
     // annexes restart it — and an earlier `(1)` must not be mistaken for this run's end.
     const end = anchors.find((anchor) => anchor.index > start.index && anchor.number > run.to);
-    passages.push(text.slice(start.index, end ? end.index : undefined).trim());
+    const passage = text.slice(start.index, end ? end.index : undefined);
+    const closing = END_OF_RECITALS.exec(passage.slice(1));
+    passages.push((closing ? passage.slice(0, closing.index + 1) : passage).trim());
   }
   return passages.length
-    ? { excerpt: passages.join('\n\n…\n\n').slice(0, maxLength), unlocated }
+    ? { excerpt: boundedPassage(passages.join('\n\n…\n\n'), maxLength).text, unlocated }
     : { unlocated };
 }
 
