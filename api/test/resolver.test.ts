@@ -935,6 +935,33 @@ describe('the passage of a Commission decision', () => {
     for (const preview of previews) assert.equal(preview.passage, undefined, 'neither is presented as the passage');
   });
 
+  describe('the date a footnote gives the decision', () => {
+    // Microsoft (AT.37792): ten decisions in the register, more than are read to find the
+    // recital, so "EC decision of 24 March 2004 … para. 841" was answered with ten links.
+    const others = ['2005-11-10', '2006-03-10', '2006-07-12', '2008-02-27', '2009-03-04']
+      .map((date, at) => attachment(`https://ec.europa.eu/competition/antitrust/cases/dec_docs/37792/other_${at}.pdf`, date));
+
+    test('says which of many it cites', async () => {
+      const documentStore = await storeHolding(DECISION_TEXT);
+      const { fetcher, calls } = stubFetcher([new Response(null, { status: 304 })]);
+      const { resolver } = makeResolver({ fetcher, documentStore, commissionCases: loaderFor([...others, attachment(URL_2009, '2004-03-24')]) });
+
+      const previews = await resolver.resolve({ source: 'commission', value: 'AT.37990', decisionDate: '2004-03-24', locator: { kind: 'point', start: 1000 } });
+
+      assert.equal(previews.length, 1);
+      assert.equal(previews[0].passage, 'cited');
+      assert.equal(previews[0].url, URL_2009);
+      assert.equal(calls.length, 1, 'only the decision of that date is read');
+    });
+
+    test('narrows nothing where no decision is dated so', async () => {
+      const { fetcher } = stubFetcher([]);
+      const { resolver } = makeResolver({ fetcher, commissionCases: loaderFor([...others, attachment(URL_2009, '2004-03-24')]) });
+      const previews = await resolver.resolve({ source: 'commission', value: 'AT.37990', decisionDate: '1999-01-01', locator: { kind: 'point', start: 1000 } });
+      assert.equal(previews.length, 6, 'every decision offered, as before');
+    });
+  });
+
   describe('a decision about an earlier decision in the case', () => {
     // Hoffmann-La Roche/Boehringer Mannheim (M.950), cited at paragraph 13: the register
     // holds only the 2011 decision waiving the commitments — its recital (1) opens "By
@@ -2935,6 +2962,17 @@ describe('a document of another case than the footnote names', () => {
       const [preview] = await resolver.resolve(curiaJudgmentLookup({ ...lookup, caseNumber: 'C-309/99', celex: '61999CC0309', ecli: 'ECLI:EU:C:2001:390', locator: { kind: 'point', start: 62 }, paragraphs: [62] }));
       assert.equal(preview.caseMismatch, undefined);
     });
+  });
+
+  test('a table of contents naming the judgment under appeal is not the heading', async () => {
+    // ISU v Commission (C-124/21 P): the Grand Chamber's table of contents, before the heading,
+    // lists "V. The action in Case T‑93/18", and the judgment was said to be of that case.
+    for (const [cases, mismatch] of [['Table of contents I. Background V. The action in Case T‑93/18 A. Arguments</p><p>In Case C‑124/21 P', false], ['IN CASE 14/68', true]] as const) {
+      const { fetcher } = stubFetcher([heading(cases)]);
+      const { resolver } = makeResolver({ fetcher });
+      const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: 'C-124/21', celex: '62021CJ0124', ecli: 'ECLI:EU:C:2023:1012', locator: { kind: 'point', start: 138 }, paragraphs: [138] }));
+      assert.equal(preview.caseMismatch !== undefined, mismatch, cases);
+    }
   });
 
   test('a case of the Court before 1989 is read as the Court writes it', async () => {

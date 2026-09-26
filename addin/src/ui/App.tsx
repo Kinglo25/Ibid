@@ -628,6 +628,9 @@ function lookupFor(citation: CitationContext) {
     // itself stated, never anything read out of it — see `docs/DATA-FLOW.md`.
     alternativeCelexes: citation.alternativeCelexes,
     caseNumber: citation.caseNumber, caseName: citation.caseName,
+    // The date a footnote gives a Commission decision, as `YYYY-MM-DD` — the fact, not the
+    // words it was written in. See `decisionDate` in `shared/src/index.ts`.
+    decisionDate: citation.decisionDate,
     documentType: citation.documentType, locator: citation.locator,
     // Every paragraph the footnote names, not just the one retrieval anchors on: a citation
     // to "paras 62 and 65" is a citation to both, and the resolver cannot know that from the

@@ -60,7 +60,7 @@ lookups rather than one — same fields, one at a time, like every other request
 It is sent when the reviewer selects a citation, and — since the pane began warming the
 cache at document open — also once per distinct authority the document cites, in reading
 order, in the background. **The content of the request is identical either way**: both paths
-build it through the same `lookupFor` function, which names the ten fields below one by
+build it through the same `lookupFor` function, which names the eleven fields below one by
 one. Warming changes *when* lookups happen and how many, not what is in them.
 
 What that means for a reviewer of this document: opening a file in Word now produces a
@@ -80,10 +80,16 @@ The `lookup` object contains only these fields, and nothing else:
 | `ecli` | `ECLI:EU:C:2014:238` |
 | `caseNumber` | `C-293/12` |
 | `caseName` | `Digital Rights Ireland` |
+| `decisionDate` | `2004-03-24` |
 | `documentType` | `judgment` |
 | `locator` | `{ kind: 'point', start: 40 }`, or for a Commission decision cited by section `{ kind: 'section', start: 9, sections: [{ from: '9.1.3.3.7' }] }` |
 | `paragraphs` | `[40]` |
 | `alternativeCelexes` | `['62012CJ0594']` |
+
+`decisionDate` is present only for a Commission case whose footnote dates the decision it
+cites ("EC decision of 24 March 2004, Microsoft, COMP/C-3/37.792"). It is the date, rewritten
+as `YYYY-MM-DD`, not the words of the footnote — a fact identifying the decision, like its
+case number — and the server uses it only to choose among that case's own decisions.
 
 `alternativeCelexes` is present only where the footnote cites a joined case, and carries the
 other case numbers of that same group as CELEX identifiers — CELLAR files a joined judgment
@@ -97,7 +103,7 @@ context, the file name, the user's identity, or anything about the matter.
 The exclusion is structural rather than incidental. The object handed to the lookup
 function is a `CitationContext`, which is defined as `CitationMatch & { context: string }`
 (`shared/src/index.ts`) — the surrounding prose *is* present on the object, in memory, at
-the moment the request is built. The request is nonetheless assembled by naming its ten
+the moment the request is built. The request is nonetheless assembled by naming its eleven
 fields one by one, in `lookupFor` (`addin/src/ui/App.tsx`), not by spreading the citation
 object. A developer adding a new field to the citation type therefore cannot cause it to
 start crossing the wire by accident: it would have to be typed out inside that function.
@@ -325,7 +331,7 @@ grep -rn "insertText\|insertParagraph\|insertHtml\|insertOoxml" addin/src/
 # Read-only permission. Expect: <Permissions>ReadDocument</Permissions>
 grep -n "Permissions" addin/manifest.xml
 
-# Exactly what is put on the wire — ten named fields, no spread.
+# Exactly what is put on the wire — eleven named fields, no spread.
 sed -n '/^function lookupFor/,/^}/p' addin/src/ui/App.tsx
 
 # Everything the server writes to disk, and the only place it does. Expect hits in

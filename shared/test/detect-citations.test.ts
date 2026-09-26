@@ -551,7 +551,8 @@ describe('locators', () => {
     // "Art. 8(5)" is Article 8, paragraph 5 — not a range, and not "Article 8"
     // with the "(5)" discarded. Found missing against a real client document:
     // the excerpt showed the whole of Article 8 instead of just paragraph 5.
-    const [citation] = detectCitations('ECLI:EU:C:2014:317, Art. 8(5)');
+    // On an act: a judgment is cited by paragraph, and an article after one is refused.
+    const [citation] = detectCitations('Directive 2002/58/EC, Art. 8(5)');
     assert.deepEqual(citation.locator, { kind: 'article', start: 8, paragraph: 5, end: undefined });
   });
 
@@ -1459,4 +1460,67 @@ describe('a paper is not a case', () => {
     const [found] = detectCitationsAcrossFootnotes(['See also the 1996 Green Paper, paragraph 29.']);
     assert.deepEqual(found.filter((citation) => /Paper/.test(citation.value)), []);
   });
+});
+
+describe('found in a Latham & Watkins client alert', () => {
+  test('a list closed with a serial comma keeps its last paragraph', () => {
+    // "EU:C:2026:361, paras 56, 78, and 88" was read as 56 and 78: paragraph 88 was dropped
+    // without a word, and the pane showed two of the three passages as the whole citation.
+    const [citation] = detectCitations('Case C-133/24 - CD Tondela, 30 April 2026, EU:C:2026:361, paras 56, 78, and 88.');
+    assert.deepEqual(citation.pinpoint?.paragraphs, [56, 78, 88]);
+    const [ranged] = detectCitations('Case C-133/24 - CD Tondela, 30 April 2026, EU:C:2026:361, paras 41, 47-48, and 50.');
+    assert.deepEqual(ranged.pinpoint?.paragraphs, [41, 47, 48, 50]);
+  });
+
+  test('a judgment does not take the Treaty article the sentence goes on to name', () => {
+    // "In ROGON (C-428/23, 9 July 2026) confirms that the Wouters/Meca-Medina exception to
+    // Article 101(1) TFEU can apply" gave the judgment the pinpoint "Article 101(1)", and the
+    // pane told the reader to look for Article 101(1) in the judgment.
+    const found = detectCitations('ROGON (C-428/23, 9 July 2026) confirms that the Wouters/Meca-Medina exception to Article 101(1) TFEU can apply.');
+    const judgment = found.find((citation) => citation.caseNumber === 'C-428/23');
+    assert.equal(judgment?.locator, undefined);
+    assert.ok(found.some((citation) => citation.celex === '12016E101'), 'the Treaty article is still its own citation');
+  });
+});
+
+describe('the date a footnote gives a Commission decision', () => {
+  // "See EC decision of 24 March 2004, Microsoft, COMP/C-3/37.792, para. 841" — the case has
+  // ten decisions in the register, and the date the footnote gives is what says which.
+  test('is read, as a date and not as the words written', () => {
+    const cases: Array<[string, string]> = [
+      ['See EC decision of 24 March 2004, Microsoft, COMP/C-3/37.792, para. 841.', '2004-03-24'],
+      ['Commission Decision of 4 March 2024, Case AT.40437 – Apple – App Store Practices (music streaming), recital 512.', '2024-03-04'],
+      ['Décision de la Commission du 24 mars 2004, affaire COMP/C-3/37.792, point 841.', '2004-03-24'],
+      ['Commission Decision C(2018) 4761 final of 18 July 2018, AT.40099 – Google Android, recital 749.', '2018-07-18'],
+    ];
+    for (const [text, date] of cases) {
+      const found = detectCitations(text).find((citation) => citation.source === 'commission' && /AT\.|COMP\//.test(citation.value));
+      assert.equal(found?.decisionDate, date, text);
+    }
+  });
+
+  test('is not taken from a judgment, or across another authority', () => {
+    const judgment = detectCitations('Judgment of 17 September 2007, Microsoft v Commission, T-201/04, EU:T:2007:289; AT.37792, para. 841.');
+    assert.equal(judgment.find((citation) => citation.value === 'AT.37792')?.decisionDate, undefined);
+    const across = detectCitations('Decision of 24 March 2004 in Case M.3333 and Case AT.37792, para. 841.');
+    assert.equal(across.find((citation) => citation.value === 'AT.37792')?.decisionDate, undefined);
+  });
+});
+
+describe('a case name with a bracket after it and no "v"', () => {
+  test('keeps the name and the bracket together', () => {
+    // "Post Danmark (II), C-23/14" (Latham & Watkins, on Article 102) was titled "II)".
+    for (const [text, name] of [
+      ['See CJEU, judgment of 6 October 2015, Post Danmark (II), C-23/14, EU:C:2015:651, paras. 59 and 60.', 'Post Danmark (II)'],
+      ['Judgment of 27 March 2012, Post Danmark (I), C-209/10, EU:C:2012:172.', 'Post Danmark (I)'],
+      ['Judgment of 14 February 1978, United Brands (Chiquita), 27/76, EU:C:1978:22.', 'United Brands (Chiquita)'],
+      ['Judgment of 13 February 2014, Commission v Italy (Grand Chamber), C-1/13, EU:C:2014:1.', 'Commission v Italy'],
+    ] as const) {
+      assert.equal(detectCitations(text)[0]?.caseName, name, text);
+    }
+  });
+});
+
+test('a bracketed name after a date is the name, without the bracket', () => {
+  assert.equal(detectCitations('Judgment of 14 September 2022 (Google Android), T-604/18, EU:T:2022:541.')[0]?.caseName, 'Google Android');
 });

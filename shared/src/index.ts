@@ -121,6 +121,14 @@ export type CitationMatch = {
    * a correctly collapsed group a missed citation.
    */
   joinedCaseNumbers?: string[];
+  /**
+   * For a Commission case, the date the footnote gives the decision it cites, as `YYYY-MM-DD`:
+   * "EC decision of 24 March 2004, Microsoft, COMP/C-3/37.792" is `2004-03-24`. A case holds
+   * many decisions — Microsoft's register lists ten — and the date is the drafter's own word
+   * on which one is meant. A date and not the words written, so what crosses the wire is the
+   * fact, like the case number, and not a piece of the footnote.
+   */
+  decisionDate?: string;
   ecli?: string;
   caseNumber?: string;
   caseName?: string;
@@ -260,7 +268,10 @@ const PINPOINT_RANGE = String.raw`(?:\s*(?:[–—‑-]|\bto\b|à)\s*\d+)?`;
  */
 const FOLLOWING_WORDS = String.raw`\s*(?:\bet\s+seqq?\b\.?|\bet\s+s(?:uiv)?\.|\bff\b\.?)`;
 const PINPOINT_FOLLOWING = `(?:${FOLLOWING_WORDS})?`;
-const PINPOINT_JOINER = String.raw`(?:\s*(?:,|\band\b|\bet\b|&)\s*\d+${PINPOINT_RANGE}${PINPOINT_FOLLOWING})*`;
+// ", and" as one joiner, not a comma followed by a word the list cannot read: US drafting
+// closes a list with a serial comma, and "paras 56, 78, and 88" was read as 56 and 78 — the
+// last paragraph dropped without a word (Latham & Watkins, on CD Tondela, C-133/24).
+const PINPOINT_JOINER = String.raw`(?:\s*(?:,\s*(?:and|et)\b|,|\band\b|\bet\b|&)\s*\d+${PINPOINT_RANGE}${PINPOINT_FOLLOWING})*`;
 /**
  * Real pinpoints are lists, not single numbers: "paras 40–44, 46 and 48",
  * "§§ 40-44, 46". Parsing only the first number reports one paragraph as the
@@ -823,6 +834,15 @@ function caseNameBefore(text: string, index: number, segmentStart: number): stri
     if (PARTY_SEPARATOR.test(parties) && looksLikeCaseName(parties)) {
       return COURT_FORMATION.test(nickname[1]) ? parties : `${parties} (${nickname[1].trim()})`;
     }
+    // A name written without a "v" keeps its bracket as well: "Post Danmark (II), C-23/14" was
+    // titled "II)", and "United Brands (Chiquita)" "Chiquita)". Where the fragment before it is
+    // not a name — "judgment of 14 September 2022 (Google Android)" — the bracket's content is,
+    // without the bracket.
+    if (looksLikeCaseName(parties) && !DOCUMENT_PREFIX.test(parties)) {
+      return COURT_FORMATION.test(nickname[1]) ? parties : `${parties} (${nickname[1].trim()})`;
+    }
+    const inner = tidyCaseName(nickname[1]);
+    return !COURT_FORMATION.test(inner) && looksLikeCaseName(inner) && !/^[IVX]+$/.test(inner) ? inner : undefined;
   }
 
   const previous = fragments[cursor - 1] ?? '';
@@ -1031,6 +1051,36 @@ function commissionCaseTail(text: string, from: number, limit: number): string {
 }
 
 
+const DECISION_MONTHS: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  janvier: 1, 'février': 2, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7, 'août': 8, aout: 8, septembre: 9, octobre: 10, novembre: 11, 'décembre': 12, decembre: 12,
+};
+
+/**
+ * "decision of 24 March 2004", "Decision C(2018) 4761 final of 18 July 2018", "décision de la
+ * Commission du 24 mars 2004": the decision's own date, where the words naming it stand before
+ * the case number with no other authority between. A judgment's date is never read — the word
+ * has to be "decision" — and nor is a decision's across another case: "Decision of 24 March
+ * 2004 in Case M.3333 and Case AT.37792" dates M.3333, not AT.37792.
+ */
+const COMMISSION_DECISION_DATE = /\b(?:decision|d[ée]cision)\b[^;]{0,80}?\b(?:of|du)\s+(\d{1,2})(?:st|nd|rd|th|er)?\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})\b/gi;
+
+function decisionDateBefore(text: string, index: number, floor: number): string | undefined {
+  const start = Math.max(floor, index - 200);
+  const head = text.slice(start, index);
+  let last: RegExpExecArray | undefined;
+  for (const match of head.matchAll(COMMISSION_DECISION_DATE)) last = match as RegExpExecArray;
+  if (!last) return undefined;
+  const month = DECISION_MONTHS[last[2].toLowerCase()];
+  const day = Number(last[1]);
+  if (!month || day < 1 || day > 31) return undefined;
+  const between = head.slice((last.index ?? 0) + last[0].length);
+  if (new RegExp(NEXT_AUTHORITY.source, 'i').test(between)) return undefined;
+  return `${last[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+const optionalDate = (date: string | undefined) => (date ? { decisionDate: date } : {});
+
 /**
  * A Commission case's own paragraph pinpoint, read from `commissionCaseTail`.
  *
@@ -1192,6 +1242,14 @@ export function detectCitations(text: string): CitationMatch[] {
     const parsed = parsePinpointBefore(text, start, segment.start) ?? parsePinpoint(text, end, next >= 0 ? from + next : segment.end);
     return { locator: parsed?.locator, pinpoint: parsed?.pinpoint };
   };
+  // A court document is cited by paragraph or point, never by article: an article the scan
+  // reaches is the Treaty's or an act's, named further along the sentence. "ROGON (C-428/23,
+  // 9 July 2026) confirms that the … exception to Article 101(1) TFEU can apply" gave the
+  // judgment the pinpoint "Article 101(1)", and the pane sent the reader looking for it there.
+  const courtPinpointFor = (start: number, end: number, caseNumber?: string) => {
+    const found = pinpointFor(start, end, caseNumber);
+    return found.locator?.kind === 'article' ? {} : found;
+  };
   const actPinpointFor = (start: number, end: number) => {
     const segment = segmentAt(segments, start);
     const defined = parsePinpointBefore(text, start, segment.start) ? undefined : pinpointAfterDefinedTerm(text, end, segment.end);
@@ -1310,7 +1368,7 @@ export function detectCitations(text: string): CitationMatch[] {
       caseNumber, caseName: caseNameBefore(text, index, segment.start), documentType, documentTypeStated: stated || undefined,
       celex: caseNumber ? celexForCase(caseNumber, { documentType, court: courtFromEcli(ecli) }) : undefined,
       alternativeCelexes: alternativesFor(caseNumber, { documentType, court: courtFromEcli(ecli) }), joinedCaseNumbers: siblingsOf(caseNumber),
-      ...pinpointFor(index, index + match[0].length, caseNumber),
+      ...courtPinpointFor(index, index + match[0].length, caseNumber),
     });
   }
 
@@ -1339,7 +1397,7 @@ export function detectCitations(text: string): CitationMatch[] {
       label: labelForDocumentType(documentType, 'CJEU case number'), value: caseNumber, index, source: 'curia', caseNumber,
       caseName: caseNameBefore(text, index, segment.start) ?? caseNameAfter(text, index + match[0].length, segment.end),
       documentType, documentTypeStated: stated || undefined, celex: celexForCase(caseNumber, { documentType }),
-      alternativeCelexes: alternativesFor(caseNumber, { documentType }), joinedCaseNumbers: siblingsOf(caseNumber), ...pinpointFor(index, index + match[0].length, caseNumber),
+      alternativeCelexes: alternativesFor(caseNumber, { documentType }), joinedCaseNumbers: siblingsOf(caseNumber), ...courtPinpointFor(index, index + match[0].length, caseNumber),
     });
   }
 
@@ -1358,7 +1416,7 @@ export function detectCitations(text: string): CitationMatch[] {
       label: labelForDocumentType(documentType, 'CJEU case number'), value: caseNumber, index, source: 'curia', caseNumber,
       caseName: caseNameBefore(text, index, segment.start) ?? caseNameAfter(text, index + match[0].length, segment.end),
       documentType, documentTypeStated: stated || undefined, celex: celexForCase(caseNumber, { documentType }),
-      alternativeCelexes: alternativesFor(caseNumber, { documentType }), joinedCaseNumbers: siblingsOf(caseNumber), ...pinpointFor(index, index + match[0].length, caseNumber),
+      alternativeCelexes: alternativesFor(caseNumber, { documentType }), joinedCaseNumbers: siblingsOf(caseNumber), ...courtPinpointFor(index, index + match[0].length, caseNumber),
     });
   }
 
@@ -1433,6 +1491,8 @@ export function detectCitations(text: string): CitationMatch[] {
   // DG Competition's own case-number convention, distinct from the C(yyyy) decision
   // number above and not preceded by "Decision" at all — confirmed against a real
   // citation ("AT.37990, EC Decision of..."). AT. is antitrust, SA. is State aid,
+  const decisionDateFor = (index: number) => decisionDateBefore(text, index, segmentAt(segments, index).start);
+
   // M. (optionally "COMP/M.") is merger control.
   for (const match of text.matchAll(/\b(?:COMP\/)?(AT|SA|M)\.(\d{3,6})\b/g)) {
     const index = match.index ?? 0;
@@ -1445,6 +1505,7 @@ export function detectCitations(text: string): CitationMatch[] {
     add({
       label: `Commission ${family} case`, value: match[0], index, source: 'commission',
       ...(caseName ? { caseName } : {}),
+      ...optionalDate(decisionDateFor(index)),
       ...(section ? { locator: section } : { locator: parsed?.locator, pinpoint: parsed?.pinpoint }),
     });
   }
@@ -1467,6 +1528,7 @@ export function detectCitations(text: string): CitationMatch[] {
       label: 'Commission antitrust case', value: match[0], index, source: 'commission',
       ...(match[1] === 'COMP' ? { caseNumber: `AT.${match[2]}${match[3]}` } : {}),
       ...(caseName ? { caseName } : {}),
+      ...optionalDate(decisionDateFor(index)),
       ...(section ? { locator: section } : { locator: parsed?.locator, pinpoint: parsed?.pinpoint }),
     });
   }
@@ -1580,7 +1642,7 @@ function pinpointAfterDefinedTerm(text: string, end: number, limit: number): Par
  * "Article 102 TFEU". Read only for a term that names an act; a court document's name is never
  * cited so.
  */
-const LISTED_PROVISIONS = String.raw`(?:\s*(?:,|\band\b|\bet\b|&)\s*\d+(?:\(\d+\))?${PINPOINT_RANGE})*`;
+const LISTED_PROVISIONS = String.raw`(?:\s*(?:,\s*(?:and|et)\b|,|\band\b|\bet\b|&)\s*\d+(?:\(\d+\))?${PINPOINT_RANGE})*`;
 const PROVISION_BEFORE_TERM = new RegExp(`${PINPOINT_KEYWORD}\\s*(\\d+(?:\\(\\d+\\))?${PINPOINT_RANGE}${PINPOINT_FOLLOWING}${LISTED_PROVISIONS})\\s*(?:(?:of|in)\\s+(?:the\\s+)?|de\\s+la\\s+|du\\s+|de\\s+l['’]\\s*)?$`, 'i');
 
 function provisionBeforeTerm(text: string, index: number, floor: number): ParsedPinpoint | undefined {

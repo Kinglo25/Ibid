@@ -23,6 +23,7 @@ const toLookup = (citation: CitationMatch): EuLookup => ({
   ecli: citation.ecli,
   caseNumber: citation.caseNumber,
   caseName: citation.caseName,
+  decisionDate: citation.decisionDate,
   documentType: citation.documentType,
   locator: citation.locator,
   paragraphs: citation.pinpoint?.paragraphs,
@@ -78,11 +79,19 @@ describe('what the server accepts as a lookup', () => {
       { ...valid, celex: { a: 1 } }, { ...valid, celex: '32016R0679&foo=bar' },
       { ...valid, ecli: 42 }, { ...valid, ecli: 'EU:C:2014:317 OR 1' },
       { ...valid, caseName: 42 }, { ...valid, documentType: 'essay' },
+      { ...valid, decisionDate: '24 March 2004' }, { ...valid, decisionDate: 20040324 },
       { ...valid, alternativeCelexes: '62012CJ0293' },
       { ...valid, paragraphs: '1,2' }, { ...valid, paragraphs: [1.5] }, { ...valid, paragraphs: Array(2001).fill(1) },
       { ...valid, locator: { kind: 'point', start: 'abc' } }, { ...valid, locator: { kind: 'page', start: 1 } },
       { ...valid, locator: { kind: 'section', start: 9, sections: [{ from: 9 }] } },
     ]) assert.equal(parseLookup(wrong), undefined, JSON.stringify(wrong)?.slice(0, 80));
+  });
+
+  test('a Commission decision\'s date crosses as a date', () => {
+    const [citation] = detectCitations('See EC decision of 24 March 2004, Microsoft, COMP/C-3/37.792, para. 841.');
+    const sent = onTheWire(citation) as Record<string, unknown>;
+    assert.equal(sent.decisionDate, '2004-03-24');
+    assert.deepEqual(parseLookup(sent), sent);
   });
 
   test('keeps only the fields a lookup has', () => {

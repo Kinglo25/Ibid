@@ -45,6 +45,12 @@ export type EuLookup = {
   ecli?: string;
   caseNumber?: string;
   /**
+   * For `source: 'commission'`: the date the footnote gives the decision, `YYYY-MM-DD`. Of a
+   * case's decisions, those dated so are read first; where none is, all are, as before — a
+   * date that matches nothing narrows nothing.
+   */
+  decisionDate?: string;
+  /**
    * For `source: 'curia'` only, and purely descriptive here: `celex` is expected to
    * already name the document this describes, because its sector is derived from this
    * type (`CJ` judgment, `CC` Advocate General opinion, `CO`/`TO` order). Callers must
@@ -922,7 +928,12 @@ export function documentTypeOf(html: string): 'judgment' | 'opinion' | 'order' |
  * judgment goes on to cite is never taken for its own; nothing found is an empty list, and
  * then nothing is said.
  */
-const CASE_HEADING = /\b(?:In\s+(?:Joined\s+)?Cases?|Dans\s+(?:l['’]affaire|les\s+affaires(?:\s+jointes)?))\s+([^,;:]{1,400})/i;
+//
+// Written as the heading writes it, "In Case" or "IN CASE", and not matched without regard to
+// case: a Grand Chamber judgment opens with a table of contents, and ISU v Commission's lists
+// "V. The action in Case T‑93/18" before its heading "In Case C‑124/21 P," — so the judgment
+// was said to be of the case it had heard on appeal.
+const CASE_HEADING = /\b(?:In\s+(?:Joined\s+)?Cases?|IN\s+(?:JOINED\s+)?CASES?|Dans\s+(?:l['’]affaire|les\s+affaires(?:\s+jointes)?)|DANS\s+(?:L['’]AFFAIRE|LES\s+AFFAIRES(?:\s+JOINTES)?))\s+([^,;:]{1,400})/;
 
 /**
  * An Advocate General's opinion names its case differently: "OPINION OF ADVOCATE GENERAL
@@ -1392,12 +1403,13 @@ export function parseLookup(input: unknown): EuLookup | undefined {
     value === undefined || valid(value);
 
   if (!record(input)) return undefined;
-  const { source, value, celex, ecli, alternativeCelexes, caseNumber, caseName, documentType, locator, paragraphs } = input;
+  const { source, value, celex, ecli, alternativeCelexes, caseNumber, caseName, decisionDate, documentType, locator, paragraphs } = input;
   if (!LOOKUP_SOURCES.includes(source as EuLookup['source']) || !text(value, 500)) return undefined;
   if (!optional(celex, (v): v is string => typeof v === 'string' && CELEX_SHAPE.test(v))) return undefined;
   if (!optional(ecli, (v): v is string => typeof v === 'string' && ECLI_SHAPE.test(v))) return undefined;
   if (!optional(caseNumber, (v): v is string => text(v, 40))) return undefined;
   if (!optional(caseName, (v): v is string => text(v, 600))) return undefined;
+  if (!optional(decisionDate, (v): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v))) return undefined;
   if (!optional(documentType, (v): v is EuLookup['documentType'] => DOCUMENT_TYPES.includes(v as never))) return undefined;
   if (!optional(alternativeCelexes, (v): v is string[] =>
     Array.isArray(v) && v.length <= 20 && v.every((item) => typeof item === 'string' && item.length <= 30))) return undefined;
@@ -1415,6 +1427,7 @@ export function parseLookup(input: unknown): EuLookup | undefined {
     ...(alternativeCelexes !== undefined ? { alternativeCelexes } : {}),
     ...(caseNumber !== undefined ? { caseNumber } : {}),
     ...(caseName !== undefined ? { caseName } : {}),
+    ...(decisionDate !== undefined ? { decisionDate } : {}),
     ...(documentType !== undefined ? { documentType } : {}),
     ...(locator !== undefined ? { locator } : {}),
     ...(paragraphs !== undefined ? { paragraphs } : {}),
@@ -2166,6 +2179,13 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
       ...preview, ...mismatch, ...(pending ? { confirmation: 'pending' as const } : {}),
     }));
     if (!decisions.length) return marked([registerFor(identity)]);
+
+    // The date the footnote gives the decision says which of the case's decisions it cites:
+    // Microsoft (AT.37792) holds ten, more than are read to find the recital, and "EC decision
+    // of 24 March 2004 … para. 841" names the one of them in two languages. Only a narrowing:
+    // where no decision is dated so, every one is still considered, as before.
+    const dated = lookup.decisionDate ? decisions.filter((decision) => decision.documentDate?.slice(0, 10) === lookup.decisionDate) : [];
+    if (dated.length) decisions = dated;
 
     // Which decision was meant is settled by which one actually contains the cited recital.
     //
