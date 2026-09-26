@@ -1696,3 +1696,56 @@ test('a Treaty article bracketed in an act\'s title is not the act\'s', () => {
   assert.ok(act);
   assert.equal(act?.locator, undefined);
 });
+
+describe('found running Wahl\'s opinion in Intel, in French, against the live texts', () => {
+  test('a definition written with a non-breaking hyphen, "ci‑après"', () => {
+    const [first, second] = detectCitationsAcrossFootnotes(['Voir, notamment, arrêt du 14 juillet 1972, Imperial Chemical Industries/Commission (48/69, ci‑après l’ arrêt ICI , EU:C:1972:70, points 65 à 68).', 'Arrêt ICI, point 70.']);
+    assert.equal(first[0]?.caseNumber, 'C-48/69');
+    assert.equal(second[0]?.ecli, 'ECLI:EU:C:1972:70');
+  });
+
+  test('a bracketed citation does not take the pinpoint of what follows its bracket', () => {
+    // "… Mayras dans l’affaire … (48/69, EU:C:1972:32) ainsi que points 19 et suiv. des
+    // conclusions de l’avocat général Darmon …": point 19 is Darmon's, not Mayras'.
+    const found = detectCitations('Voir points 693 et suiv. des conclusions de l’avocat général Mayras dans l’affaire Imperial Chemical Industries/Commission (48/69, EU:C:1972:32) ainsi que points 19 et suiv. des conclusions de l’avocat général Darmon dans les affaires jointes Ahlström Osakeyhtiö e.a./Commission (89/85, EU:C:1988:258).');
+    const mayras = found.find((citation) => citation.ecli === 'ECLI:EU:C:1972:32');
+    assert.ok(mayras);
+    assert.notDeepEqual(mayras?.pinpoint?.paragraphs, [19]);
+    const adjacent = detectCitations('Judgment in Intel (C‑413/14 P, EU:C:2017:632), paragraph 138.');
+    assert.deepEqual(adjacent[0]?.pinpoint?.paragraphs, [138], 'a pinpoint straight after the bracket is still its own');
+  });
+
+  test('the name heading a full citation is not a second citation', () => {
+    // "Conclusions de l’avocat général Kokott dans l’affaire Solvay/Commission (C‑109/10 P,
+    // EU:C:2011:256, point 193)" also gave a short form "Solvay" of the judgment, at point 193.
+    const [, found] = detectCitationsAcrossFootnotes([
+      'Arrêt du 25 octobre 2011, Solvay/Commission (C‑109/10 P, EU:C:2011:686).',
+      'Conclusions de l’avocat général Kokott dans l’affaire Solvay/Commission (C‑109/10 P, EU:C:2011:256, point 193).',
+    ]);
+    assert.deepEqual(found.map((citation) => citation.ecli), ['ECLI:EU:C:2011:256']);
+  });
+});
+
+test('the bare name of a defined term is a citation only with a pinpoint', () => {
+  // Schrems II, in French: "arrêt PNR" defined, and then "l’avis 1/15 (Accord PNR UE‑Canada)"
+  // was given a citation of the PNR judgment, at "article 7" — "PNR" is an ordinary word there.
+  const notes = [
+    'Voir arrêt du 30 mai 2006, Parlement/Conseil et Commission (C‑317/04 et C‑318/04, EU:C:2006:346, ci‑après l’« arrêt PNR », point 56).',
+    'De la même manière, dans l’avis 1/15 (Accord PNR UE‑Canada), du 26 juillet 2017 (EU:C:2017:592), la Cour a examiné la conformité aux articles 7, 8 et 47 de la Charte.',
+    'Voir PNR, point 57.',
+  ];
+  const [, second, third] = detectCitationsAcrossFootnotes(notes);
+  assert.ok(!second.some((citation) => citation.ecli === 'ECLI:EU:C:2006:346'));
+  assert.equal(third[0]?.ecli, 'ECLI:EU:C:2006:346', 'with its pinpoint it still is');
+});
+
+test('"article 94, paragraphe 2, du RGPD": the French way of writing Article 94(2)', () => {
+  // Schrems II, in French: the paragraph written out lost the article altogether.
+  const def = 'Règlement (UE) 2016/679 du Parlement européen et du Conseil du 27 avril 2016 (ci‑après le « RGPD »).';
+  for (const [text, start, paragraph] of [['Voir article 94, paragraphe 2, du RGPD.', 94, 2], ['Voir l’article 45, paragraphe 3, du RGPD.', 45, 3]] as const) {
+    const [, found] = detectCitationsAcrossFootnotes([def, text]);
+    assert.deepEqual([found[0]?.locator?.start, found[0]?.locator?.paragraph], [start, paragraph], text);
+  }
+  const [act] = detectCitations('conformément à l’article 26, paragraphe 4, de la directive 95/46/CE.');
+  assert.deepEqual([act.locator?.kind, act.locator?.start, act.locator?.paragraph], ['article', 26, 4]);
+});

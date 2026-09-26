@@ -379,7 +379,19 @@ function endsOnLetteredNumber(tail: string, match: RegExpExecArray): boolean {
 /** See `PINPOINT_BEFORE`: the provision-then-act form, e.g. "Article 6(5) of Regulation (EU) 2022/1925". */
 export function parsePinpointBefore(text: string, index: number, floor = 0): ParsedPinpoint | undefined {
   const head = text.slice(Math.max(floor, index - PINPOINT_BEFORE_WINDOW), index);
-  return fromPinpointMatch(PINPOINT_BEFORE.exec(head));
+  return fromPinpointMatch(PINPOINT_BEFORE.exec(head)) ?? frenchArticleBefore(head);
+}
+
+/**
+ * Article 94(2) as French writes it: "article 94, paragraphe 2, du RGPD", "l’article 26,
+ * paragraphe 4, de la directive 95/46". The paragraph written out between the article and the
+ * act lost the article altogether (Schrems II, in French).
+ */
+const FRENCH_ARTICLE_BEFORE = /\barticles?\s+(\d+)\s*,\s*paragraphes?\s+(\d+)(?:\s*,\s*(?:sous|point)\s+[a-z0-9]{1,4}\)?)?\s*,?\s*(?:du|de\s+la|de\s+l['’]|des)\s*$/i;
+
+function frenchArticleBefore(head: string): ParsedPinpoint | undefined {
+  const match = FRENCH_ARTICLE_BEFORE.exec(head);
+  return match ? { locator: { kind: 'article', start: Number(match[1]), paragraph: Number(match[2]), end: undefined } } : undefined;
 }
 
 function fromPinpointMatch(match: RegExpExecArray | null): ParsedPinpoint | undefined {
@@ -1248,7 +1260,15 @@ export function detectCitations(text: string): CitationMatch[] {
       next = found.index ?? 0;
       break;
     }
-    const parsed = parsePinpointBefore(text, start, segment.start) ?? parsePinpoint(text, end, next >= 0 ? from + next : segment.end);
+    // A citation written inside a bracket carries its pinpoint inside it, or straight after it:
+    // "(48/69, EU:C:1972:32) ainsi que points 19 et suiv. des conclusions de l’avocat général
+    // Darmon" is Darmon's point 19, and Mayras' opinion was given it. Past the closing bracket
+    // only a pinpoint that follows it directly is read — "Intel (C‑413/14 P,
+    // EU:C:2017:632), paragraph 138".
+    let limit = next >= 0 ? from + next : segment.end;
+    const closing = closingBracketAfter(text, segment.start, start, limit);
+    if (closing >= 0 && !ADJACENT_PINPOINT.test(text.slice(closing + 1, limit))) limit = closing;
+    const parsed = parsePinpointBefore(text, start, segment.start) ?? parsePinpoint(text, end, limit);
     return { locator: parsed?.locator, pinpoint: parsed?.pinpoint };
   };
   // A court document is cited by paragraph or point, never by article: an article the scan
@@ -1629,7 +1649,7 @@ const DEFINED_TERMS = new RegExp(DEFINED_TERM.source, 'gi');
 // an "arrêt", "ordonnance" or "conclusions" followed by a name, up to the comma, is the term.
 // And English often closes the bracket with the term alone: "(T‑286/09, EU:T:2014:547, ‘the
 // judgment under appeal’)". `definedTermOf` reads whichever group matched.
-const DEFINITION_CLAUSE_SOURCE = String.raw`(?:\b(?:ci-apr[èe]s|hereinafter)\s+(?:(?:d[ée]nomm[ée]e?s?|d[ée]sign[ée]e?s?|referred\s+to\s+as|called)\s+)?(?:l['’]\s*|le\s+|la\s+|les\s+|the\s+)?(?:[«"“'‘]\s*([^»"”’]{1,80}?)\s*[»"”’]|[«"“]?\s*((?:arr[êe]t|ordonnance|conclusions)\s+[^,;()«»"“”]{1,60}?)(?=\s*[,;)]))|[,;]\s*[‘"“]\s*([^’"”]{1,80}?)\s*[’"”]\s*(?=\)))`;
+const DEFINITION_CLAUSE_SOURCE = String.raw`(?:\b(?:ci[-‑]apr[èe]s|hereinafter)\s+(?:(?:d[ée]nomm[ée]e?s?|d[ée]sign[ée]e?s?|referred\s+to\s+as|called)\s+)?(?:l['’]\s*|le\s+|la\s+|les\s+|the\s+)?(?:[«"“'‘]\s*([^»"”’]{1,80}?)\s*[»"”’]|[«"“]?\s*((?:arr[êe]t|ordonnance|conclusions)\s+[^,;()«»"“”]{1,60}?)(?=\s*[,;)]))|[,;]\s*[‘"“]\s*([^’"”]{1,80}?)\s*[’"”]\s*(?=\)))`;
 const definedTermOf = (match: RegExpExecArray | RegExpMatchArray) => match[1] ?? match[2] ?? match[3] ?? '';
 const DEFINITION_CLAUSE = new RegExp(DEFINITION_CLAUSE_SOURCE, 'i');
 const DEFINITION_CLAUSES = new RegExp(DEFINITION_CLAUSE_SOURCE, 'gi');
@@ -1690,6 +1710,28 @@ function paragraphsBeforeTerm(text: string, index: number, floor: number): Parse
 }
 
 /**
+ * The bracket that closes around a citation: the position of the `)` matching the innermost
+ * `(` open at `index`, or -1 where the citation is not inside a bracket (or it does not close
+ * before `limit`).
+ */
+function closingBracketAfter(text: string, from: number, index: number, limit: number): number {
+  let depth = 0;
+  for (let at = from; at < index; at += 1) {
+    if (text[at] === '(') depth += 1;
+    else if (text[at] === ')' && depth > 0) depth -= 1;
+  }
+  if (depth === 0) return -1;
+  for (let at = index, open = 0; at < limit; at += 1) {
+    if (text[at] === '(') open += 1;
+    else if (text[at] === ')') {
+      if (open === 0) return at;
+      open -= 1;
+    }
+  }
+  return -1;
+}
+
+/**
  * Where the sentence a short form stands in ends. Its pinpoint is read no further: Wahl's
  * opinion in Intel, in French, writes "Points 76 et 77 de l’arrêt attaqué. Voir également arrêt
  * Hoffmann‑La Roche, point 89", and the judgment under appeal was given the next sentence's
@@ -1701,7 +1743,8 @@ function sentenceEnd(text: string, from: number, limit: number): number {
 }
 
 function provisionBeforeTerm(text: string, index: number, floor: number): ParsedPinpoint | undefined {
-  return fromPinpointMatch(PROVISION_BEFORE_TERM.exec(text.slice(Math.max(floor, index - PINPOINT_BEFORE_WINDOW), index)));
+  const head = text.slice(Math.max(floor, index - PINPOINT_BEFORE_WINDOW), index);
+  return fromPinpointMatch(PROVISION_BEFORE_TERM.exec(head)) ?? frenchArticleBefore(head);
 }
 
 /**
@@ -1753,6 +1796,8 @@ type RegisteredCitation = Pick<CitationMatch, 'label' | 'source' | 'celex' | 'ec
 type RegistryEntry = {
   key: string;
   method: 'explicit_alias' | 'generated_variant';
+  /** A declared name that counts only where a pinpoint follows it — the name a defined term was built on. */
+  needsPinpoint?: boolean;
   /** Reading-order rank, so the *nearest preceding* entry wins when a key was registered more than once. */
   order: number;
   citation: RegisteredCitation;
@@ -2279,9 +2324,12 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[])
           const key = worded ? definedKey(definedTermOf(parenthetical)) : parenthetical[1].trim().toLowerCase();
           newEntries.push({ key, method: 'explicit_alias', order: order++, citation: registered });
           // "arrêt TeliaSonera" is then cited as "TeliaSonera, point 76", and "the judgment in
-          // MOTOE" as "MOTOE": the name the term was built on answers to it too.
+          // MOTOE" as "MOTOE": the name the term was built on answers to it too, as the drafter's
+          // own, but a citation only where a pinpoint says so. Without that, "PNR" out of "arrêt
+          // PNR" was a citation of the PNR judgment in "l’avis 1/15 (Accord PNR UE‑Canada)", and
+          // "Schrems" out of "the Schrems judgment" one in "Mr Schrems claims".
           const bare = key.replace(/^(?:arr[êe]ts?\s+|judgments?\s+in\s+|ordonnance\s+)|\s+(?:judgment|arr[êe]t)$/i, '');
-          if (bare !== key && bare.length >= 3) newEntries.push({ key: bare, method: 'explicit_alias', order: order++, citation: registered });
+          if (bare !== key && bare.length >= 3) newEntries.push({ key: bare, method: 'explicit_alias', needsPinpoint: true, order: order++, citation: registered });
         }
       }
 
@@ -2422,14 +2470,16 @@ function resolveShortForms(
   for (const span of withoutOverlaps(candidateSpans)) {
     const segment = segmentAt(segments, span.index);
     const entries = registry.filter((entry) => entry.key === span.key);
-    const explicit = entries.filter((entry) => entry.method === 'explicit_alias');
     const spanEnd = span.index + span.value.length;
+    const adjacent = hasAdjacentPinpoint(text, spanEnd, segment.end);
+    const explicit = entries.filter((entry) => entry.method === 'explicit_alias'
+      && (!entry.needsPinpoint || adjacent || citedElsewhere(text, spanEnd, segment.end)));
 
     // An inferred short form has to be carrying a pinpoint to count as a citation;
     // a declared one is the drafter's own statement and needs no corroboration, and nor does
     // a name the text itself says was cited before ("Intel v Commission, cited in footnote 2").
     const cited = citedElsewhere(text, spanEnd, segment.end);
-    if (!explicit.length && !cited && !hasAdjacentPinpoint(text, spanEnd, segment.end)) continue;
+    if (!explicit.length && !cited && !adjacent) continue;
 
     // A declared short form is the drafter stating, in the document, what the term means
     // from that point on, so the nearest preceding declaration simply wins — a document

@@ -2761,6 +2761,21 @@ describe('a long paragraph', () => {
  * heading, and where that is not the footnote's, the reviewer has to be told: the passage on
  * screen is from a different case than the footnote names.
  */
+describe('a citation that gives its ECLI and no case number', () => {
+  // Wahl's opinion in Intel, in French, defines the judgment under appeal as ", EU:T:2014:547,
+  // ci-après l’« arrêt attaqué »", and over sixty footnotes cite its points. With no case
+  // number there was no CELEX, and every one of them was answered with a link, though CELLAR
+  // serves the document by its ECLI.
+  test('is fetched by its ECLI', async () => {
+    const { fetcher, calls } = stubFetcher([html('<p>JUDGMENT OF THE GENERAL COURT</p><p class="count" id="point76">76</p><p>Paragraph seventy-six.</p><p class="count" id="point77">77</p><p>Next.</p>')]);
+    const { resolver } = makeResolver({ fetcher });
+    const [preview] = await resolver.resolve({ source: 'curia', value: 'arrêt attaqué', ecli: 'ECLI:EU:T:2014:547', locator: { kind: 'point', start: 76 }, paragraphs: [76] });
+    assert.equal(preview.passage, 'cited');
+    assert.match(preview.excerpt, /^76 Paragraph seventy-six\.$/);
+    assert.ok(calls[0].url.includes('ECLI%3AEU%3AT%3A2014%3A547'));
+  });
+});
+
 describe('a judgment of the Court\'s earliest renderings, whose parties are numbered too', () => {
   // Walt Wilhelm (61968CJ0014, 1969), cited at paragraph 6: the parties to the main action
   // are listed "<p>6 . FARBWERKE HOECHST AG, …" before the grounds begin "<p>6 THE EEC TREATY
@@ -3004,6 +3019,17 @@ describe('a document of another case than the footnote names', () => {
         assert.equal(preview.ecliOfAnotherCase, undefined);
       }
     });
+  });
+
+  test('a joined list is read whole, ranges and all', async () => {
+    // Wood Pulp (EU:C:1988:447), cited by its last number, 129/85: the heading "In Joined Cases
+    // 89/85, 104/85, … and 125/85 to 129/85" was read to its first comma, 89/85 alone.
+    for (const [cited, mismatch] of [['C-129/85', false], ['C-127/85', false], ['C-104/85', false], ['C-130/85', true]] as const) {
+      const { fetcher } = stubFetcher([heading('In Joined Cases 89/85, 104/85, 114/85, 116/85, 117/85 and 125/85 to 129/85')]);
+      const { resolver } = makeResolver({ fetcher });
+      const [preview] = await resolver.resolve(curiaJudgmentLookup({ caseNumber: cited, celex: '61985CJ0089', ecli: 'ECLI:EU:C:1988:447', locator: { kind: 'point', start: 138 }, paragraphs: [138] }));
+      assert.equal(preview.caseMismatch !== undefined, mismatch, cited);
+    }
   });
 
   test('a table of contents naming the judgment under appeal is not the heading', async () => {

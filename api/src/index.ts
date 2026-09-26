@@ -940,7 +940,11 @@ export function documentTypeOf(html: string): 'judgment' | 'opinion' | 'order' |
 // case: a Grand Chamber judgment opens with a table of contents, and ISU v Commission's lists
 // "V. The action in Case T‑93/18" before its heading "In Case C‑124/21 P," — so the judgment
 // was said to be of the case it had heard on appeal.
-const CASE_HEADING = /\b(?:In\s+(?:Joined\s+)?Cases?|IN\s+(?:JOINED\s+)?CASES?|Dans\s+(?:l['’]affaire|les\s+affaires(?:\s+jointes)?)|DANS\s+(?:L['’]AFFAIRE|LES\s+AFFAIRES(?:\s+JOINTES)?))\s+([^,;:]{1,400})/;
+//
+// The list runs on past a comma where another case number follows it, so a joined heading is
+// read whole: "In Joined Cases 89/85, 104/85, … and 125/85 to 129/85" (Wood Pulp) was read
+// to its first comma, and a citation of 129/85 was said to show another case's passage.
+const CASE_HEADING = /\b(?:In\s+(?:Joined\s+)?Cases?|IN\s+(?:JOINED\s+)?CASES?|Dans\s+(?:l['’]affaire|les\s+affaires(?:\s+jointes)?)|DANS\s+(?:L['’]AFFAIRE|LES\s+AFFAIRES(?:\s+JOINTES)?))\s+((?:[^,;:]|,(?=\s*(?:[CT]\s?[-‑–—]\s?)?\d{1,4}\/\d{2})){1,400})/;
 
 /**
  * An Advocate General's opinion names its case differently: "OPINION OF ADVOCATE GENERAL
@@ -970,7 +974,21 @@ function caseNumbersIn(html: string): string[] {
     : CASE_HEADING.exec(opening)?.[1] ?? '';
   const full = [...list.matchAll(/\b(?:([CT])\s?[-‑–—]\s?)?(\d{1,4})\/(\d{2})(?!\d)(?:\s*(P\(R\)|RENV|DEP|REV|OP|P|R)(?![\w(]))?/g)]
     .map(([, court, number, year, suffix]) => `${court ?? 'C'}-${number}/${year}${suffix ? ` ${suffix}` : ''}`);
-  return [...full, ...sharingTheirYear(list)];
+  return [...full, ...sharingTheirYear(list), ...rangesBetween(list)];
+}
+
+/**
+ * A range written between two full numbers: "125/85 to 129/85" is every case from 125 to 129
+ * of that year. The Court's own numbers only, as that shape is.
+ */
+function rangesBetween(list: string): string[] {
+  const found: string[] = [];
+  for (const [, court, from, fromYear, to, toYear] of list.matchAll(/\b(?:([CT])\s?[-‑–—]\s?)?(\d{1,4})\/(\d{2})(?:\s*P)?\s+(?:to|à)\s+(?:[CT]\s?[-‑–—]\s?)?(\d{1,4})\/(\d{2})/g)) {
+    const [first, last] = [Number(from), Number(to)];
+    if (fromYear !== toYear || last <= first || last - first > 50) continue;
+    for (let at = first + 1; at < last; at += 1) found.push(`${court ?? 'C'}-${at}/${fromYear}`);
+  }
+  return found;
 }
 
 /**
@@ -1816,7 +1834,7 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     const targets: CellarTarget[] = [];
     const byEcli = ecli && ecliUrl(ecli, cellarBaseUrl);
     if (ecli && byEcli) targets.push({ id: `ecli:${ecli}`, url: byEcli, year: ecliYear(ecli) });
-    targets.push(celexTarget(celex));
+    if (celex) targets.push(celexTarget(celex));
     // Last, and only the well-formed ones: an alternative is a name for the document already
     // being asked for, so it is worth a request once the two identifiers the citation itself
     // carries have produced nothing, and worth nothing before that.
@@ -2059,9 +2077,12 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     // otherwise have named a different document — a limitation of the derivation rather
     // than of what CELLAR holds. Confirmed live: opinions and orders retrieve normally and
     // carry the same `id="pointN"` paragraph markup judgments do.
-    if (celex) {
+    // An ECLI alone is enough to fetch by: CELLAR serves the document under it, and it is asked
+    // first in any case. Wahl's opinion in Intel, in French, cites the judgment under appeal by
+    // its ECLI and a defined term alone, in over sixty footnotes, all answered with a link.
+    if (celex || lookup.ecli) {
       try {
-        return [await resolveCellarPreview(celex, lookup, 'CURIA')];
+        return [await resolveCellarPreview(celex ?? '', lookup, 'CURIA')];
       } catch {
         // EUR-Lex does not mirror every document (older cases in particular);
         // the direct CURIA case record remains a safe, always-available fallback.
