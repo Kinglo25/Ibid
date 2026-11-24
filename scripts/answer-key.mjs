@@ -274,7 +274,9 @@ function names(entry, citation) {
     case 'legislation':
       return citation.source === 'eur-lex' && citation.celex === entry.celex;
     case 'treaty': {
-      const letter = { TFEU: 'E', TEU: 'M' }[entry.treaty];
+      // The Charter's own sector letter, without which its CELEX never matched and a Charter
+      // article the key held and the pane read were counted as a miss and an extra at once.
+      const letter = { TFEU: 'E', TEU: 'M', TUE: 'M', TFUE: 'E', Charter: 'P', CFR: 'P', CDFUE: 'P' }[entry.treaty];
       return citation.source === 'eur-lex' && new RegExp(`^1\\d{4}${letter}\\d+$`).test(citation.celex ?? '')
         && keyPins([entry]).articles.some((article) => citation.locator && articleCovers({ ...article, paragraph: undefined }, { ...citation.locator, paragraph: undefined }));
     }

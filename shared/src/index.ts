@@ -1105,7 +1105,20 @@ function parseActNumbers(kind: string, hasSuffix: boolean, hasNo: boolean, first
   const from = REGULATION_WORDS.test(kind) ? CURRENT_CONVENTION_FROM : FIRST_ACT_YEAR;
   if (isYear(first, from)) return { year: first, number: second };
   const dated = bracket && REGULATION_WORDS.test(kind) ? bracketedRegulationYear(bracket, second) : undefined;
-  return dated ? { year: dated, number: first } : undefined;
+  if (dated) return { year: dated, number: first };
+  // With neither a bracket nor "No" to say which convention it is, the numbers can still say
+  // it themselves: where the first cannot be a year and the second can, it is the older
+  // convention, the number before the year. "Regulation 1/2003" is how practitioners write the
+  // Council regulation that governs antitrust procedure — the City of London Law Society's
+  // reply quotes its Article 2 that way — and it was read as no citation at all.
+  //
+  // Refused where both numbers could be a year, as in "Regulation 2003/2004": the shape then
+  // does not say which of the two it is, and guessing would name a different act. And only
+  // where no bracket was written, because a bracket is information: `(EU)` says the act is of
+  // 2009 or later, so "Regulation (EU) 999/2008" is a contradiction rather than a citation and
+  // stays refused — reading it the older way here would resolve it to some other regulation.
+  if (!bracket && !isYear(first) && isYear(second)) return { year: second, number: first };
+  return undefined;
 }
 
 /** Detects EU legal references and attaches the official-source identifier where it can be derived safely. */

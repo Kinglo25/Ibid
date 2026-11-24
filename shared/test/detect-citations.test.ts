@@ -1491,6 +1491,20 @@ describe('found by a third batch of Commission-style footnotes', () => {
     assert.deepEqual(found.map((citation) => citation.celex), ['12016E102', '32003R0001']);
   });
 
+  test('an act written with neither a bracket nor "No", where the numbers say the convention', () => {
+    // "Regulation 1/2003" is how practitioners write the regulation that governs antitrust
+    // procedure; the City of London Law Society's reply quotes its Article 2 that way, and it
+    // was read as no citation at all.
+    const [older] = detectCitations('Article 2, Regulation 1/2003 continues: the undertaking shall bear the burden of proving.');
+    assert.equal(older.celex, '32003R0001');
+    assert.equal(older.label, 'EU regulation');
+    assert.equal(detectCitations('Decision 5/2019 of the board.')[0]?.celex, '32019D0005');
+    // The current convention, year first, is unchanged.
+    assert.equal(detectCitations('Regulation 2016/679, Article 17.')[0]?.celex, '32016R0679');
+    // Refused where both numbers could be a year: the shape does not say which it is.
+    assert.deepEqual(detectCitations('Regulation 2003/2004 applies.'), []);
+  });
+
   test('Regulation No 17, cited by its number alone', () => {
     const [citation] = detectCitations('Regulation No 17, Article 15(2).');
     assert.equal(citation.celex, '31962R0017');
