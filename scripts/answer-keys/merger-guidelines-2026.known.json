@@ -126,13 +126,13 @@
    "note": "47",
    "outcome": "missed",
    "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(\u2018EUMR\u2019)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
    "note": "48",
    "outcome": "missed",
    "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(\u2018EUMR\u2019)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
    "note": "396",
@@ -152,7 +152,7 @@
    "note": "1",
    "outcome": "missed",
    "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
+   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(\u2018EUMR\u2019)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
    "note": "7",
@@ -178,7 +178,7 @@
   {
    "note": "40",
    "outcome": "missed",
-   "identity": "judgment T-175/12 Deutsche Börse",
+   "identity": "judgment T-175/12 Deutsche B\u00f6rse",
    "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
   },
   {
@@ -343,7 +343,7 @@
    "outcome": "pinpoint-missing",
    "identity": "M.10506 Parker/Meggitt",
    "detail": "sections 4.2.2",
-   "reason": "\"Section 4.2.2. and paragraphs 163, 164 …\": the paragraphs are read, and the section is not"
+   "reason": "\"Section 4.2.2. and paragraphs 163, 164 \u2026\": the paragraphs are read, and the section is not"
   },
   {
    "note": "190",

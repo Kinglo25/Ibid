@@ -1,0 +1,74 @@
+{
+ "about": "Gaps already known in how Ibid reads this document, each with the reason it is accepted for now. See scripts/answer-key.mjs.",
+ "accepted": [
+  {
+   "note": "5",
+   "outcome": "lost",
+   "identity": "judgment C-680/20 Unilever Italia Mkt. Operations",
+   "reason": "the conversion dropped this footnote's text: what reached the Word document is its pinpoint alone, left in the body as a paragraph of its own, with the judgment it belonged to nowhere in the file. There is nothing for the pane to read"
+  },
+  {
+   "note": "7",
+   "outcome": "lost",
+   "identity": "judgment C-680/20 Unilever Italia Mkt. Operations",
+   "reason": "the conversion dropped this footnote's text: what reached the Word document is its pinpoint alone, left in the body as a paragraph of its own, with the judgment it belonged to nowhere in the file. There is nothing for the pane to read"
+  },
+  {
+   "note": "14",
+   "outcome": "lost",
+   "identity": "judgment C-680/20 Unilever Italia Mkt. Operations",
+   "reason": "the conversion dropped this footnote's text: what reached the Word document is its pinpoint alone, left in the body as a paragraph of its own, with the judgment it belonged to nowhere in the file. There is nothing for the pane to read"
+  },
+  {
+   "note": "2",
+   "outcome": "merged",
+   "identity": "read as part of footnote 1",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "11",
+   "outcome": "merged",
+   "identity": "read as part of footnote 10",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": " para. 39.  ",
+   "reason": "the other side of the same damage: the conversion left this footnote's pinpoint in the body as a paragraph of its own and lost the authority it belonged to, and the paragraph reader lists a numbered body paragraph as a note left behind by a conversion, which is what this looks like"
+  },
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": " paras 47-55.  ",
+   "reason": "the other side of the same damage: the conversion left this footnote's pinpoint in the body as a paragraph of its own and lost the authority it belonged to, and the paragraph reader lists a numbered body paragraph as a note left behind by a conversion, which is what this looks like"
+  },
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": " paras 59-60.  ",
+   "reason": "the other side of the same damage: the conversion left this footnote's pinpoint in the body as a paragraph of its own and lost the authority it belonged to, and the paragraph reader lists a numbered body paragraph as a note left behind by a conversion, which is what this looks like"
+  },
+  {
+   "note": "1+2",
+   "outcome": "missed",
+   "identity": "Vertical Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "1+2",
+   "outcome": "missed",
+   "identity": "2008 Guidance",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "1+2",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  }
+ ]
+}

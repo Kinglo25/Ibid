@@ -1,0 +1,137 @@
+{
+ "about": "Gaps already known in how Ibid reads this document, each with the reason it is accepted for now. See scripts/answer-key.mjs.",
+ "accepted": [
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": "The revised guidelines and businesses would also benefit from concrete and pract",
+   "reason": "a paragraph of the document's own text, which the conversion numbered as a list item; the paragraph reader takes a numbered body paragraph for a note a conversion left behind, which is what this document's footnotes genuinely are elsewhere in it"
+  },
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": "Any such clarifications should not however go as far as suggesting that standalo",
+   "reason": "a paragraph of the document's own text, which the conversion numbered as a list item; the paragraph reader takes a numbered body paragraph for a note a conversion left behind, which is what this document's footnotes genuinely are elsewhere in it"
+  },
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": "Secondly, sustainability initiatives usually provide benefits in the medium to l",
+   "reason": "a paragraph of the document's own text, which the conversion numbered as a list item; the paragraph reader takes a numbered body paragraph for a note a conversion left behind, which is what this document's footnotes genuinely are elsewhere in it"
+  },
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": "Thirdly, the revised guidelines should recognise that a merger may be indispensa",
+   "reason": "a paragraph of the document's own text, which the conversion numbered as a list item; the paragraph reader takes a numbered body paragraph for a note a conversion left behind, which is what this document's footnotes genuinely are elsewhere in it"
+  },
+  {
+   "note": "not a footnote",
+   "outcome": "not-a-footnote",
+   "identity": "Overall (as expanded further in Section 5 below), we invite the Commission to re",
+   "reason": "a paragraph of the document's own text, which the conversion numbered as a list item; the paragraph reader takes a numbered body paragraph for a note a conversion left behind, which is what this document's footnotes genuinely are elsewhere in it"
+  },
+  {
+   "note": "2",
+   "outcome": "missed",
+   "identity": "HMG",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "3",
+   "outcome": "unresolved",
+   "identity": "HMG",
+   "reason": "the Commission's Horizontal Merger Guidelines, cited by their full title with no Official Journal reference and then by the short form \u201cHMG\u201d. A set of guidelines is not read, so the short form is reported unresolved rather than resolved to anything"
+  },
+  {
+   "note": "4",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Topic B",
+   "detail": "unresolved_not_found",
+   "reason": "\u201cTopic B\u201d is a heading of the consultation the reply answers, not an authority. It is read as a short form the document uses and reported unresolved, which is where it stops: nothing is fetched for it"
+  },
+  {
+   "note": "5",
+   "outcome": "unexpected",
+   "identity": "Unresolved back-reference: Ibid.",
+   "detail": "unresolved_not_found",
+   "reason": "it points at the note above, whose only citation is the consultation heading \u201cTopic B\u201d, so there is nothing established for it to resolve to"
+  },
+  {
+   "note": "8",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Topic B",
+   "detail": "unresolved_not_found",
+   "reason": "\u201cTopic B\u201d is a heading of the consultation the reply answers, not an authority. It is read as a short form the document uses and reported unresolved, which is where it stops: nothing is fetched for it"
+  },
+  {
+   "note": "10",
+   "outcome": "missed",
+   "identity": "judgment T-79/12 Cisco Systems v Commission",
+   "reason": "reached only through the bare \u201cIbid.\u201d of this note, which points at a note citing both judgments and is therefore reported ambiguous rather than resolved to either. Both are read where they are cited in full"
+  },
+  {
+   "note": "10",
+   "outcome": "missed",
+   "identity": "judgment C-413/06 P Bertelsmann and Sony Corporation of America v Impala",
+   "reason": "reached only through the bare \u201cIbid.\u201d of this note, which points at a note citing both judgments and is therefore reported ambiguous rather than resolved to either. Both are read where they are cited in full"
+  },
+  {
+   "note": "10",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed back-reference: Ibid.",
+   "detail": "unresolved_ambiguous",
+   "reason": "the note it points at cites two judgments, so the back-reference is reported ambiguous with both offered and neither applied. The key reads it as the pair, which is what an ambiguous report puts in front of the reviewer"
+  },
+  {
+   "note": "11",
+   "outcome": "missed",
+   "identity": "Horizontal Cooperation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "14",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "19",
+   "outcome": "missed",
+   "identity": "Horizontal Cooperation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "20",
+   "outcome": "missed",
+   "identity": "Horizontal Cooperation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "22",
+   "outcome": "missed",
+   "identity": "Horizontal Cooperation Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "26",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "running text",
+   "outcome": "missed",
+   "identity": "HMG",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  }
+ ]
+}

@@ -1,0 +1,269 @@
+{
+ "about": "Gaps already known in how Ibid reads this document, each with the reason it is accepted for now. See scripts/answer-key.mjs.",
+ "accepted": [
+  {
+   "note": "35",
+   "outcome": "lost",
+   "identity": "DG Competition discussion paper on exclusionary abuses (December 2005)",
+   "reason": "the note this was written against lined up with nothing the pane read, and the authority is a DG Competition discussion paper in any case: never published in the Official Journal and carrying no identifier to derive"
+  },
+  {
+   "note": "14",
+   "outcome": "merged",
+   "identity": "read as part of footnote 13",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "1",
+   "outcome": "missed",
+   "identity": "Enforcement Priority Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "running text",
+   "outcome": "missed",
+   "identity": "European Convention on Human Rights",
+   "detail": "a other, which detection does not read",
+   "reason": "not an EU instrument. It is named here as the source of the Charter right the sentence is about, rather than as an authority to be retrieved, and Ibid reads EU law"
+  },
+  {
+   "note": "2",
+   "outcome": "missed",
+   "identity": "Engel v The Netherlands (ECtHR)",
+   "detail": "a other, which detection does not read",
+   "reason": "a judgment of the European Court of Human Rights, which is outside the law Ibid reads"
+  },
+  {
+   "note": "3",
+   "outcome": "missed",
+   "identity": "judgment C-235/92 P Montecatini v Commission",
+   "reason": "cited by name alone \u2014 \u201cand Montecatini v Commission, paragraphs 175 and 176\u201d, with no case number and no full citation of it anywhere in the document. There is nothing to resolve it against, and Ibid does not guess at a name"
+  },
+  {
+   "note": "9",
+   "outcome": "pinpoint-missing",
+   "identity": "32003R0001 Regulation 1/2003",
+   "detail": "article",
+   "reason": "the provision is written before the act and separated by a comma \u2014 \u201cArticle 2, Regulation 1/2003 continues\u201d \u2014 and a provision is attached to the act after it only where \u201cof\u201d runs straight into it. The act is reported, without its article"
+  },
+  {
+   "note": "10",
+   "outcome": "missed",
+   "identity": "judgment C-48/22 P Google Shopping 2024",
+   "reason": "the document writes the case number as \u201cCase C-48.22 P\u201d, with a dot where the year's slash belongs. The number is not read, so the judgment is not reported and the bare \u201cIbid\u201d of the note after it has nothing to point at"
+  },
+  {
+   "note": "11",
+   "outcome": "missed",
+   "identity": "judgment C-48/22 P Google Shopping 2024",
+   "reason": "the document writes the case number as \u201cCase C-48.22 P\u201d, with a dot where the year's slash belongs. The number is not read, so the judgment is not reported and the bare \u201cIbid\u201d of the note after it has nothing to point at"
+  },
+  {
+   "note": "11",
+   "outcome": "unexpected",
+   "identity": "Unresolved back-reference: Ibid",
+   "detail": "unresolved_not_found",
+   "reason": "the note it points at cites a judgment whose case number the document mistyped, so nothing was established there for this to resolve to. Reported as unresolved and offered to the reviewer, which is what it should be"
+  },
+  {
+   "note": "13+14",
+   "outcome": "missed",
+   "identity": "judgment C-413/14 P Intel",
+   "reason": "the note makes its back-reference in one sentence and cites a different judgment in the next (\u201cIbid, paragraph 139. The General Court also set out its interpretation \u2026 Case T-612/17, at paragraph 441\u201d). A back-reference is suppressed where its own segment already names an authority \u2014 the rule that keeps \u201cAkzo Nobel, supra note 4\u201d from being read as two references \u2014 and a footnote's sentences are not separate segments, so this one is dropped. The judgment cited in the second sentence is read"
+  },
+  {
+   "note": "16",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "17",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "18",
+   "outcome": "missed",
+   "identity": "Market Definition Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "20",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "22",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "22",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "24",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "25",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "28",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "32",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "33",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "34",
+   "outcome": "missed",
+   "identity": "DG Competition discussion paper on exclusionary abuses (December 2005)",
+   "detail": "a other, which detection does not read",
+   "reason": "a DG Competition discussion paper: never published in the Official Journal, and carrying no identifier anything could be derived from"
+  },
+  {
+   "note": "36",
+   "outcome": "missed",
+   "identity": "DG Competition discussion paper on exclusionary abuses (December 2005)",
+   "detail": "a other, which detection does not read",
+   "reason": "a DG Competition discussion paper: never published in the Official Journal, and carrying no identifier anything could be derived from"
+  },
+  {
+   "note": "36",
+   "outcome": "unexpected",
+   "identity": "Unresolved back-reference: Ibid",
+   "detail": "unresolved_not_found",
+   "reason": "the note it points at cites a judgment whose case number the document mistyped, so nothing was established there for this to resolve to. Reported as unresolved and offered to the reviewer, which is what it should be"
+  },
+  {
+   "note": "37",
+   "outcome": "unresolved",
+   "identity": "judgment C-413/14 P Intel",
+   "reason": "\u201cIntel at paragraphs 133-134\u201d, where the document cites both the Court's Intel judgment and the General Court's. The short form matches more than one authority, so it is reported unresolved with its candidates rather than guessed at \u2014 which is the behaviour, not a gap, and is listed here because the key names one of the two"
+  },
+  {
+   "note": "38",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "39",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "41",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "41",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "42",
+   "outcome": "missed",
+   "identity": "judgment C-48/22 P Google Shopping 2024",
+   "reason": "the document writes the case number as \u201cCase C-48.22 P\u201d, with a dot where the year's slash belongs. The number is not read, so the judgment is not reported and the bare \u201cIbid\u201d of the note after it has nothing to point at"
+  },
+  {
+   "note": "47",
+   "outcome": "missed",
+   "identity": "judgment C-48/22 P Google Shopping 2024",
+   "reason": "the document writes the case number as \u201cCase C-48.22 P\u201d, with a dot where the year's slash belongs. The number is not read, so the judgment is not reported and the bare \u201cIbid\u201d of the note after it has nothing to point at"
+  },
+  {
+   "note": "48",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "51",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "55",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "57",
+   "outcome": "missed",
+   "identity": "Enforcement Priority Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "58",
+   "outcome": "missed",
+   "identity": "Enforcement Priority Guidelines",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "61",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  },
+  {
+   "note": "62",
+   "outcome": "unexpected",
+   "identity": "Unconfirmed short-form citation: Guidance",
+   "detail": "unresolved_not_found",
+   "reason": "the Guidance on enforcement priorities is cited by its Official Journal reference, which detection does not read, so the authority is never established and each later use of the short form is offered to the reviewer as unresolved rather than resolved to anything. The same gap as the notice missed above, seen from the other side; it is reported, not guessed"
+  }
+ ]
+}

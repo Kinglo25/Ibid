@@ -1,0 +1,31 @@
+{
+ "about": "Gaps already known in how Ibid reads this document, each with the reason it is accepted for now. See scripts/answer-key.mjs.",
+ "accepted": [
+  {
+   "note": "running text",
+   "outcome": "missed",
+   "identity": "judgment T-334/19 Google AdSense",
+   "reason": "the parenthesis reads \u201c(paragraphe 107)\u201d and nothing else: a bare pinpoint, which names no authority. A reader knows it belongs to the judgment named two sentences earlier; nothing in the parenthesis says so, and a pinpoint in prose is exactly what a short form must not be allowed to reach for"
+  },
+  {
+   "note": "running text",
+   "outcome": "missed",
+   "identity": "judgment T-334/19 Google AdSense",
+   "reason": "the parenthesis reads \u201c(paragraphe 107)\u201d and nothing else: a bare pinpoint, which names no authority. A reader knows it belongs to the judgment named two sentences earlier; nothing in the parenthesis says so, and a pinpoint in prose is exactly what a short form must not be allowed to reach for"
+  },
+  {
+   "note": "running text",
+   "outcome": "unexpected",
+   "identity": "CJEU case number: C-209/10",
+   "detail": "(CJUE 27 mars 2012 Post Danmark C-209/10 ; CJUE 6 septembre 2)",
+   "reason": "the document carries this parenthesis twice, in consecutive paragraphs, and the key records it once. Both are read correctly; the second has no entry to match"
+  },
+  {
+   "note": "running text",
+   "outcome": "unexpected",
+   "identity": "CJEU case number: C-413/14 P",
+   "detail": "(CJUE 27 mars 2012 Post Danmark C-209/10 ; CJUE 6 septembre 2)",
+   "reason": "the document carries this parenthesis twice, in consecutive paragraphs, and the key records it once. Both are read correctly; the second has no entry to match"
+  }
+ ]
+}

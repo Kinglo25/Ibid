@@ -1,0 +1,79 @@
+{
+ "about": "Gaps already known in how Ibid reads this document, each with the reason it is accepted for now. See scripts/answer-key.mjs.",
+ "accepted": [
+  {
+   "note": "25",
+   "outcome": "lost",
+   "identity": "judgment T-235/18 Qualcomm (exclusivity payments)",
+   "reason": "the conversion merged this footnote into the one before it, and the pane's two notes differ only in their paragraph number, so the alignment attributes it to a neighbouring note instead of this one. The judgment itself is read, and appears in the entry below as a citation the key does not hold at that note"
+  },
+  {
+   "note": "8",
+   "outcome": "merged",
+   "identity": "read as part of footnote 7",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "20",
+   "outcome": "merged",
+   "identity": "read as part of footnote 19",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "21",
+   "outcome": "merged",
+   "identity": "read as part of footnote 19",
+   "reason": "the conversion stored this footnote inside the Word footnote before it, its number typed into that footnote's text, so the pane reads the two as one note and lists this one's citations under the earlier number"
+  },
+  {
+   "note": "3",
+   "outcome": "missed",
+   "identity": "Guidance on Enforcement Priorities",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "10",
+   "outcome": "missed",
+   "identity": "De Minimis Notice",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "11",
+   "outcome": "wrong-document",
+   "identity": "judgment C-395/96 P Compagnie maritime belge transports",
+   "detail": "ECLI:EU:C:2001:393 (judgment)",
+   "reason": "the footnote contradicts itself, and Ibid follows the identifier the court minted. It reads \u201cJudgment of 10 July 2001, joined cases C-395/96 P and C-396/96 P, Compagnie maritime belge transports and Others, ECLI:EU:C:2001:393\u201d: the case numbers and the name are Compagnie maritime belge, whose judgment of 16 March 2000 is EU:C:2000:132, while the date and the ECLI are those of the order in C-497/99 P Irish Sugar \u2014 the other case the body names at this footnote. An ECLI is the court's own name for a document and a CELEX derived from a case number is an inference, so the ECLI is retrieved and the document shown is the one it names. What is missing is the warning: the check that reports a footnote contradicting its own ECLI compares the date's year and the court's letter, and here both agree",
+   "reads": "ECLI:EU:C:2001:393"
+  },
+  {
+   "note": "19+20+21",
+   "outcome": "pinpoint-missing",
+   "identity": "judgment C-23/14 Post Danmark II",
+   "detail": "paragraphs 67",
+   "reason": "the paragraph is in the second of two footnotes the conversion merged, and the alignment places that note one along, so the pinpoint is looked for in the wrong one. Read where the note is"
+  },
+  {
+   "note": "19+20+21",
+   "outcome": "missed",
+   "identity": "Guidance on Enforcement Priorities",
+   "detail": "a notice, which detection does not read",
+   "reason": "cited by where it was published rather than by a number of its own, and detection does not read an Official Journal reference, so the instrument is not reported at all. The largest single gap these keys show: in competition practice the Commission's own notices and guidelines are among the most-cited instruments there are, and every short form a document then uses for one has nothing to resolve against"
+  },
+  {
+   "note": "22",
+   "outcome": "unexpected",
+   "identity": "CJEU judgment: ECLI:EU:C:2015:651",
+   "detail": "resolved",
+   "reason": "the same citation as the footnote the alignment could not place: the conversion merged this document's footnotes in pairs, and two of the pane's notes cite Post Danmark II differing only in the paragraph, so a note lands one place from where the key has it. Nothing is read wrongly; it is read under the wrong number"
+  },
+  {
+   "note": "26",
+   "outcome": "unexpected",
+   "identity": "CJEU judgment: ECLI:EU:T:2022:358",
+   "detail": "resolved",
+   "reason": "the same citation as the footnote the alignment could not place: the conversion merged this document's footnotes in pairs, and two of the pane's notes cite Post Danmark II differing only in the paragraph, so a note lands one place from where the key has it. Nothing is read wrongly; it is read under the wrong number"
+  }
+ ]
+}
