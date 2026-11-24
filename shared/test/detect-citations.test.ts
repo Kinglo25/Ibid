@@ -593,6 +593,20 @@ describe('Commission competition case numbers', () => {
     assert.deepEqual(detectCitations('Cases SA. 34572 – Greece; and SA.9398 – Italy.').map((c) => c.caseNumber ?? c.value), ['SA.34572', 'SA.9398']);
   });
 
+  test('reads a case number written with a colon in place of the dot', () => {
+    // 'Case M:11246 \u2013 Rolex/Bucherer', in the 2026 draft merger guidelines, read as nothing.
+    const [citation] = detectCitations('Case M:11246 \u2013 Rolex/Bucherer, recital 40.');
+    assert.equal(citation.value, 'M:11246');
+    assert.equal(citation.caseNumber, 'M.11246');
+    assert.equal(citation.label, 'Commission merger case');
+    assert.deepEqual(citation.pinpoint?.paragraphs, [40]);
+    assert.equal(detectCitations('Case AT:39740 \u2013 Google Search.')[0]?.caseNumber, 'AT.39740');
+    // The dot's own form is untouched, and carries no case number of its own to correct.
+    const [plain] = detectCitations('Case M.8124 \u2013 Microsoft/LinkedIn.');
+    assert.equal(plain.value, 'M.8124');
+    assert.equal(plain.caseNumber, undefined);
+  });
+
   test('keeps the cited pinpoint of a spaced case number', () => {
     const [citation] = detectCitations('Case M. 7932 – Dow/DuPont, paragraph 1975.');
     assert.equal(citation.caseNumber, 'M.7932');
@@ -1368,6 +1382,36 @@ describe('found by a third batch of Commission-style footnotes', () => {
     const citations = detectCitations('Articles 101(1) and 102 TFEU; Articles 7 and 8 of the Charter.');
     assert.deepEqual(citations.map((citation) => citation.celex), ['12016E101', '12016E102', '12016P007', '12016P008']);
     assert.deepEqual(citations[0].locator, { kind: 'article', start: 101, paragraph: 1 });
+  });
+
+  test('a range of Treaty articles is each article it names', () => {
+    const citations = detectCitations('See Articles 28-37 TFEU.');
+    assert.deepEqual(citations.map((citation) => citation.celex),
+      ['12016E028', '12016E029', '12016E030', '12016E031', '12016E032', '12016E033', '12016E034', '12016E035', '12016E036', '12016E037']);
+    assert.equal(citations[0].value, 'Article 28 TFEU');
+    assert.deepEqual(citations[9].locator, { kind: 'article', start: 37, paragraph: undefined });
+    // The spelled-out joiner, and the Charter, which keeps its preposition.
+    assert.deepEqual(detectCitations('Articles 2 to 4 of the Charter.').map((citation) => citation.value),
+      ['Article 2 of the Charter', 'Article 3 of the Charter', 'Article 4 of the Charter']);
+  });
+
+  test('a range wider than a dozen articles reports only the ends it writes', () => {
+    assert.deepEqual(detectCitations('Articles 1-300 TFEU.').map((citation) => citation.celex), ['12016E001', '12016E300']);
+    // Nothing at all from a range that runs backwards.
+    assert.deepEqual(detectCitations('Articles 37-28 TFEU.'), []);
+  });
+
+  test('the Treaty named in full before its article', () => {
+    const [citation] = detectCitations('See also the Treaty on the Functioning of the European Union (\u2018TFEU\u2019), Article 173.');
+    assert.equal(citation.celex, '12016E173');
+    assert.equal(citation.value, 'Article 173 TFEU');
+    assert.equal(citation.label, 'TFEU article');
+    const [teu] = detectCitations('Treaty on European Union, Article 4(3).');
+    assert.equal(teu.celex, '12016M004');
+    assert.deepEqual(teu.locator, { kind: 'article', start: 4, paragraph: 3 });
+    // Only with the full title: a short form followed by another act's article is not this one's.
+    const found = detectCitations('Article 102 TFEU, Article 5 of Regulation (EC) No 1/2003.');
+    assert.deepEqual(found.map((citation) => citation.celex), ['12016E102', '32003R0001']);
   });
 
   test('Regulation No 17, cited by its number alone', () => {

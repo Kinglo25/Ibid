@@ -310,6 +310,9 @@ const PINPOINT_BEFORE_WINDOW = 80;
 /** Guards against a mistyped or malformed range expanding into an absurd list. */
 const MAX_RANGE_SPAN = 200;
 
+/** How many articles a Treaty-article range is expanded into before only its ends are reported. */
+const TREATY_RANGE_MAX = 12;
+
 /** One item of a pinpoint list: a number, a sub-paragraph or a range, and an "et seq.". */
 const PINPOINT_LIST_ITEM = new RegExp(String.raw`(\d+)(?:\((\d+)\))?(?:\s*(?:[–—‑-]|\bto\b|à)\s*(\d+))?(${FOLLOWING_WORDS})?`, 'gi');
 
@@ -982,6 +985,34 @@ const TREATY_CELEX_YEAR = '2016';
  * '2016' is the year of the current consolidated republication (OJ C 202,
  * 7.6.2016, after Croatia's accession) — still the version in force.
  */
+/** How a Treaty is named in a citation: its short form in either language, or the Charter's. */
+const TREATY_NAMES = String.raw`TFEU|TFUE|TEU|TUE|CFR|CDFUE|Charter(?:\s+of\s+Fundamental\s+Rights)?|Charte(?:\s+des\s+droits\s+fondamentaux)?`;
+
+/**
+ * A Treaty is named in a citation by its short form or by its full title, and the rest of
+ * this module only ever needs to know which of the three it is.
+ */
+function treatyCode(treaty: string): string {
+  if (/^(?:TFEU|TFUE|Treaty\s+on\s+the\s+Functioning)/i.test(treaty)) return 'TFEU';
+  if (/^(?:TEU|TUE|Treaty\s+on\s+European)/i.test(treaty)) return 'TEU';
+  return treaty;
+}
+
+const treatyArticleLabel = (treaty: string): string => {
+  const code = treatyCode(treaty);
+  return code === 'TFEU' ? 'TFEU article' : code === 'TEU' ? 'TEU article' : 'Charter article';
+};
+
+/**
+ * How an article is written where the citation did not write it out: one of several in a list,
+ * or one of the articles a range names. The Treaty keeps the preposition its own name takes.
+ */
+const treatyArticleValue = (written: string, treaty: string): string => {
+  const code = treatyCode(treaty);
+  const named = /^Charter\b/i.test(code) ? `of the ${code}` : /^Charte\b/i.test(code) ? `de la ${code}` : code;
+  return `Article ${written} ${named}`;
+};
+
 function celexForTreatyArticle(treaty: string, articleNumber: string): string {
   const docType = /^(?:TFEU|TFUE)$/i.test(treaty) ? 'E' : /^(?:TEU|TUE)$/i.test(treaty) ? 'M' : 'P';
   return `1${TREATY_CELEX_YEAR}${docType}${articleNumber.padStart(3, '0')}`;
@@ -1560,10 +1591,10 @@ export function detectCitations(text: string): CitationMatch[] {
   // for how the CELEX is derived; a parenthesised number directly after the
   // article number is a paragraph within it, same convention as ordinary
   // legislation locators.
-  for (const match of text.matchAll(/\b(?:Articles?|Art\.)\s+(\d+)(?:\((\d+)\))?(?:\(([a-z]{1,3})\))?\s+(?:of\s+the\s+|de\s+la\s+)?(TFEU|TFUE|TEU|TUE|CFR|CDFUE|Charter(?:\s+of\s+Fundamental\s+Rights)?|Charte(?:\s+des\s+droits\s+fondamentaux)?)\b/gi)) {
+  for (const match of text.matchAll(new RegExp(String.raw`\b(?:Articles?|Art\.)\s+(\d+)(?:\((\d+)\))?(?:\(([a-z]{1,3})\))?\s+(?:of\s+the\s+|de\s+la\s+)?(${TREATY_NAMES})\b`, 'gi'))) {
     const index = match.index ?? 0;
     const [, articleNumber, paragraph, point, treaty] = match;
-    const label = /^(?:TFEU|TFUE)$/i.test(treaty) ? 'TFEU article' : /^(?:TEU|TUE)$/i.test(treaty) ? 'TEU article' : 'Charter article';
+    const label = treatyArticleLabel(treaty);
     add({
       label, value: match[0], index, source: 'eur-lex', celex: celexForTreatyArticle(treaty, articleNumber),
       locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined, ...(point ? { point } : {}) },
@@ -1587,18 +1618,56 @@ export function detectCitations(text: string): CitationMatch[] {
   // treaty, named once at the end. The pattern above wants the treaty straight after a number,
   // so it read neither of them — in the form competition law cites its two articles in more
   // often than any other. Each article is its own citation, placed at its own number.
-  for (const match of text.matchAll(/\bArticles\s+((?:\d+(?:\(\d+\))?(?:\([a-z]{1,3}\))?\s*(?:,|and|et|&)\s*)+\d+(?:\(\d+\))?(?:\([a-z]{1,3}\))?)\s+(?:of\s+the\s+|de\s+la\s+)?(TFEU|TFUE|TEU|TUE|CFR|CDFUE|Charter(?:\s+of\s+Fundamental\s+Rights)?|Charte(?:\s+des\s+droits\s+fondamentaux)?)\b/gi)) {
+  for (const match of text.matchAll(new RegExp(String.raw`\bArticles\s+((?:\d+(?:\(\d+\))?(?:\([a-z]{1,3}\))?\s*(?:,|and|et|&)\s*)+\d+(?:\(\d+\))?(?:\([a-z]{1,3}\))?)\s+(?:of\s+the\s+|de\s+la\s+)?(${TREATY_NAMES})\b`, 'gi'))) {
     const [, list, treaty] = match;
     const listStart = (match.index ?? 0) + match[0].indexOf(list);
-    const label = /^(?:TFEU|TFUE)$/i.test(treaty) ? 'TFEU article' : /^(?:TEU|TUE)$/i.test(treaty) ? 'TEU article' : 'Charter article';
+    const label = treatyArticleLabel(treaty);
     for (const item of list.matchAll(/(\d+)(?:\((\d+)\))?(?:\(([a-z]{1,3})\))?/g)) {
       const [written, articleNumber, paragraph, point] = item;
       add({
-        label, value: `Article ${written} ${/^Charter\b/i.test(treaty) ? `of the ${treaty}` : /^Charte\b/i.test(treaty) ? `de la ${treaty}` : treaty}`, index: listStart + (item.index ?? 0), source: 'eur-lex',
+        label, value: treatyArticleValue(written, treaty), index: listStart + (item.index ?? 0), source: 'eur-lex',
         celex: celexForTreatyArticle(treaty, articleNumber),
         locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined, ...(point ? { point } : {}) },
       });
     }
+  }
+
+  // A range names every article between its ends: "Articles 28-37 TFEU" is ten documents, since
+  // each Treaty article carries its own CELEX, and the list pattern above wants a joiner, so a
+  // range was read as no citation at all. Each article it names is its own citation.
+  //
+  // Past a dozen only the two ends are reported. A range that wide is a title or a chapter being
+  // pointed at rather than provisions being cited, and forty cards conjured out of one phrase
+  // would bury whatever else the footnote said.
+  for (const match of text.matchAll(new RegExp(String.raw`\bArticles\s+(\d+)(?:\((\d+)\))?\s*(?:[-–—‑]|\bto\b|à)\s*(\d+)\s+(?:of\s+the\s+|de\s+la\s+)?(${TREATY_NAMES})\b`, 'gi'))) {
+    const index = match.index ?? 0;
+    const [, first, paragraph, last, treaty] = match;
+    const from = Number(first);
+    const to = Number(last);
+    if (to <= from) continue;
+    const label = treatyArticleLabel(treaty);
+    const named = to - from > TREATY_RANGE_MAX ? [from, to] : Array.from({ length: to - from + 1 }, (_, step) => from + step);
+    for (const articleNumber of named) {
+      add({
+        label, value: treatyArticleValue(String(articleNumber), treaty), index, source: 'eur-lex',
+        celex: celexForTreatyArticle(treaty, String(articleNumber)),
+        locator: { kind: 'article', start: articleNumber, paragraph: articleNumber === from && paragraph ? Number(paragraph) : undefined },
+      });
+    }
+  }
+
+  // The Treaty named in full, its article after it: "See also the Treaty on the Functioning of
+  // the European Union (‘TFEU’), Article 173". Only with the full title, because "Article 102
+  // TFEU, Article 5" is Article 102 of the Treaty followed by some other act's Article 5.
+  for (const match of text.matchAll(/\b(Treaty\s+on\s+the\s+Functioning\s+of\s+the\s+European\s+Union|Treaty\s+on\s+European\s+Union)(?:\s*\((?:the\s+)?['‘"“](?:TFEU|TEU)['’"”]\))?\s*,\s*(?:Articles?|Art\.)\s*(\d+)(?:\((\d+)\))?(?:\(([a-z]{1,3})\))?/gi)) {
+    const [whole, name, articleNumber, paragraph, point] = match;
+    const treaty = treatyCode(name);
+    add({
+      label: treatyArticleLabel(treaty), value: treatyArticleValue(match[0].slice(whole.lastIndexOf(articleNumber)), treaty),
+      index: (match.index ?? 0) + whole.lastIndexOf(articleNumber), source: 'eur-lex',
+      celex: celexForTreatyArticle(treaty, articleNumber),
+      locator: { kind: 'article', start: Number(articleNumber), paragraph: paragraph ? Number(paragraph) : undefined, ...(point ? { point } : {}) },
+    });
   }
 
   // DG Competition's own case-number convention, distinct from the C(yyyy) decision
@@ -1614,16 +1683,22 @@ export function detectCitations(text: string): CitationMatch[] {
   // only where the number cannot be anything else: five or six digits, which no `SA` ending a
   // company's name is followed by, or fewer after the word `Case` itself. The number is then
   // carried in the register's own form, `SA.103901`, which is what the case is looked up by.
-  for (const match of text.matchAll(/\b(?:COMP\/)?(AT|SA|M)\.(\s?)(\d{3,6})\b/g)) {
+  //
+  // A colon in place of the dot is the same number again — `Case M:11246 – Rolex/Bucherer`, in
+  // the 2026 draft merger guidelines — and is reported as it should have been written. It needs
+  // none of the guards a space needs: nothing but a case number is written `M:` and five digits,
+  // where `Engie SA. 12345` really is a company's name ending a sentence.
+  for (const match of text.matchAll(/\b(?:COMP\/)?(AT|SA|M)([.:])(\s?)(\d{3,6})\b/g)) {
     const index = match.index ?? 0;
-    const spaced = Boolean(match[2]);
+    const spaced = Boolean(match[3]);
+    const colon = match[2] === ':';
     if (spaced) {
       const before = text.slice(Math.max(0, index - 12), index);
       const afterCase = /\b(?:Cases?|affaires?)\s+$/i.test(before);
       // Where a list or a note starts, never straight after a word: `Engie SA. 12345 …` is a
       // company's name ending a sentence.
       const opensCitation = afterCase || index === 0 || /(?:^|\b(?:and|et|see|See|cf\.)|[(;,:–—-])\s*$/.test(before);
-      if (!opensCitation || (match[3].length < 5 && !afterCase)) continue;
+      if (!opensCitation || (match[4].length < 5 && !afterCase)) continue;
     }
     const family = match[1] === 'AT' ? 'antitrust' : match[1] === 'SA' ? 'State aid' : 'merger';
     const caseName = commissionCaseName(text.slice(index + match[0].length, index + match[0].length + COMMISSION_NAME_WINDOW));
@@ -1633,7 +1708,7 @@ export function detectCitations(text: string): CitationMatch[] {
     const section = parsed ? undefined : parseSectionPinpoint(own);
     add({
       label: `Commission ${family} case`, value: match[0], index, source: 'commission',
-      ...(spaced ? { caseNumber: `${match[1]}.${match[3]}` } : {}),
+      ...(spaced || colon ? { caseNumber: `${match[1]}.${match[4]}` } : {}),
       ...(caseName ? { caseName } : {}),
       ...optionalDate(decisionDateFor(index)),
       ...(section ? { locator: section } : { locator: parsed?.locator, pinpoint: parsed?.pinpoint }),
