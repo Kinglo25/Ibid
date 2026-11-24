@@ -181,6 +181,26 @@ async function declaredEcli(celex) {
 
 const report = { verified: verify, documents: [], totals: { notes: 0, citations: 0, missed: 0, checked: 0, wrongSource: 0, unavailable: 0 } };
 const manifest = JSON.parse(await readFile(join(root, 'scripts/corpus.manifest.json'), 'utf8'));
+/**
+ * Citations whose own ECLI and case number name different documents, each already checked and
+ * written down with what the check found. See `scripts/corpus-known.json`.
+ *
+ * This column measures the identifier *derived from the case number*, and where a citation
+ * quotes an ECLI that is not the identifier the reviewer is served: the resolver asks CELLAR by
+ * the ECLI first, because an ECLI is the name the issuing court gave the document while a CELEX
+ * built out of a case number is an inference. So a disagreement here is a disagreement, and
+ * which side is wrong has to be established by hand, once, against the footnote and against the
+ * live document — a drafter who mistyped an ECLI, a case decided twice under one number, an
+ * appeal cited without its suffix, or genuinely a derivation of Ibid's that is wrong.
+ *
+ * Accepting them one by one with the reason keeps the column doing its job: a disagreement that
+ * is not in the list still fails the run, and one in the list that stops happening fails it too,
+ * so a fix is locked in rather than left to regress.
+ */
+const known = JSON.parse(await readFile(join(root, 'scripts/corpus-known.json'), 'utf8'));
+const knownKey = (entry) => `${entry.document}|${entry.celex}|${entry.cited.toUpperCase()}`;
+const accepted = new Map(known.accepted.map((entry) => [knownKey(entry), entry]));
+const seenAccepted = new Set();
 
 for (const entry of manifest.documents) {
   const got = await harvest(entry);
@@ -246,7 +266,7 @@ console.log(`citations found   ${report.totals.citations}`);
 console.log(`candidate misses  ${report.totals.missed}`);
 if (verify) {
   console.log(`identifiers checked ${report.totals.checked}`);
-  console.log(`WRONG SOURCE        ${report.totals.wrongSource}   <- the only outcome that must be zero`);
+  console.log(`WRONG SOURCE        ${report.totals.wrongSource}   <- the only outcome that must be zero, each one accounted for below`);
   console.log(`unavailable         ${report.totals.unavailable}`);
 }
 
@@ -268,11 +288,21 @@ if (shapes.size) {
     console.log(`  ${String(seen.count).padStart(4)}  ${shape}   e.g. …${seen.example.around}…`);
   }
 }
+const unaccounted = [];
 for (const document of report.documents) {
   for (const wrong of document.wrongSource ?? []) {
+    const key = knownKey({ document: document.id, celex: wrong.celex, cited: wrong.cited });
+    const entry = accepted.get(key);
     console.log(`\nWRONG SOURCE in ${document.id}: cited ${wrong.cited} (${wrong.caseNumber}) -> ${wrong.celex}, which is ${wrong.declared}`);
+    if (entry) {
+      seenAccepted.add(key);
+      console.log(`  accepted: ${entry.reason}`);
+    } else {
+      unaccounted.push(`${document.id}: ${wrong.cited} (${wrong.caseNumber}) against ${wrong.celex}, which CELLAR declares ${wrong.declared}`);
+    }
   }
 }
+const settled = known.accepted.filter((entry) => !seenAccepted.has(knownKey(entry)));
 
 await writeFile(join(root, 'corpus-report.json'), JSON.stringify(report, null, 2));
 console.log('\nfull report written to corpus-report.json');
@@ -286,8 +316,11 @@ console.log('\nfull report written to corpus-report.json');
  */
 const read = report.documents.filter((document) => !document.skipped);
 const failures = [];
-if (report.totals.wrongSource > 0) {
-  failures.push(`${report.totals.wrongSource} citation(s) resolved to a source belonging to another document`);
+for (const wrong of unaccounted) {
+  failures.push(`a citation's ECLI and its case number name different documents, and it is not in scripts/corpus-known.json — ${wrong}`);
+}
+for (const entry of settled) {
+  failures.push(`no longer happens, so take it out of scripts/corpus-known.json — ${entry.document}: ${entry.cited} against ${entry.celex}`);
 }
 if (verify && report.totals.checked === 0) {
   failures.push('asked to check derived identifiers and checked none, so the zero above means nothing');

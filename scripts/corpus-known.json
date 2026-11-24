@@ -1,0 +1,26 @@
+{
+ "about": "Citations whose own ECLI and case number name different documents, accepted with the reason each was checked and found not to be Ibid's error. A hit not listed here fails the run, and a listed one that stops happening fails it too, so a fix is locked in rather than left to regress. See the head of scripts/corpus.mjs.",
+ "accepted": [
+  {
+   "document": "reply-aba-a102",
+   "celex": "62009TJ0286",
+   "cited": "ECLI:EU:T:2022:19",
+   "declared": "ECLI:EU:T:2014:547",
+   "reason": "the footnote reads 'Case T-286/09, Intel Corp. v. Comm'n, ECLI:EU:T:2022:19 (Jan. 26, 2022)'. Case T-286/09 is the General Court's judgment of 12 June 2014; the ECLI and the date are those of the judgment of 26 January 2022 given after the Court of Justice set that one aside, which the register files as T-286/09 RENV. The reply omits RENV. Ibid retrieves the ECLI, and the 2022 judgment is what goes on screen — confirmed live: ECLI:EU:T:2022:19 returns 'JUDGMENT OF THE GENERAL COURT (Fourth Chamber, Extended Composition) 26 January 2022'. Written with RENV, the number alone derives 62009TJ0286(01) and the same judgment."
+  },
+  {
+   "document": "reply-weck-a102",
+   "celex": "61973CJ0127",
+   "cited": "ECLI:EU:C:1974:25",
+   "declared": "ECLI:EU:C:1974:6",
+   "reason": "case 127/73 was decided twice: BRT I on 30 January 1974 (EU:C:1974:6) and BRT II on 21 March 1974 (EU:C:1974:25). The footnote cites 'C-127/73 – BRT/SABAM, ECLI:EU:C:1974:25, Rz. 9-15', which is BRT II, and nothing in the case number says which of the two is meant — the ECLI is the only thing that does. Ibid retrieves it, and BRT II's paragraph 9 is what goes on screen, confirmed live. Not derivable from the citation: a case number cannot say which of its judgments a drafter meant."
+  },
+  {
+   "document": "reply-dci-merger-review",
+   "celex": "62022CJ0611",
+   "cited": "ECLI:EU:C:2024:667",
+   "declared": "ECLI:EU:C:2024:677",
+   "reason": "the document's own error, two digits transposed: 'Joined Cases C-611/22 P & C-625/22 P, ECLI:EU:C:2024:667 (3 September 2024)'. Illumina is ECLI:EU:C:2024:677. CELLAR holds nothing under :667, so the retrieval falls back to the CELEX derived from the case number and the right judgment goes on screen — confirmed live: 'JUDGMENT OF THE COURT (Grand Chamber) 3 September 2024'. What the reviewer is not told is that the ECLI they wrote was not found, which is worth saying and is not said; see HANDOFF."
+  }
+ ]
+}

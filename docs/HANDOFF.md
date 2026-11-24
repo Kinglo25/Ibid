@@ -1,6 +1,6 @@
 # Ibid engineering handoff
 
-Last updated: 2026-08-21
+Last updated: 2026-11-24
 
 ## Goal
 
@@ -59,9 +59,9 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 906 tests (414 detection and resolution, 331 resolver, document store and contract, 161 task pane — three of those skip where their sample document is not in the checkout). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
-- `npm run answer-key` passes: the 2026 draft merger guidelines against their answer key (624 citations) — 0 at a wrong document, 4 at a wrong pinpoint each reading so in the .docx itself, and the other known gaps listed with reasons in `scripts/answer-keys/merger-guidelines-2026.known.json`. Outside `verify`: it needs the document, which is not in the repository.
-- `npm run corpus` passes: 30 documents, 29 read, 2,613 notes and 2,921 parentheses in the running text, 1,725 citations, 389 identifiers checked against CELLAR, 0 wrong-source (24 November 2026). Outside `verify`: it needs the network.
+- `npm run test` passes: 925 tests (424 detection and resolution, 331 resolver, document store and contract, 170 task pane — three of those skip where their sample document is not in the checkout). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
+- `npm run answer-key` passes: six documents against their answer keys, 753 citations read by hand — the 2026 draft merger guidelines (624), and the replies to the Article 102 and merger-guidelines consultations from Allen & Overy, Linklaters, Vogel & Vogel (in French), the City of London Law Society and Freshfields (129 between them). One citation at a wrong document, which the note itself reads that way and which the known list quotes and explains; 4 at a wrong pinpoint, each reading so in the .docx itself. Every other gap is listed with its reason in `scripts/answer-keys/<name>.known.json`, and reading those lists is most of what these documents have to say. Outside `verify`: it needs the documents, which are not in the repository — `npm run samples` fetches five of the six.
+- `npm run corpus` passes: 58 documents, all read, 6,599 notes and 4,218 parentheses in the running text, 3,533 citations, 562 identifiers checked against CELLAR, 3 disagreements between a citation's own ECLI and the identifier derived from its case number — all three the document's own error, each checked by hand against the footnote and against the live document and written down in `scripts/corpus-known.json` (24 November 2026). Outside `verify`: it needs the network and takes about twenty minutes.
 - `npm run word-check` passes: the .docx reader and real Word agree on all 1,991 footnotes of the Intel decision, and on every other sample. Outside `verify`: it needs Word on Windows.
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
@@ -1956,6 +1956,42 @@ Then sideload `addin/manifest.xml` in Word and open the sample document. Select 
 6. ~~Fix the joined-case CELEX gap.~~ **Done, and the diagnosis in this list was wrong** — see "The joined-case gap is not a language gap" below.
 7. ~~Verify the served language rather than assuming it.~~ **Done** — see "Reading the language off the document" below.
 8. ~~Clean up the legislation title heuristic.~~ **Done, and it was not cosmetic** — see "The title line, and the letters underneath it" below.
+9. **Read a notice, a set of guidelines or a communication cited by its Official Journal reference.** The largest single gap the answer keys show, and it is one gap seen from two sides: the instrument is never reported, and every short form the document then uses for it ("the Guidance", "HMG", "the Market Definition Notice") has nothing to resolve against and is offered to the reviewer as unresolved — 19 of the City of London Law Society's outcomes alone. A notice is cited by where it was published and by no number of its own, and its CELEX cannot be derived from that: `52004XC0205(02)` carries a sequence number nothing in the citation states. CELLAR answers by the reference itself, which is what makes this tractable. Worked out once already on the `local-detection-line` branch, with `oj`/`ojDate` on the citation, a fetch by reference, and a check against the date the footnote gives; that branch is not mergeable as a whole (see below) but this is the part worth lifting out of it.
+10. **Tell the reviewer when a judgment's own date does not match the judgment retrieved.** `Judgment of 26 January 2022, Intel v Commission, T-286/09, paragraph 100` opens paragraph 100 of the judgment of 12 June 2014 — the one the Court of Justice set aside — with no warning, because the case number alone derives it and the citation carries no ECLI. Written `T-286/09 RENV` it correctly derives `62009TJ0286(01)` and the 2022 paragraph. The footnote's own date is right there and is not used, while the retrieved document's heading states its date; comparing the two is the same move already made for Commission decisions, which are narrowed by the date the footnote gives. The same exposure applies to any case decided more than once under one number — BRT I and BRT II are both case 127/73.
+11. **Say when the ECLI the footnote quoted was not found and the document came from the case number instead.** Retrieval asks by the ECLI first and falls back to the derived CELEX, which is right, but silent. A reply to the merger-guidelines consultation cites Illumina as `ECLI:EU:C:2024:667` where the judgment is `:677`; the right judgment is shown, reached by the case number, and the reviewer is never told that the identifier they wrote does not exist. No extra request is needed — the resolver already knows it fell back.
+
+### The parked detection line, and why it was not merged
+
+`local-detection-line` is a second line of detection work that grew from the same base commit
+as the twenty-six that followed it here, on another machine, and was never pushed. It is kept
+as a branch rather than merged, and kept rather than deleted.
+
+The merge was run and measured before that was decided: eleven files, twenty-six conflict
+hunks. Most were two independent insertions landing in the same place and would have been
+"keep both". Two were not. Both lines had rewritten the same two pieces of logic — where a
+citation's declared short form is found, and how a short form's pinpoint is read — and this
+line's version has four cases the other has no equivalent of: an unquoted nickname
+(`EU:C:2020:559 (Schrems II)`), a worded definition, a definition written before the citation
+inside the same bracket, and the bare-name alias (`arrêt TeliaSonera` answering to
+`TeliaSonera`). Each has tests behind it, and those tests merge cleanly, so taking the other
+side would have left them failing; taking this side drops the reach that branch had worked out
+for a title's long tail. Resolving it either way is a rewrite of the most delicate part of
+short-form resolution, performed by whoever is resolving the conflict, in an accuracy-critical
+module. That is the wrong way to acquire code.
+
+So the features were lifted out one at a time instead, each with its own tests and each checked
+against the answer keys before and after:
+
+- a range of Treaty articles, the Treaty named before its article, a case number written with a
+  colon (commit "Read a range of Treaty articles…");
+- the short forms a document defines in its running text, together with the bound on a short
+  form's pinpoint that this made necessary ("Read the short forms a document defines…").
+
+What was *not* lifted, because it is already here and done more thoroughly: Treaty article
+lists, an act's lettered points, a spaced case number with the guards a bare space needs, the
+`RENV` suffix, ECLI-first retrieval, the drafting-contradiction warnings, a Commission case's
+date. And what is still worth lifting is item 9 above — the Official Journal reference — which
+is why the branch stays.
 
 ### Resolved: post-2015 legislation citations
 
@@ -1965,11 +2001,14 @@ act type (`Regulation (EU) 2016/679`) — including the GDPR, the most cited EU
 instrument in practice. This is now handled: `shared/src/index.ts` recognises
 both conventions, plus the pre-2015 regulation form that reverses the number
 order (`Regulation (EC) No 1049/2001` is number/year, not year/number like
-directives). A bracket or trailing suffix is always required to accept a
-match, so a bare number pair after "Regulation" is never mistaken for a
-citation — see `known detection gaps` in
-`shared/test/detect-citations.test.ts` for the two cases still intentionally
-unmatched (no sector marker at all; the pre-1994 two-digit-year EEC form).
+directives). A bare number pair after "Regulation" is accepted only
+where the numbers themselves say which convention it is — the first cannot be
+a year and the second can, as in `Regulation 1/2003` — and refused where both
+could be ("Regulation 2003/2004"), or where a bracket contradicts them
+("Regulation (EU) 999/2008", since there was no `(EU)` regulation before
+2009). See `known detection gaps` in `shared/test/detect-citations.test.ts`
+for what is still intentionally unmatched, including the pre-1994
+two-digit-year EEC form.
 
 ### Resolved: CURIA case law now shows the actual judgment text
 

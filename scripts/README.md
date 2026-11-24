@@ -66,6 +66,20 @@ There is deliberately no overall score. "Every citation resolved" is not the goa
 reachable: the decision this was built against cites a case number that does not exist, and
 no algorithm should resolve it.
 
+What `wrong-source` actually compares is the identifier **derived from the case number**, and
+where a citation quotes an ECLI that is not what the reviewer is served: retrieval asks CELLAR
+by the ECLI first, because an ECLI is the name the issuing court gave the document while a CELEX
+built out of a case number is an inference. So a hit here is a disagreement, and which side of
+it is wrong has to be established by hand, once, against the footnote and against the live
+document. All three in the corpus today are the document's: an ECLI with two digits transposed,
+a case decided twice under one number, and an appeal cited without its `RENV` suffix.
+
+Each is written down in `corpus-known.json` with what the check found, and the column keeps
+doing its job: a disagreement that is not in that list fails the run, and one in the list that
+stops happening fails it too, so a fix is locked in rather than left to regress. Accepting one
+without reading the document it came from would be the one move that empties this column of
+meaning.
+
 ## How it checks itself without hand-labelling
 
 Recall is measured against a deliberately looser net than detection — anything ECLI-shaped
@@ -126,6 +140,34 @@ worth nothing here, and reported as a skip rather than as a clean document.
 Weight it toward what breaks: PDF-converted Commission decisions, French-language documents,
 and pre-2012 documents that cite by European Court Reports volume rather than by ECLI.
 
+# Fetching the documents
+
+    npm run samples                 fetch what is missing, convert what is not yet converted
+    npm run samples -- --offline    convert only what is already downloaded
+    npm run samples -- <id> …       only these documents
+
+The documents in `samples/` were all drafted by the Commission, and a Commission drafter cites
+the way the Commission cites. The people Ibid is for write submissions, and the published
+replies to the Commission's consultations are the largest public body of those there is — law
+firms, bar associations, in-house lawyers, academics, in English, in French, in German, and in
+two languages at once. `samples.manifest.json` names each document by where it is published and
+this fetches it; the conversion is Word's own, `Documents.Open` on the PDF then `SaveAs2`, which
+is what a reviewer handed a PDF does, so what it damages is damage a reviewer meets. It needs
+Word on Windows through `powershell.exe`; without it the PDFs are still fetched and nothing is
+converted.
+
+Everything lands in `.samples-cache/`, which is not in the repository: the documents are public
+but they name their authors, and together they are the size of a small archive. Each PDF's
+SHA-256 is in the manifest, and a download that does not match is reported rather than used —
+an answer key describes one version of a document and not whatever is published under its URL
+later. Three consultations are listed so far: the 2024 Article 102 guidelines, the 2025 merger
+guidelines review, and the 2025 draft revised Technology Transfer Block Exemption Regulation,
+the last for a body of law the corpus had none of.
+
+A document converted this way goes into `corpus.manifest.json` as a `docx` entry pointing into
+`.samples-cache/docx/`. Writing an answer key for one is the other half, and the more expensive:
+see below.
+
 # The answer keys
 
     npm run answer-key                     check every key whose document is present
@@ -173,5 +215,29 @@ counts as an authority follows `docs/ACCURACY.md`. Mark a mention that is neithe
 required nor held against Ibid — an act named inside another act's title, an article inside a
 quotation — `"role": "incidental"`, and decide that before seeing the output too.
 
+An entry belongs to a numbered footnote, written `"n": 14`, or to the running text, written
+`"n": "body"` with the opening of its parenthesis quoted in `at`. A document may have no
+footnotes at all — Vogel & Vogel's reply is six pages of French with every citation in a
+parenthesis — and a key with nothing but numbered entries would then report every one of them
+lost and everything the pane read as unexpected, which is a document scoring zero while Ibid
+reads it correctly. The `at` quotes are matched against the spans the pane read by their words,
+and in the key's order, which is the document's: a document repeats the same parenthesis, and
+the words alone cannot say which occurrence an entry meant.
+
 A key written by one reader is one reading. Where a figure from it is going to be quoted, have
 a second marker check a sample of it blind, as `docs/ACCURACY.md` describes.
+
+## What the keys say so far
+
+Six documents, 753 citations read by hand. Reading the known lists is most of what they have to
+say, and the largest thing in them by far is one gap seen from two sides: a notice, a set of
+guidelines or a communication is cited by where it was published and not by any number of its
+own, an Official Journal reference is not read, and so the instrument is never reported and
+every short form the document then uses for it has nothing to resolve against. In competition
+practice the Commission's own notices are among the most-cited instruments there are.
+
+After that it is mostly the conversion rather than Ibid: footnotes merged into the one before
+them, footnotes reduced to their pinpoint with the authority lost out of the file altogether,
+body paragraphs numbered as list items and read as notes. Those are not defects to fix in
+detection — they are what a reviewer's own document will look like, which is the reason for
+testing against converted documents at all.

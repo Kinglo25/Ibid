@@ -29,9 +29,9 @@ Ibid is an EU-law Word add-in for lawyers. It identifies references in footnotes
 ## Development
 Run `npm run dev` from the repository root. This builds and starts the local resolver and Vite task-pane server. If port 4000 is occupied, use `IBID_API_PORT=4001 npm run dev` so both the API and Vite proxy use the same alternate port.
 
-Run `npm run verify` to lint, type-check the tests, run the 906 tests, and build. `addin/test/App.test.tsx` still hangs intermittently between tests (see HANDOFF.md); re-run when a verify stalls there.
+Run `npm run verify` to lint, type-check the tests, run the 925 tests, and build. `addin/test/App.test.tsx` still hangs intermittently between tests (see HANDOFF.md); re-run when a verify stalls there.
 
-`npm run answer-key` compares what the pane reports for a real document with an answer key of every citation in it, written from the published PDF without reference to Ibid's output — the 2026 draft merger guidelines so far, 478 footnotes and 624 citations. It fails on any citation shown at the wrong document or the wrong place, on any gap not already listed with a reason, and on any listed gap that has since been fixed. It sits outside `verify` because it needs the document in `samples/`, which is not in the repository.
+`npm run answer-key` compares what the pane reports for a real document with an answer key of every citation in it, written from the published PDF without reference to Ibid's output — six documents and 753 citations so far: the 2026 draft merger guidelines (478 footnotes, 624 citations) and five replies to the Commission's consultations — two law firms, a French firm writing in French, a lawyers' association and a fourth firm. It fails on any citation shown at the wrong document or the wrong place, on any gap not already listed with a reason, and on any listed gap that has since been fixed. It sits outside `verify` because it needs the documents: one is in `samples/`, which is not in the repository, and `npm run samples` fetches the other five from where the Commission publishes them and converts them with Word.
 
 Two more checks sit outside it because they need something else a unit test does not have. `npm run
 corpus` runs detection over real Commission decisions and Advocate General opinions and
