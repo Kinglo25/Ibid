@@ -53,9 +53,16 @@ curl -s https://ibid.onrender.com/api/health
 ```
 
 `{"status":"ok","commit":"…"}` — Render sets `RENDER_GIT_COMMIT` itself, and any other host can
-set `IBID_COMMIT` at build time. Compare it with `git rev-parse HEAD`. Where they differ, the
-deployment is behind: check that the service's branch is the one being pushed to and that
-auto-deploy is on, or deploy the latest commit by hand.
+set `IBID_COMMIT` at build time. Compare it with `git rev-parse HEAD`.
+
+Where they differ the deployment is behind, and a push is not what tells you: on 24 November
+2026 ten commits sat on `master` while the service went on serving a build from before them,
+answering healthily the whole time. Three things to look at, in this order — whether the
+service's **Auto-Deploy** is on, whether the branch it watches is the branch being pushed to,
+and whether the recent builds **failed**, because a failed build leaves the last good deploy
+running and that is indistinguishable from a deploy that never started. Render records none of
+this on the commit: there were no GitHub deployment records and no commit statuses either, so
+the service's own event log is the only place it shows.
 
 The pane's own bundle is content-hashed, so the same question can be asked of it without
 trusting any cache:
@@ -67,9 +74,11 @@ curl -s https://ibid.onrender.com/taskpane.html | grep -o 'main-[A-Za-z0-9_-]*\.
 That filename changes with every change to the pane, and `addin/dist/assets/` holds the one a
 local `npm run build` produces. Two different names mean two different builds.
 
-Desktop Word caches the pane's page as any browser would. After a redeploy to the same address,
-close and reopen the task pane, or restart Word; the bundle's hashed name means a stale copy of
-the code cannot survive a refetch of the HTML.
+After a redeploy to the same address, close and reopen the task pane. Nothing further is
+needed, and in particular none of the add-in cache clearing a *changed* address requires below:
+`taskpane.html` is served `cache-control: no-cache` (measured against the live service on 24
+November 2026), so Word refetches it on every load, and the bundle's hashed name means the new
+code comes with it. What has to happen is only that the page loads again at all.
 
 **A trial has a confidentiality choice in it that a deployment does not.** No text from the
 client's document ever reaches the server — that is structural, and `DATA-FLOW.md` is
