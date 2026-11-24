@@ -715,7 +715,7 @@ describe('following the cursor', () => {
     // Word answers the handler registration on its own schedule, which can land after the
     // document is read — so wait for the pane to say it is following before asserting what
     // following hides.
-    await screen.findByText(/Put your cursor on a citation/);
+    await screen.findByText(/Highlight a citation in your document/);
 
     absent(screen.queryByRole('heading', { name: 'Needs review' }));
     absent(screen.queryByRole('button', { name: /Show all/ }));
@@ -914,7 +914,7 @@ describe('following the cursor', () => {
     await screen.findByText('Footnote 1 context');
 
     word.putCursorOn(null);
-    await screen.findByText(/The cursor has left footnote 1/);
+    await screen.findByText(/The selection has left footnote 1/);
     assert.ok(screen.getByText('Footnote 1 context'), 'the source itself stays, so nothing is taken away');
   });
 });
@@ -1089,7 +1089,7 @@ describe('finding the footnote the cursor is actually in', () => {
     await screen.findByText('Footnote 1 context');
 
     word.selectTextOutsideFootnotes('Akzo Nobel');
-    await screen.findByText(/The cursor has left footnote 1/);
+    await screen.findByText(/The selection has left footnote 1/);
     assert.ok(screen.getByText('Footnote 1 context'), 'the source itself stays, so nothing is taken away');
   });
 

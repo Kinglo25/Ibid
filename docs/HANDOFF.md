@@ -1792,6 +1792,24 @@ text as well as the notes (`proseFromCellar`), CURIA's provisional-edition rendi
 is the only one a new opinion has, and the CURIA renditions it had skipped as wrapper pages
 (Akzo Nobel, and 2026 judgments whose only note is their language).
 
+### Known issue: in desktop Word only a highlighted selection reaches the pane
+
+Reported from a real sideloaded build on 2026-11-25: putting the caret on a citation, or
+clicking into the footnote at the foot of the page, opens nothing. Highlighting the citation
+works. `cursorLocation` has three routes and the third is the one answering here — "whatever
+text is actually selected, matched as a substring of a footnote", which needs a selection of at
+least `SUBSTRING_FLOOR` characters and so cannot fire for a collapsed caret at all. The first
+two, which are the ones that would answer a caret, are not firing on that build: route one
+wants the selection to *contain* the footnote, which clicking beside a reference mark may not
+do, and route two wants the selection's parent body to be the footnote's own body, which the
+comment above the function already records as varying by Word build.
+
+The pane's copy now says "Highlight a citation", because that is what works and the reviewer
+should not be told to do something that does nothing. **The copy is the honest description, not
+the fix.** Worth finding out which of the two caret routes fails and why, with the Word build
+number in hand; `addin/test/word-stub.ts` can be made to report a collapsed selection the way
+that build does, and the three routes are individually testable.
+
 ### Known issue: `addin/test/App.test.tsx` intermittently hangs
 
 Found while running `npm run verify` for the retrieval work above, and **not caused by

@@ -1405,7 +1405,7 @@ export default function App() {
         <p className="eyebrow">Ibid.</p>
         <h1>EU legal source review</h1>
         <p className="lede">{following
-          ? 'Put your cursor on a citation in your document and its source appears here.'
+          ? 'Highlight a citation in your document and its source appears here.'
           : 'Select a citation below to inspect its official source.'}</p>
       </header>
 
@@ -1426,24 +1426,24 @@ export default function App() {
 
         {selected && following && !panelFollowsCursor && <p className="muted">
           {selected.footnote.number
-            ? `The cursor has left footnote ${selected.footnote.number}.`
-            : 'The cursor has left the text this was read from.'} This is the last source opened,
-          not the citation the cursor is on now.
+            ? `The selection has left footnote ${selected.footnote.number}.`
+            : 'The selection has left the text this was read from.'} This is the last source opened,
+          not the citation now highlighted.
         </p>}
 
         {!selected && unidentified === 'unread' && <p className="error">
-          The cursor is in a footnote Ibid could not match to one it has read. Use Refresh if the
-          document has changed since the pane was opened.
+          The highlighted text is in a footnote Ibid could not match to one it has read. Use
+          Refresh if the document has changed since the pane was opened.
         </p>}
 
         {!selected && unidentified === 'duplicate' && <p className="error">
-          The cursor is in a footnote whose text other footnotes repeat, and they cite different
-          authorities, so Ibid cannot tell which one this is. Put the cursor on its number in the
-          text instead.
+          The highlighted text is in a footnote whose text other footnotes repeat, and they cite
+          different authorities, so Ibid cannot tell which one this is. Highlight its number in the
+          body text instead.
         </p>}
 
         {!selected && !unidentified && <p className="muted">{following
-          ? 'Put the cursor on a citation, or in the footnote holding it, and its source appears here.'
+          ? 'Highlight a citation, or any part of the footnote holding it, and its source appears here.'
           : 'Pick a citation from the list below.'}</p>}
 
         {/* The footnote under the cursor, with its citations as chips. Shown whenever it
