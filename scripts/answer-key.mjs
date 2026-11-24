@@ -244,7 +244,15 @@ function compress(numbers) {
 // ---------------------------------------------------------------------------------------------
 // Which reported citation is which authority in the key.
 
-const caseId = (value) => (value ?? '').toUpperCase().replace(/[\s‑–—]/g, '').replace(/-/g, '-').replace(/^(\d)/, 'C-$1');
+/**
+ * A case number, as one authority's. The appeal marker is dropped: `C-235/92 P` and `C-235/92`
+ * are the same document — an appeal takes its number from the same series and its CELEX is
+ * derived identically — and the City of London Law Society's reply cites Montecatini both ways,
+ * which was read as one authority missed and another reported that the key did not hold. `RENV`,
+ * `DEP`, `REV` and `OP` are kept, because those do name a different document: `T-286/09 RENV` is
+ * the 2022 judgment and `T-286/09` the 2014 one it replaced.
+ */
+const caseId = (value) => (value ?? '').toUpperCase().replace(/[\s‑–—]/g, '').replace(/^(\d)/, 'C-$1').replace(/P(?:\(R\))?$/, '');
 const decisionId = (value) => (value ?? '').replace(/^IV\//, '').replace(/[:\s]/g, (c) => (c === ':' ? '.' : '')).replace(/\.{2,}/g, '.');
 const ecliId = (value) => (value ?? '').toUpperCase().replace(/^ECLI:/, '');
 
@@ -301,28 +309,68 @@ const identity = (entry) => {
 
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Where a key entry written against the running text sits, among the spans the pane read.
+ *
+ * A document may have no footnotes at all — Vogel & Vogel's reply to the Article 102
+ * consultation is six pages of French with every citation in a parenthesis — and then the
+ * numbered notes this aligns are empty and the run measures nothing while reporting that every
+ * citation was lost. Such an entry is written `"n": "body"` and quotes in `at` the opening of
+ * the parenthesis it sits in; it is matched against the spans by their words, because the
+ * conversion the pane reads and the PDF the key was written from do not punctuate alike.
+ */
+function spansForBodyEntries(entries, spans) {
+  const places = new Map();
+  let from = 0;
+  // In the key's order, which is the document's, and never going back: a document repeats the
+  // same parenthesis — Vogel's cites "Post Danmark C-209/10 ; Intel C-413/14 P" three times —
+  // and the words alone cannot say which of them an entry was written against. Entries quoting
+  // the same opening belong to the same span, since one parenthesis citing two cases is two
+  // entries.
+  for (const at of [...new Set(entries.map((entry) => entry.at).filter(Boolean))]) {
+    const wanted = tokens(at);
+    if (!wanted.size) continue;
+    let best;
+    for (let index = from; index < spans.length; index += 1) {
+      const share = coverage(wanted, tokens(spans[index].text));
+      if (share >= 0.7 && (!best || share > best.share)) best = { index, share };
+    }
+    if (!best) continue;
+    places.set(at, best.index);
+    from = best.index;
+  }
+  return places;
+}
+
 function check(key, published, pane) {
   const { noteOf, merged, notAFootnote } = align(published, pane);
   const outcomes = [];
   const add = (note, outcome, what, detail) => outcomes.push({ note, outcome, identity: what, ...(detail ? { detail } : {}) });
 
   const entries = key.filter((line) => 'n' in line);
-  const byPaneNote = new Map();
+  // The notes first, then the parenthesised spans of the running text, so a key entry written
+  // against either is checked by the same comparison.
+  const places = [...pane.notes, ...pane.inText];
+  const spanOf = spansForBodyEntries(entries.filter((entry) => entry.n === 'body'), pane.inText);
+  const byPlace = new Map();
   for (const entry of entries) {
-    const index = noteOf.get(entry.n);
+    const span = entry.n === 'body' ? spanOf.get(entry.at) : undefined;
+    const index = entry.n === 'body'
+      ? (span === undefined ? undefined : pane.notes.length + span)
+      : noteOf.get(entry.n);
     if (index === undefined) {
       if (entry.role !== 'incidental') add(String(entry.n), 'lost', identity(entry));
       continue;
     }
-    if (!byPaneNote.has(index)) byPaneNote.set(index, []);
-    byPaneNote.get(index).push(entry);
+    if (!byPlace.has(index)) byPlace.set(index, []);
+    byPlace.get(index).push(entry);
   }
   for (const number of merged) add(String(number), 'merged', `read as part of footnote ${[...noteOf].find(([n, i]) => i === noteOf.get(number) && n !== number)?.[0]}`);
   for (const index of notAFootnote) add('not a footnote', 'not-a-footnote', pane.notes[index].text.slice(0, 80));
 
-  for (const [index, noteEntries] of byPaneNote) {
-    const note = [...new Set(noteEntries.map((entry) => entry.n))].join('+');
-    const citations = pane.notes[index].citations;
+  for (const [index, noteEntries] of byPlace) {
+    const note = index >= pane.notes.length ? 'running text' : [...new Set(noteEntries.map((entry) => entry.n))].join('+');
+    const citations = places[index].citations;
     const claimed = new Set();
     // One authority cited twice in a note is one authority: its pinpoints are compared together.
     const groups = new Map();
@@ -381,7 +429,10 @@ function check(key, published, pane) {
       if (!claimed.has(at)) add(note, 'unexpected', `${citation.label}: ${citation.value}`, citation.status);
     });
   }
-  pane.inText.forEach((span) => span.citations.forEach((citation) => add('running text', 'unexpected', `${citation.label}: ${citation.value}`, `(${span.text.slice(0, 60)})`)));
+  pane.inText.forEach((span, at) => {
+    if (byPlace.has(pane.notes.length + at)) return;
+    span.citations.forEach((citation) => add('running text', 'unexpected', `${citation.label}: ${citation.value}`, `(${span.text.slice(0, 60)})`));
+  });
   return { outcomes, noteText: (number) => pane.notes[noteOf.get(Number(number))]?.text ?? '' };
 }
 

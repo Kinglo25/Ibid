@@ -135,13 +135,6 @@
    "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
-   "note": "48",
-   "outcome": "pinpoint-missing",
-   "identity": "32023R0914 Implementing Regulation (EU) 2023/914",
-   "detail": "article",
-   "reason": "\"Articles 3, 4 of Commission Implementing Regulation (EU) 2023/914\": the provision-before form needs \"of\" directly before the act, and \"Commission Implementing\" stands between"
-  },
-  {
    "note": "396",
    "outcome": "missed",
    "identity": "Horizontal Co-operation Guidelines",
@@ -162,24 +155,6 @@
    "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
-   "note": "3",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "4",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "6",
-   "outcome": "unresolved",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
    "note": "7",
    "outcome": "missed",
    "identity": "Horizontal Merger Guidelines",
@@ -194,65 +169,11 @@
    "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
   },
   {
-   "note": "11",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "12",
-   "outcome": "missed",
-   "identity": "TFEU art 173",
-   "reason": "\"(‘TFEU’), Article 173\": a Treaty article is read only in the \"Article N TFEU\" order"
-  },
-  {
    "note": "14",
    "outcome": "pinpoint-missing",
    "identity": "judgment C-413/06 P Impala",
    "detail": "paragraphs 48",
    "reason": "\"See also paragraph 48\" follows a quotation, and the pinpoint scan takes the first paragraph only"
-  },
-  {
-   "note": "15",
-   "outcome": "unresolved",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "16",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "17",
-   "outcome": "unresolved",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "21+22",
-   "outcome": "missed",
-   "identity": "TFEU art 3(1)(b)",
-   "reason": "\"Article 3(1)(b) of the TFEU\": the definite article, and a point after the paragraph, are not in the Treaty-article pattern"
-  },
-  {
-   "note": "21+22",
-   "outcome": "unresolved",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "23",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "37",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
    "note": "40",
@@ -290,28 +211,10 @@
   },
   {
    "note": "63",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "63",
    "outcome": "pinpoint-missing",
    "identity": "judgment C-376/20 P CK Telecoms",
    "detail": "paragraphs 71, 78",
    "reason": "\"(ibid., paragraph 71)\" inside the text of a footnote is not read as a back-reference"
-  },
-  {
-   "note": "65",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "66",
-   "outcome": "unresolved",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
    "note": "69",
@@ -334,12 +237,6 @@
    "identity": "judgment T-102/96 Gencor",
    "detail": "paragraphs 247-263",
    "reason": "the .docx itself reads \"paragraphs 247263\": the PDF breaks \"247- 263\" over a line and the conversion dropped the hyphen. Ibid reads what the reviewer's document says; retrieval should report the paragraph as not in the text"
-  },
-  {
-   "note": "79",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
    "note": "92",
@@ -442,24 +339,6 @@
    "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
   },
   {
-   "note": "179",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "180",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "183",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
    "note": "189",
    "outcome": "pinpoint-missing",
    "identity": "M.10506 Parker/Meggitt",
@@ -472,12 +351,6 @@
    "identity": "Notice on Simplified Procedure",
    "detail": "a notice, which detection does not read",
    "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "191",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
    "note": "192",
@@ -536,12 +409,6 @@
    "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
   },
   {
-   "note": "280+281",
-   "outcome": "missed",
-   "identity": "32022R1925 Digital Markets Act",
-   "reason": "\"(‘Digital Markets Act’)\" in footnote 278 sits after the Regulation's full title, more than 160 characters from the citation, so the term is never registered and \"Digital Markets Act, Article 2\" is not recognised"
-  },
-  {
    "note": "283+284",
    "outcome": "missed",
    "identity": "Market Definition Notice",
@@ -554,24 +421,6 @@
    "identity": "Market Definition Notice",
    "detail": "a notice, which detection does not read",
    "reason": "a Commission notice or set of guidelines: detection does not read notices at all"
-  },
-  {
-   "note": "352",
-   "outcome": "missed",
-   "identity": "M.11246 Rolex/Bucherer",
-   "reason": "the case number is written \"M:11246\", with a colon"
-  },
-  {
-   "note": "353",
-   "outcome": "missed",
-   "identity": "M.8948 Spirit/Asco",
-   "reason": "the case number is written \"M. 8948\", with a space"
-  },
-  {
-   "note": "365",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
    "note": "397",
@@ -623,18 +472,6 @@
    "reason": "neither an act, a case nor a notice (a staff working paper, DG COMP best practices, the EEA Agreement, a Bulletin supplement): out of what detection reads"
   },
   {
-   "note": "431",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "432",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
    "note": "432",
    "outcome": "missed",
    "identity": "M.12052 UniCredit/Banco BPM",
@@ -645,38 +482,6 @@
    "outcome": "missed",
    "identity": "M.5932 News Corp/BSkyB",
    "reason": "the footnote runs over a page break and the conversion left its remainder as a paragraph of the body, which is read neither as part of the note nor as running text"
-  },
-  {
-   "note": "433",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
-  },
-  {
-   "note": "440",
-   "outcome": "pinpoint-missing",
-   "identity": "32024R1083 European Media Freedom Act",
-   "detail": "article",
-   "reason": "\"Article 22 European Media Freedom Act\": an article written before a defined term, with no \"of\", is not attached to it"
-  },
-  {
-   "note": "466",
-   "outcome": "missed",
-   "identity": "TFEU arts 28-37, arts 49-55, arts 63-66",
-   "reason": "\"Articles 28-37 TFEU\": a range of Treaty articles is not read"
-  },
-  {
-   "note": "469+470",
-   "outcome": "pinpoint-missing",
-   "identity": "32024R1083 European Media Freedom Act",
-   "detail": "article",
-   "reason": "\"Article 22 European Media Freedom Act\": an article written before a defined term, with no \"of\", is not attached to it"
-  },
-  {
-   "note": "474+475",
-   "outcome": "missed",
-   "identity": "32004R0139 EUMR",
-   "reason": "\"EUMR\" is defined in the body text (paragraph 1, \"(‘EUMR’)\"), and detection registers short forms from notes only: \"EUMR, Article N\" yields nothing, and \"EUMR, recital N\" an unresolved short form"
   },
   {
    "note": "running text",
