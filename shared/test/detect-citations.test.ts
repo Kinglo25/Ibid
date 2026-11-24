@@ -131,6 +131,22 @@ describe('celexForCase (exported for direct testing)', () => {
   test('accepts a year exactly at the founding boundary', () => {
     assert.equal(celexForCase('C-1/52', { referenceYear: 2026 }), '61952CJ0001');
   });
+
+  test('derives the judgment given on a renvoi, not the one the appeal set aside', () => {
+    // CELLAR, 24 November 2026: 62009TJ0286 is EU:T:2014:547, the first Intel judgment;
+    // 62009TJ0286(01) is EU:T:2022:19, the judgment on the renvoi. The corpus found three
+    // RENV citations in the Commission's Antin decision derived to the annulled judgment.
+    assert.equal(celexForCase('T-286/09 RENV'), '62009TJ0286(01)');
+    assert.equal(celexForCase('T-286/09'), '62009TJ0286');
+    const [citation] = detectCitations('Judgment of 2 October 2024, Antin, T-624/15 RENV, EU:T:2024:659, paragraph 51.');
+    assert.equal(citation.celex, '62015TJ0624(01)');
+  });
+
+  test('derives nothing for proceedings filed among a decided case\'s own documents', () => {
+    assert.equal(celexForCase('T-286/09 RENV', { documentType: 'order' }), undefined);
+    assert.equal(celexForCase('T-79/12 DEP', { documentType: 'order' }), undefined);
+    assert.equal(celexForCase('C-1/12 REV'), undefined);
+  });
 });
 
 describe('CURIA document-type detection', () => {
@@ -225,6 +241,22 @@ describe('CURIA document-type detection', () => {
     const nordsee = citations.find((citation) => citation.value.includes('1982:107'));
     assert.equal(nordsee?.caseNumber, 'C-102/81', 'its own case number, never another citation\'s');
     assert.equal(nordsee?.celex, '61981CJ0102');
+  });
+
+  test('an ECLI does not swallow the case cited before it with no ECLI of its own', () => {
+    // COM(2026) 353, footnote 8, with Panellionios's ECLI mistyped "EU: C: 201: 567" and so no
+    // ECLI at all: every case number APVE's ECLI could see was marked as its own, and
+    // Panellionios was not reported. The two are separated by a pinpoint and a name, which is
+    // what makes them two authorities.
+    const citations = detectCitations('Judgment of 19 September 2013, Panellionios Szdesmos Viomichanion Metapoiisis Paknou, C-373/11, EU: C: 201: 567, paragraph 39, most recently recalled in Judgment of 14 November 2017, APVE and Others,  C‑671/15, EU:C:2017:860, paragraph 37.');
+    assert.deepEqual(citations.map((citation) => [citation.caseNumber, citation.pinpoint?.paragraphs]), [['C-373/11', [39]], ['C-671/15', [37]]]);
+  });
+
+  test('a joined group with its parties between its numbers stays one authority', () => {
+    // SWD(2026) 125, footnote 354.
+    const citations = detectCitations('Judgment of the Court of Justice of 19 September 2024 in Joined Cases C-555/22 P, United Kingdom and Others v Commission, C-556/22 P, ITV v Commission and Others and C-564/22 P, LSEGH (Luxembourg) and London Stock Exchange Group Holdings (Italy) v Commission and Others, ECLI:EU:C:2024:763.');
+    assert.equal(citations.length, 1);
+    assert.equal(citations[0].ecli, 'ECLI:EU:C:2024:763');
   });
 
   test('recognises "my Opinion in", the way an Advocate General cites their own', () => {
@@ -382,6 +414,35 @@ describe('pre-2015 regulations (number/year, marked by "No")', () => {
   });
 });
 
+describe('pre-2015 regulations with the bracket and no "No"', () => {
+  // The Commission's own reports write them so — "Council Regulations (EC) No 1/2003 and
+  // Commission Regulation (EC) 773/2004" (COM(2024) 394, footnote 13) — and so do most
+  // practitioners. The bracket dates the act, and with it the order of its numbers.
+  test('reads an (EC) regulation number first', () => {
+    assert.equal(find('Commission Regulation (EC) 773/2004 relating to the conduct of proceedings', 'Regulation (EC) 773/2004')?.celex, '32004R0773');
+    assert.equal(find('Council Regulation (EC) 1/2003, Article 7(1)', 'Regulation (EC) 1/2003')?.celex, '32003R0001');
+    assert.equal(find('règlement (CE) 1/2003, article 23', 'règlement (CE) 1/2003')?.celex, '32003R0001');
+  });
+
+  test('reads an (EC) regulation number first even where the number looks like a year', () => {
+    // The de minimis regulation of 2006. Without the bracket this stays unread — see "known
+    // detection gaps" — because nothing then says which number is the year.
+    assert.equal(find('Commission Regulation (EC) 1998/2006 on de minimis aid', 'Regulation (EC) 1998/2006')?.celex, '32006R1998');
+  });
+
+  test('reads an (EEC) regulation with a two-digit year', () => {
+    assert.equal(find('Council Regulation (EEC) 4064/89 on the control of concentrations', 'Regulation (EEC) 4064/89')?.celex, '31989R4064');
+  });
+
+  test('reads an (EU) regulation number first only for a year that convention could carry', () => {
+    assert.equal(find('Regulation (EU) 1308/2013 establishing a common organisation', 'Regulation (EU) 1308/2013')?.celex, '32013R1308');
+    // From 2015 the year leads; before 2009 there was no (EU) regulation to cite.
+    assert.equal(find('Regulation (EU) 2015/2120', 'Regulation (EU) 2015/2120')?.celex, '32015R2120');
+    assert.deepEqual(detectCitations('Regulation (EU) 999/2008'), []);
+    assert.deepEqual(detectCitations('Regulation (EU) 1/2015'), []);
+  });
+});
+
 /**
  * These remain unrecognised by design, so the boundary is visible rather than
  * implied.
@@ -515,6 +576,34 @@ describe('Commission competition case numbers', () => {
     // French abbreviation for "Monsieur" — must not collide with the merger
     // case format, which always has a digit immediately after the dot.
     assert.deepEqual(detectCitations('M. Dupont submitted observations.'), []);
+  });
+
+  test('reads a case number written with a space after the dot, as the register files it', () => {
+    // From the staff working document on the Commission's 2025 competition report
+    // (SWD(2026) 125), footnotes 240 and 285, and its 2026 evaluation of State aid rules for
+    // banks (SWD(2026) 85), footnote 206 — each read as no citation at all.
+    const [aid] = detectCitations('Case SA. 103901 – The Netherlands – Nationale Investeringsmodule Klimaatprojecten Industrie (NIKI).');
+    assert.equal(aid.value, 'SA. 103901');
+    assert.equal(aid.caseNumber, 'SA.103901');
+    assert.equal(aid.label, 'Commission State aid case');
+    const [merger] = detectCitations('Case M. 11807 – United Group/ Motor Oil (Hellas)/ Alpha Satellite TV.');
+    assert.equal(merger.caseNumber, 'M.11807');
+    assert.equal(merger.caseName, 'United Group/ Motor Oil');
+    assert.equal(detectCitations('SA. 35334 – Recapitalisation of the Cooperative Central Bank, Commission decision of 24 February 2014.')[0]?.caseNumber, 'SA.35334');
+    assert.deepEqual(detectCitations('Cases SA. 34572 – Greece; and SA.9398 – Italy.').map((c) => c.caseNumber ?? c.value), ['SA.34572', 'SA.9398']);
+  });
+
+  test('keeps the cited pinpoint of a spaced case number', () => {
+    const [citation] = detectCitations('Case M. 7932 – Dow/DuPont, paragraph 1975.');
+    assert.equal(citation.caseNumber, 'M.7932');
+    assert.deepEqual(citation.pinpoint?.paragraphs, [1975]);
+  });
+
+  test('does not read a company name ending a sentence as a spaced case number', () => {
+    // A short number is taken only after the word "Case", and none after a word.
+    assert.deepEqual(detectCitations('M. 2019 a présenté ses observations.'), []);
+    assert.deepEqual(detectCitations('Aid granted to Engie SA. 2019 saw a further increase.'), []);
+    assert.deepEqual(detectCitations('Carpatair SA. 12345 shares were transferred.'), []);
   });
 });
 
@@ -1102,6 +1191,17 @@ describe('Commission decisions, as the Commission writes them', () => {
     assert.equal(find('Regulation (EC) No 139/2004 (OJ L 24, 29.1.2004, p. 1), Article 2(3).', 'Regulation (EC) No 139/2004')?.locator?.start, 2);
     assert.equal(find('Regulation (EC) No 139/2004, Article 2(3) of that Regulation.', 'Regulation (EC) No 139/2004')?.locator?.start, 2);
   });
+
+  test('nor one its title names by another act\'s abbreviation', () => {
+    // COM(2024) 357, footnote 118: the Decision was opened at an Article 28(7) it does not have.
+    const decision = find('Commission Implementing Decision (EU) 2021/915 of 4 June 2021 on standard contractual clauses between controllers and processors under Article 28(7) GDPR and Article 29(7) GDPR (C/2021/3701).', 'Decision (EU) 2021/915');
+    assert.equal(decision?.celex, '32021D0915');
+    assert.equal(decision?.locator, undefined);
+    // An act's own article under its own abbreviation is still its pinpoint.
+    const dma = find('Regulation (EU) 2022/1925, Article 6(5) DMA.', 'Regulation (EU) 2022/1925')?.locator;
+    assert.equal(dma?.start, 6);
+    assert.equal(dma?.paragraph, 5);
+  });
 });
 
 describe('the Court of Justice\'s numbers from before 1989, as the Court writes them', () => {
@@ -1392,6 +1492,17 @@ describe('a recital or an article is never a judgment\'s', () => {
     assert.equal(ibid[0].status, 'unresolved_not_found');
   });
 
+  test('a party named before another act\'s article is not a citation at all', () => {
+    // SWD(2026) 123, footnote 93, after two footnotes citing Apple's actions against the
+    // Commission: "(Meta Article 5(2) of the DMA, Apple Article 5(4) of the DMA)" listed
+    // three "Apple" chips for the reviewer to resolve.
+    const [, list] = detectCitationsAcrossFootnotes([
+      'Case T-438/25, Apple v Commission, action brought on 7 July 2025.',
+      'Two were completed (Meta Article 5(2) of the DMA, Apple Article 5(4) of the DMA) and one is ongoing (Apple Article 6(4) DMA).',
+    ]);
+    assert.deepEqual(list, []);
+  });
+
   test('an act\'s recitals and articles still resolve', () => {
     const [, recital, article] = detectCitationsAcrossFootnotes(['Regulation (EU) 2016/679 (the "GDPR"), Article 17.', 'GDPR, recital 65.', 'Ibid., Article 18.']);
     assert.equal(recital[0].celex, '32016R0679');
@@ -1409,6 +1520,12 @@ describe('a case name whose parties carry their abbreviations', () => {
     const [citation] = detectCitations('Judgment of 21 December 2023, European Superleague Company SL v Fédération internationale de football association (FIFA), Union of European Football Associations (UEFA), C-333/21, EU:C:2023:1011, paragraph 202.');
     assert.ok(citation.caseName?.startsWith('European Superleague Company SL v Fédération internationale de football association'), citation.caseName);
     assert.ok(!citation.caseName?.endsWith(')') || citation.caseName.includes('('), citation.caseName);
+  });
+
+  test('is read whole where a party\'s own name holds brackets', () => {
+    // SWD(2026) 125, footnote 354; the judgment was titled "Italy) v Commission and Others".
+    const [citation] = detectCitations('Judgment of 19 September 2024, LSEGH (Luxembourg) and London Stock Exchange Group Holdings (Italy) v Commission and Others, C-564/22 P, EU:C:2024:763, paragraph 50.');
+    assert.equal(citation.caseName, 'LSEGH (Luxembourg) and London Stock Exchange Group Holdings (Italy) v Commission and Others');
   });
 });
 

@@ -942,9 +942,32 @@ function isSummaryPublication(html: string): boolean {
   return SUMMARY_PUBLICATION.test(html);
 }
 
+/**
+ * EUR-Lex's rendition of an older judgment whose grounds carry no paragraph numbers: a
+ * `<h2>Grounds</h2>` section, and its first paragraph not opening with one. Bodson (30/87) and
+ * Sandoz (C-277/87) are held so in English; the French of each numbers its grounds.
+ */
+function hasUnnumberedGrounds(html: string): boolean {
+  const grounds = /<h2>\s*Grounds\s*<\/h2>[\s\S]*?<p>\s*([^<]{0,12})/i.exec(html);
+  return grounds !== null && !/^\d/.test(grounds[1].trim());
+}
+
 const OPINION_HEADING = /\bOPINION OF (?:MR |MRS |MS )?ADVOCATE[\s-]GENERAL\b|\bCONCLUSIONS DE (?:L['’]|M\. L['’]|MME L['’])AVOCAT/;
 const ORDER_HEADING = /\bORDER OF THE (?:COURT|GENERAL COURT|PRESIDENT|VICE-PRESIDENT)\b|\bORDONNANCE (?:DU|DE LA)\b/;
 const JUDGMENT_HEADING = /\bJUDGMENT OF THE (?:COURT|GENERAL COURT)\b|\bARRÊT (?:DE LA COUR|DU TRIBUNAL)\b/;
+
+/**
+ * Where a heading's words first stand as a heading: not after an article or a preposition, as
+ * "WITH THE JUDGMENT OF THE COURT" or "BY ORDER OF THE PRESIDENT" do in a text set in capitals.
+ */
+function headingAt(text: string, pattern: RegExp): number | undefined {
+  const global = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
+  for (const match of text.matchAll(global)) {
+    const before = text.slice(Math.max(0, (match.index ?? 0) - 12), match.index);
+    if (!/\b(?:THE|A|AN|ITS|THIS|THAT|SAID|SUCH|BY|WITH|IN|OF|TO|LA|LE|L['’]|DU|UN|UNE|CET|CETTE|PAR)\s+$/i.test(before)) return match.index;
+  }
+  return undefined;
+}
 
 /**
  * The kind of document a CELLAR case-law text is, read from the heading it opens with:
@@ -958,9 +981,17 @@ const JUDGMENT_HEADING = /\bJUDGMENT OF THE (?:COURT|GENERAL COURT)\b|\bARRÊT (
  * those this says nothing rather than guessing.
  */
 export function documentTypeOf(html: string): 'judgment' | 'opinion' | 'order' | undefined {
+  // EUR-Lex's rendition of the older case law describes the document in its metadata —
+  // `<meta name="DC.description" content="Order of the Court of 17 January 1980. - Camera
+  // Care …">` — and its text is set in capitals throughout, so a heading's words turn up in
+  // running prose: Camera Care's order says "… TO COMPLY WITH THE JUDGMENT OF THE COURT OF
+  // JUSTICE", which was read as its heading and the order was announced as a judgment, the
+  // footnote's correct "Order of the Court" flagged as a mistake. The metadata says first.
+  const described = /<meta\s+name="DC\.description"\s+content="\s*(Judgment|Order|Opinion)\b/i.exec(html.slice(0, 5_000));
+  if (described) return described[1].toLowerCase() as 'judgment' | 'order' | 'opinion';
   const text = decodeHtml(html.slice(0, 200_000)).slice(0, 30_000);
   const found = ([['opinion', OPINION_HEADING], ['order', ORDER_HEADING], ['judgment', JUDGMENT_HEADING]] as const)
-    .map(([type, pattern]) => ({ type, at: pattern.exec(text)?.index }))
+    .map(([type, pattern]) => ({ type, at: headingAt(text, pattern) }))
     .filter((heading): heading is { type: 'judgment' | 'opinion' | 'order'; at: number } => heading.at !== undefined)
     .sort((a, b) => a.at - b.at);
   return found[0]?.type;
@@ -1361,8 +1392,11 @@ function locatorLabel(lookup: EuLookup): string | undefined {
  */
 const CELEX_SHAPE = /^[1-9]\d{4}[A-Z]{1,2}\d{3,4}(?:\(\d{2}\))?$/;
 
+// The brackets of a numbered CELEX — `62009TJ0286(01)`, the judgment on a renvoi — are left as
+// they are by `encodeURIComponent`, and CELLAR answers `404` to them written so: only
+// `62009TJ0286%2801%29` reaches the document (measured 24 November 2026).
 function cellarUrl(celex: string, baseUrl: string): string {
-  return `${baseUrl.replace(/\/$/, '')}/${encodeURIComponent(celex)}`;
+  return `${baseUrl.replace(/\/$/, '')}/${encodeURIComponent(celex).replace(/\(/g, '%28').replace(/\)/g, '%29')}`;
 }
 
 /**
@@ -2022,7 +2056,15 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     // labelled French, and translated where a translator is configured — rather than a
     // summary that does not contain it. Where the French has no such paragraph either, the
     // summary stands, labelled as what it is.
-    if (caseLaw?.passage === 'summary' && lookup.locator?.kind === 'point' && language !== 'fr' && preferredLanguages.includes('fr')) {
+    //
+    // The same where the English has the grounds but not their numbers. EUR-Lex holds some
+    // judgments of the late 1980s in English with every paragraph of the grounds unnumbered —
+    // Bodson (30/87) and Sandoz (C-277/87), measured live on 24 November 2026, of 32 classics
+    // of that era sampled — while the French of the same judgment numbers them, so "Bodson,
+    // paragraph 18" showed the judgment's opening. The French paragraph is shown instead, on
+    // the same terms as above. A paragraph the judgment does not have is in neither, and the
+    // opening stands.
+    if ((caseLaw?.passage === 'summary' || (caseLaw?.passage === 'opening' && hasUnnumberedGrounds(html))) && lookup.locator?.kind === 'point' && language !== 'fr' && preferredLanguages.includes('fr')) {
       const french = await loadCellarDocumentIn('fr', celex, lookup.ecli, lookup.alternativeCelexes).catch(() => undefined);
       const frenchLaw = french ? extractJudgmentPoint(french.html, lookup) : undefined;
       if (french && frenchLaw?.passage === 'cited') ({ html, language, verifiedAt, url, caseLaw } = { ...french, caseLaw: frenchLaw });

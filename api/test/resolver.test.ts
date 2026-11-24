@@ -132,6 +132,15 @@ describe('CURIA case-law text retrieval', () => {
     assert.ok(preview.excerpt.includes('Judgment text'));
   });
 
+  test('asks for a numbered CELEX with its brackets encoded, which is the only way CELLAR serves it', async () => {
+    // `62009TJ0286(01)`, the Intel judgment on the renvoi: CELLAR answers 404 to the brackets
+    // as written and 303 to `%2801%29`.
+    const { fetcher, calls } = stubFetcher([html('<p>Judgment on the renvoi.</p>')]);
+    const { resolver } = makeResolver({ fetcher });
+    await resolver.resolve(curiaJudgmentLookup({ value: 'T-286/09 RENV', caseNumber: 'T-286/09 RENV', celex: '62009TJ0286(01)' }));
+    assert.equal(calls[0].url, 'https://example.test/celex/62009TJ0286%2801%29');
+  });
+
   test('treats an absent documentType the same as "judgment"', async () => {
     const { fetcher, calls } = stubFetcher([html('<p>text</p>')]);
     const { resolver } = makeResolver({ fetcher });
@@ -1994,6 +2003,16 @@ describe('documentTypeOf', () => {
     assert.equal(documentTypeOf('<p>(see para. 52) JUDGMENT OF THE COURT</p><p>… ORDER OF THE COURT of 3 May …</p>'), 'judgment');
     assert.equal(documentTypeOf('<p>Judgment of the Court of 3 July 1991. AKZO Chemie BV v Commission</p>'), undefined);
   });
+
+  test('does not read a heading\'s words in a text set in capitals as its heading', () => {
+    // Camera Care (792/79 R, EU:C:1980:18), an order, as EUR-Lex holds it: capitals throughout,
+    // and "THE JUDGMENT OF THE COURT OF JUSTICE" in its grounds. It was announced as a judgment
+    // and the footnote's "Order of the Court" flagged as the mistake.
+    const order = '<html><head><meta name="DC.description" content="Order of the Court of 17 January 1980. - Camera Care Ltd v Commission of the European Communities."></head>'
+      + '<body><p>17 THE COMMISSION WOULD IN ANY EVENT BE REQUIRED TO TAKE THE NECESSARY MEASURES TO COMPLY WITH THE JUDGMENT OF THE COURT OF JUSTICE.</p></body></html>';
+    assert.equal(documentTypeOf(order), 'order');
+    assert.equal(documentTypeOf('<p>17 THE COMMISSION MUST COMPLY WITH THE JUDGMENT OF THE COURT OF JUSTICE.</p>'), undefined);
+  });
 });
 
 describe('EUR-Lex retry and backoff', () => {
@@ -3223,5 +3242,33 @@ describe('a judgment held in English only as a summary', () => {
     const [preview] = await resolver.resolve(curiaJudgmentLookup({ celex: '62007CJ0196', locator: { kind: 'point', start: 35 }, paragraphs: [35] }));
     assert.equal(preview.passage, 'summary');
     assert.ok(preview.fullTextUrl);
+  });
+});
+
+describe('a judgment whose English grounds are not numbered', () => {
+  // Bodson (30/87, EU:C:1988:225), as EUR-Lex holds it: the English grounds are paragraphs with
+  // no numbers at all, and the French of the same judgment numbers every one. "Bodson,
+  // paragraph 18" showed the English opening until the French was asked for.
+  const english = () => html('<html lang="EN"><head><meta name="DC.title" content="EUR-Lex - 61987J0030 - EN"></head><body><p>Judgment of the Court (Sixth Chamber) of 4 May 1988. - Corinne Bodson v SA Pompes funèbres des régions libérées.</p><a name="MO"/><h2>Grounds</h2><br/><em><p>By a judgment of 20 January 1987 the French Cour de Cassation referred questions.</p><p>Those questions arose in a dispute.</p><p>As the Commission rightly observed, Article 85 applies to agreements between undertakings.</p></em></body></html>');
+  const french = () => html('<html lang="FR"><head><meta name="DC.title" content="EUR-Lex - 61987J0030 - FR"></head><body><a name="MO"/><h2>Motifs de l&#39;arrêt</h2><br/><em><p>1 PAR ARRET DU 20 JANVIER 1987, LA COUR DE CASSATION A POSE DES QUESTIONS.</p><p>17 CES QUESTIONS ONT ETE SOULEVEES DANS UN LITIGE.</p><p>18 COMME LA COMMISSION L&#39;A OBSERVE A JUSTE TITRE, L&#39;ARTICLE 85 S&#39;APPLIQUE.</p><p>19 LA SUITE.</p></em></body></html>');
+  const lookup = (point: number) => curiaJudgmentLookup({ celex: '61987CJ0030', caseNumber: '30/87', value: '30/87', locator: { kind: 'point', start: point }, paragraphs: [point] });
+
+  test('is shown from the French, labelled French', async () => {
+    const { fetcher, calls } = stubFetcher([english(), french()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, maxRetries: 0 });
+    const [preview] = await resolver.resolve(lookup(18));
+    assert.equal(preview.passage, 'cited');
+    assert.equal(preview.language, 'fr');
+    assert.ok(preview.excerpt.includes('COMME LA COMMISSION'), preview.excerpt);
+    assert.ok(!preview.excerpt.includes('LA SUITE'), preview.excerpt);
+    assert.equal(calls.length, 2);
+  });
+
+  test('keeps the English opening where the French does not have the paragraph either', async () => {
+    const { fetcher } = stubFetcher([english(), french()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0, maxRetries: 0 });
+    const [preview] = await resolver.resolve(lookup(99));
+    assert.equal(preview.passage, 'opening');
+    assert.equal(preview.language, 'en');
   });
 });

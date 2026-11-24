@@ -365,6 +365,24 @@ describe('Layer 2 — declared short forms, in the quotation marks drafters use'
     assert.equal(citation.status, 'unresolved_not_found', 'flagged as a gap, never resolved to L’Oréal');
     assert.equal(citation.caseNumber, undefined);
   });
+
+  test('reads a name in brackets straight after the citation, with no quotation marks', () => {
+    // The Commission's second GDPR report (COM(2024) 357), footnotes 153 to 157: each later
+    // "Schrems II" was asked of the reviewer as a suggestion from the frequent-case table.
+    const footnotes = ['Case C-311/18, ECLI:EU:C:2020:559 (Schrems II).', 'Schrems II, point 93.', 'Schrems II, points 96 and 105.'];
+    const citation = only(at(footnotes, 2));
+    assert.equal(citation.status, 'resolved');
+    assert.equal(citation.resolutionMethod, 'explicit_alias');
+    assert.equal(citation.celex, '62018CJ0311');
+    assert.deepEqual(citation.pinpoint?.paragraphs, [96, 105]);
+  });
+
+  test('does not take a formation or a remark in brackets for a name', () => {
+    const formation = only(at(['Judgment of 13 May 2014, Google Spain, C-131/12, EU:C:2014:317 (Grand Chamber).', 'Grand Chamber, paragraph 5.'], 1));
+    assert.notEqual(formation.status, 'resolved');
+    const remark = at(['Case C-131/12, EU:C:2014:317 (Below).', 'Below, paragraph 5.'], 1);
+    assert.ok(remark.every((citation) => citation.status !== 'resolved'), remark.map((citation) => citation.value).join(' | '));
+  });
 });
 
 describe('Layer 3 — back-references (Ibid., Id., supra note n)', () => {

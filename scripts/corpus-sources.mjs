@@ -28,7 +28,8 @@ export async function fetchCellar(celex, { accept = 'application/xhtml+xml', lan
   for (const language of languages) {
     for (const format of accept === 'application/rdf+xml' ? [accept] : FORMATS) {
       // Over HTTPS only, as the resolver fetches: CELLAR redirects to a plain `http://` address.
-      const response = await fetchOverHttps(CELLAR + celex, {
+      // Brackets encoded, as the resolver asks: CELLAR answers 404 to `62009TJ0286(01)`.
+      const response = await fetchOverHttps(CELLAR + encodeURIComponent(celex).replace(/\(/g, '%28').replace(/\)/g, '%29'), {
         headers: { Accept: format, 'Accept-Language': language, 'User-Agent': USER_AGENT },
       });
       if (response.status === 404) continue;
@@ -58,7 +59,38 @@ export async function ecliOf(celex) {
 function isDocument(html) {
   if (/<!--\s*(?:CONVEX|fmx2xhtml)\b/i.test(html)) return true;
   if (/class="(?:coj-|note)/i.test(html)) return true;
+  if (CURIA_NOTE.test(html)) return true;
+  // CURIA's own rendition with no notes to anchor: a 2026 judgment whose only footnote is its
+  // language (IMI, C-258/23; Jelgavas, C-11/25) carries none of the marks above, and was
+  // skipped as a wrapper page. Its stylesheet is CURIA's, which no wrapper page links.
+  if (/<LINK\s+HREF="https:\/\/curia\.europa\.eu\/common\/css\/Style_/i.test(html)) return true;
+  // And the classic-era one, which names itself in the comment it opens with — Akzo Nobel
+  // (C-97/08 P): `<!--Filename : BDU@TRA-DOC-EN-ARRET-C-0097-2008-…-->`.
+  if (/<!--\s*Filename\s*:\s*[A-Z]*@?TRA-DOC-/i.test(html)) return true;
   return /<meta\s+name="DC\.title"\s+content="EUR-Lex\b/i.test(html);
+}
+
+/**
+ * A note in the rendition CURIA writes itself, which is what CELLAR serves for a document
+ * still in its provisional edition (`Édition provisoire`) — every opinion of the last few
+ * weeks, and the only rendition they have until the Formex one is made:
+ * `<P class="Cfootnotetext"><A HREF="#Footref2" NAME="Footnote2">2</A> Directive …</P>`.
+ * None of the classes the other readers look for appears in it, so the newest documents were
+ * skipped as wrapper pages — the part of the Court's output a reviewer is likeliest to cite
+ * and the corpus least likely to have seen.
+ */
+const CURIA_NOTE = /<A\s+HREF="#Footref\d+"\s+NAME="Footnote\d+"\s*>/i;
+
+function notesFromCuria(html) {
+  const notes = [];
+  // A note runs from its anchor to the rule CURIA draws under each one, or to the next note.
+  const pattern = /<A\s+HREF="#Footref(\d+)"\s+NAME="Footnote\d+"\s*>[\s\S]*?<\/A>([\s\S]*?)(?=<HR\b|<A\s+HREF="#Footref\d+"|<\/BODY>|$)/gi;
+  for (const match of html.matchAll(pattern)) {
+    // Kept at its own number, so a note the text refers to as 12 is the twelfth read.
+    // Tags dropped, not spaced: `n<SUP>o</SUP> 1308/2013` is `no 1308/2013` as Word shows it.
+    notes[Number(match[1]) - 1] = decodeEntities(match[2].replace(/<\/?P\b[^>]*>/gi, ' ').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+  }
+  return Array.from(notes, (note) => note ?? '');
 }
 
 /**
@@ -70,6 +102,7 @@ function isDocument(html) {
  */
 export function notesFromCellar(html) {
   if (!isDocument(html)) return undefined;
+  if (CURIA_NOTE.test(html)) return notesFromCuria(html);
   const notes = [];
   for (const match of html.matchAll(/<p class="(?:coj-|oj-)?note"[^>]*>([\s\S]*?)<\/p>/gi)) {
     // The Official Journal's own acts and decisions mark their notes `oj-note`, and read for the
@@ -93,6 +126,28 @@ export function notesFromCellar(html) {
     if (text) notes.push(text);
   }
   return notes.length ? notes : notesFromLegacy(html);
+}
+
+/**
+ * The running text of a CELLAR document, paragraph by paragraph, without its notes.
+ *
+ * The pane reads the citations a drafter writes into the running text in parentheses, and
+ * that is how the Court cites in its judgments: "(see judgment of 6 September 2017, Intel v
+ * Commission, C‑413/14 P, EU:C:2017:632, paragraph 138)". Reading notes alone, every judgment
+ * in the corpus contributed nothing — "1 notes, 0 citations" — and the citation form the
+ * Court uses most was never measured against what CELLAR says each identifier is.
+ */
+export function proseFromCellar(html, notes = []) {
+  let body = html;
+  const curiaNotes = body.search(CURIA_NOTE);
+  if (curiaNotes > 0) body = body.slice(0, curiaNotes);
+  body = body.replace(/<p class="(?:coj-|oj-)?note"[^>]*>[\s\S]*?<\/p>/gi, '');
+  // The pre-Formex rendition marks nothing, so its notes are body paragraphs too; dropped by
+  // their opening words, as the pane drops the notes it found in a converted document's body.
+  const openings = notes.map((note) => note.slice(0, 60)).filter((opening) => opening.length >= 20);
+  return [...body.matchAll(/<p[ >][\s\S]*?<\/p>/gi)]
+    .map((paragraph) => decodeEntities(paragraph[0].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim())
+    .filter((paragraph) => paragraph && !openings.some((opening) => paragraph.includes(opening)));
 }
 
 /**

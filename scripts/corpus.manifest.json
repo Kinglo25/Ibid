@@ -23,6 +23,16 @@
     { "id": "decision-carbonless-paper", "kind": "cellar", "celex": "32004D0337", "note": "386 notes, mostly file references — the ratio a real decision has." },
     { "id": "decision-deutsche-telekom", "kind": "cellar", "celex": "32003D0707" },
     { "id": "decision-deutsche-post", "kind": "cellar", "celex": "32001D0354" },
-    { "id": "decision-amino-acids", "kind": "cellar", "celex": "32001D0418" }
+    { "id": "decision-amino-acids", "kind": "cellar", "celex": "32001D0418" },
+
+    { "id": "judgment-booking-gc-2026", "kind": "cellar", "celex": "62023TJ1139", "note": "General Court, 2026, a merger prohibition. The Court cites in the running text, in parentheses, and is read as the pane reads it." },
+    { "id": "judgment-crown-2026", "kind": "cellar", "celex": "62024CJ0855", "note": "Cartel appeal, 2026." },
+    { "id": "judgment-imi-2026", "kind": "cellar", "celex": "62023CJ0258", "note": "Grand Chamber, 2026, Article 101 TFEU." },
+    { "id": "judgment-jelgavas-2026", "kind": "cellar", "celex": "62025CJ0011", "note": "Article 102 TFEU, 2026." },
+    { "id": "judgment-ryanair-klm-2026", "kind": "cellar", "celex": "62024CJ0266", "note": "State aid appeal, 2026." },
+    { "id": "ag-aroma-obst-2026", "kind": "cellar", "celex": "62025CC0592", "note": "November 2026, provisional edition: CURIA's own rendition, in French, the only one a new opinion has." },
+    { "id": "decision-real-madrid-2025", "kind": "cellar", "celex": "32025D2488", "note": "State aid, 2025, in the Official Journal." },
+    { "id": "decision-antin-2025", "kind": "cellar", "celex": "32025D1235", "note": "State aid, 2025: an arbitration award, and the Court's Achmea line." },
+    { "id": "decision-lng-lithuania-2026", "kind": "cellar", "celex": "32026D2114", "note": "State aid, 2026." }
   ]
 }

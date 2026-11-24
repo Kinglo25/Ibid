@@ -38,7 +38,8 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectCitationsAcrossFootnotes } from '../shared/dist/index.js';
-import { ecliOf, fetchCellar, notesFromCellar, notesFromDocx } from './corpus-sources.mjs';
+import { docxBody, ecliOf, fetchCellar, notesFromCellar, notesFromDocx, proseFromCellar } from './corpus-sources.mjs';
+import { parentheticalsInBody } from '../addin/src/ui/citation-view.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const cache = join(root, '.corpus-cache');
@@ -69,12 +70,17 @@ async function harvest(entry) {
   if (entry.kind === 'docx') {
     const path = join(root, entry.path);
     if (!existsSync(path)) return { skipped: 'file not present' };
-    return { notes: await notesFromDocx(path) };
+    const notes = await notesFromDocx(path);
+    // As `answer-key` reads it, and as the pane does: the body less the notes found in it.
+    const openings = notes.map((note) => note.slice(0, 60));
+    const prose = (await docxBody(path)).paragraphs.filter((paragraph) => !openings.some((opening) => paragraph.includes(opening)));
+    return { notes, prose };
   }
   const file = join(cache, `${entry.celex}.html`);
   if (existsSync(file)) {
-    const notes = notesFromCellar(await readFile(file, 'utf8'));
-    if (notes) return { notes, cached: true };
+    const html = await readFile(file, 'utf8');
+    const notes = notesFromCellar(html);
+    if (notes) return { notes, prose: proseFromCellar(html, notes), cached: true };
     return { skipped: 'what is cached is not the document; delete it and re-run' };
   }
   if (offline) return { skipped: 'not cached, and --offline was given' };
@@ -89,7 +95,7 @@ async function harvest(entry) {
   if (!notes) return { skipped: 'CELLAR answered with a wrapper page, not the document' };
   await mkdir(cache, { recursive: true });
   await writeFile(file, got.text);
-  return { notes, language: got.language };
+  return { notes, prose: proseFromCellar(got.text, notes), language: got.language };
 }
 
 /** Loose hits with no detected citation covering them. */
@@ -186,18 +192,23 @@ for (const entry of manifest.documents) {
   // A document read as holding nothing has no missed citations and no wrong sources, so it
   // passes every check here by having no content to fail one. That is how a whole era of
   // Commission decisions sat in this corpus scoring perfect recall over notes never read.
-  if (got.notes.length === 0) {
+  // The citations written into the running text, in parentheses, which is where a judgment
+  // makes all of its own. Read after the notes, as the pane reads them.
+  const inText = parentheticalsInBody(got.prose ?? []).map((span) => span.text);
+  if (got.notes.length === 0 && inText.length === 0) {
     report.documents.push({ id: entry.id, skipped: 'read as a document, but no notes came out of it' });
     console.log(`— ${entry.id}: skipped (no notes came out of it)`);
     continue;
   }
-  const detected = detectCitationsAcrossFootnotes(got.notes);
+  const texts = [...got.notes, ...inText];
+  const detected = detectCitationsAcrossFootnotes(texts);
   const citations = detected.flat();
-  const missed = missedIn(got.notes, detected);
+  const missed = missedIn(texts, detected);
   report.totals.notes += got.notes.length;
+  report.totals.inText = (report.totals.inText ?? 0) + inText.length;
   report.totals.citations += citations.length;
   report.totals.missed += missed.length;
-  const row = { id: entry.id, notes: got.notes.length, citations: citations.length, missed, wrongSource: [], unavailable: [] };
+  const row = { id: entry.id, notes: got.notes.length, inText: inText.length, citations: citations.length, missed, wrongSource: [], unavailable: [] };
 
   if (verify) {
     // One request per distinct identifier, not per citation: a document cites the same
@@ -223,13 +234,14 @@ for (const entry of manifest.documents) {
 
   report.documents.push(row);
   console.log(
-    `— ${entry.id}: ${got.notes.length} notes, ${citations.length} citations, ${missed.length} missed`
+    `— ${entry.id}: ${got.notes.length} notes, ${inText.length} in the text, ${citations.length} citations, ${missed.length} missed`
     + (verify ? `, ${row.wrongSource.length} wrong-source, ${row.unavailable.length} unavailable` : ''),
   );
 }
 
 console.log('\n=== corpus ===');
 console.log(`notes read        ${report.totals.notes}`);
+console.log(`in-text read      ${report.totals.inText ?? 0}`);
 console.log(`citations found   ${report.totals.citations}`);
 console.log(`candidate misses  ${report.totals.missed}`);
 if (verify) {

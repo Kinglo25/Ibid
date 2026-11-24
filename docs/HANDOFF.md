@@ -59,9 +59,9 @@ npm run verify   # lint → test type-check → tests → build
 ```
 
 - `npm run lint` passes with no errors or warnings across all three workspaces.
-- `npm run test` passes: 721 tests (311 detection and resolution, 256 resolver, document store and contract, 154 task pane). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
+- `npm run test` passes: 906 tests (414 detection and resolution, 331 resolver, document store and contract, 161 task pane — three of those skip where their sample document is not in the checkout). Note the pre-existing intermittent hang in `addin/test/App.test.tsx` recorded under "Known issue" below — re-run if a verify stalls.
 - `npm run answer-key` passes: the 2026 draft merger guidelines against their answer key (624 citations) — 0 at a wrong document, 4 at a wrong pinpoint each reading so in the .docx itself, and the other known gaps listed with reasons in `scripts/answer-keys/merger-guidelines-2026.known.json`. Outside `verify`: it needs the document, which is not in the repository.
-- `npm run corpus` passes: 21 documents, 17 read, 1,083 citations, 165 identifiers checked against CELLAR, 0 wrong-source. Outside `verify`: it needs the network.
+- `npm run corpus` passes: 30 documents, 29 read, 2,613 notes and 2,921 parentheses in the running text, 1,725 citations, 389 identifiers checked against CELLAR, 0 wrong-source (24 November 2026). Outside `verify`: it needs the network.
 - `npm run word-check` passes: the .docx reader and real Word agree on all 1,991 footnotes of the Intel decision, and on every other sample. Outside `verify`: it needs Word on Windows.
 - `npm run typecheck:test` passes (`tsconfig.test.json`, plus `addin/tsconfig.test.json`).
 - `npm run build` passes (shared TypeScript, API TypeScript, and Vite production build).
@@ -1734,6 +1734,63 @@ Worth keeping in mind when a citation shows no passage: three distinct causes no
 are told apart. The identifier names nothing CELLAR holds (`NO_SUCH_DOCUMENT`, one request);
 the document exists but no text rendition does, as here; or the text exists and the cited
 paragraph was never published in it.
+
+### Before the first outside trial — 2025–2026 documents, 24 November 2026
+
+Run through the trial server (`api/server.mjs` with `IBID_STATIC_DIR`, as `npm run trial`
+starts it) with the pane's own reading and its own lookups, against documents none of the
+earlier work had seen: nine Commission documents downloaded from CELLAR as the Word files
+the Commission wrote (reports and staff working documents on competition, State aid, the DMA
+and the GDPR, 2024–2026 — real Word footnotes, the closest public stand-in for a client
+memo), seven 2026 judgments, a November 2026 Advocate General's opinion, three 2025–2026
+State aid decisions, and 32 classic judgments of 1964–2010 by their famous paragraphs.
+
+What held: every pinpointed case-law citation in the seven judgments (152) opened at the
+cited paragraph; 30 of the 32 classics did; the corpus, now reading the running text too,
+found nothing at a wrong document once the RENV defect below was fixed.
+
+What was found, each now a test:
+
+- **A judgment on a renvoi was derived as the judgment the appeal set aside.** `T-219/10
+  RENV` gave `62010TJ0219`, the 2014 judgment; the RENV judgment is `62010TJ0219(01)`. Three
+  in the Antin decision, caught by the corpus as wrong-source. With an ECLI the resolver
+  already reached the right document; without one it would have shown the annulled judgment.
+  `celexForCase` now appends `(01)` for a RENV judgment, and derives nothing for DEP, REV
+  and OP, which are filed among the case's own documents in no stated order.
+- **No numbered CELEX had ever been retrievable.** CELLAR answers `404` to `62009TJ0286(01)`
+  and `303` to `62009TJ0286%2801%29`; `encodeURIComponent` leaves brackets alone. Fixed in
+  `cellarUrl`, and in the corpus harness, which had reported the three as unavailable.
+- **A case cited before another's ECLI vanished.** "Panellionios, C-373/11, paragraph 39,
+  most recently recalled in … APVE, C‑671/15, EU:C:2017:860, paragraph 37": every case
+  number APVE's ECLI could see was marked as its own. Only its own group is now.
+- **A false "this is a judgment" warning on older orders.** EUR-Lex sets pre-1990 texts in
+  capitals, and Camera Care's order says "THE JUDGMENT OF THE COURT OF JUSTICE" in its
+  grounds. `documentTypeOf` reads the document's own `DC.description` first, and skips a
+  heading's words after an article or a preposition.
+- **Older English judgments with unnumbered grounds.** Bodson (30/87): EUR-Lex holds the
+  English with no paragraph numbers and the French with them. The French paragraph is now
+  shown, labelled, as for a summary-only English. Sandoz (C-277/87) has no grounds in either
+  language and still shows its opening.
+- **Recognition gaps in the Commission's own drafting**: `SA. 103901` and `M. 11807` with a
+  space; `Regulation (EC) 773/2004` and `Regulation (EEC) 4064/89` with the bracket and no
+  "No" (the bracket dates the act, so the order of its numbers); an unquoted short form
+  declared in brackets after the identifier, `ECLI:EU:C:2020:559 (Schrems II)`, which had
+  left every later "Schrems II, point 93" to be confirmed by hand.
+- **Noise**: "Apple Article 5(4) of the DMA" offered three "Apple ?" chips, after a footnote
+  citing Apple's actions against the Commission; a party named before another act's article
+  is no citation. `Decision (EU) 2021/915 … under Article 28(7) GDPR` opened the decision at
+  the GDPR's article. A party name holding brackets, `LSEGH (Luxembourg) and London Stock
+  Exchange Group Holdings (Italy) v Commission`, was titled "Italy) v Commission and Others".
+
+Found and correct as it is: the Commission's SWD on its 2025 competition report cites
+Commission v Estonia as C-77/23 under the ECLI of C-577/23, and the pane says the document
+retrieved names another case number. State aid (`SA.`) cases link to the register, as
+documented; antitrust and merger cases reach the decision, Lundbeck at recital 726.
+
+The corpus harness now reads what the pane reads: the parenthesised citations of the running
+text as well as the notes (`proseFromCellar`), CURIA's provisional-edition rendition, which
+is the only one a new opinion has, and the CURIA renditions it had skipped as wrapper pages
+(Akzo Nobel, and 2026 judgments whose only note is their language).
 
 ### Known issue: `addin/test/App.test.tsx` intermittently hangs
 

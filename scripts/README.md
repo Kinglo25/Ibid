@@ -7,6 +7,12 @@
 Runs citation detection over real documents and reports what it gets wrong. It is not part
 of `npm test`: it needs the network and it takes minutes.
 
+It reads each document as the pane reads one: the notes, and then the citations written into
+the running text in parentheses — which is where the Court makes every citation in a
+judgment, "(see judgment of 6 September 2017, Intel v Commission, C‑413/14 P, EU:C:2017:632,
+paragraph 138)". Reading notes alone, each judgment in the corpus reported "1 notes, 0
+citations", and the form the Court cites in most was never checked against CELLAR.
+
 **It exits non-zero**, so it is a check and not a readout. Three ways to fail: a wrong source
 was found; it was asked to check identifiers and checked none; or every document was skipped.
 Two of those are failures to have measured anything, which is the reason they are failures —

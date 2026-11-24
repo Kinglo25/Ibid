@@ -29,7 +29,7 @@ Ibid is an EU-law Word add-in for lawyers. It identifies references in footnotes
 ## Development
 Run `npm run dev` from the repository root. This builds and starts the local resolver and Vite task-pane server. If port 4000 is occupied, use `IBID_API_PORT=4001 npm run dev` so both the API and Vite proxy use the same alternate port.
 
-Run `npm run verify` to lint, type-check the tests, run the 721 tests, and build. `addin/test/App.test.tsx` still hangs intermittently between tests (see HANDOFF.md); re-run when a verify stalls there.
+Run `npm run verify` to lint, type-check the tests, run the 906 tests, and build. `addin/test/App.test.tsx` still hangs intermittently between tests (see HANDOFF.md); re-run when a verify stalls there.
 
 `npm run answer-key` compares what the pane reports for a real document with an answer key of every citation in it, written from the published PDF without reference to Ibid's output — the 2026 draft merger guidelines so far, 478 footnotes and 624 citations. It fails on any citation shown at the wrong document or the wrong place, on any gap not already listed with a reason, and on any listed gap that has since been fixed. It sits outside `verify` because it needs the document in `samples/`, which is not in the repository.
 

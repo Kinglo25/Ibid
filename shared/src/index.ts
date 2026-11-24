@@ -478,7 +478,7 @@ function parseSectionPinpoint(own: string): CitationLocator | undefined {
  * sentence, `and Case …`, or the pinpoint.
  */
 function commissionCaseName(tail: string): string | undefined {
-  const match = /^(?:\s*[–—-]\s*|\s+)([^,;()\n]+?)(?=\s*(?:[,;()\n]|\.(?:\s|$)|$)|\s+(?:and|et)\s+(?:Cases?\b|(?:COMP\/)?(?:AT|SA|M)\.\d)|\s+(?:paragraphs?|paras?\.?|recitals?|points?|sections?|footnotes?|considérants?)\b)/i.exec(tail);
+  const match = /^(?:\s*[–—-]\s*|\s+)([^,;()\n]+?)(?=\s*(?:[,;()\n]|\.(?:\s|$)|$)|\s+(?:and|et)\s+(?:Cases?\b|(?:COMP\/)?(?:AT|SA|M)\.(?:\d|\s\d{5}))|\s+(?:paragraphs?|paras?\.?|recitals?|points?|sections?|footnotes?|considérants?)\b)/i.exec(tail);
   if (!match) return undefined;
   const dashed = /^\s*[–—-]/.test(tail);
   const name = match[1].trim().replace(/\.$/, '');
@@ -644,12 +644,26 @@ export function celexForCase(
 ): string | undefined {
   const match = new RegExp(`^${CASE_NUMBER_SOURCE}$`, 'i').exec(caseNumber.trim());
   if (!match) return undefined;
-  const [, court, number, twoDigitYear] = match;
+  const [, court, number, twoDigitYear, suffix] = match;
   const year = resolveTwoDigitYear(twoDigitYear, referenceYear);
   if (year < CURIA_FOUNDING_YEAR) return undefined;
   const sector = CELEX_SECTORS[(statedCourt ?? court).toUpperCase()]?.[documentType];
   if (!sector) return undefined;
-  return `6${year}${sector}${number.padStart(4, '0')}`;
+  const celex = `6${year}${sector}${number.padStart(4, '0')}`;
+  // A case sent back after an appeal keeps its number, and the judgment given on it is filed
+  // beside the first one with `(01)` after it: `T-286/09 RENV` is `62009TJ0286(01)`, and
+  // `62009TJ0286` is the 2014 judgment the Court of Justice set aside. Derived bare, every
+  // RENV judgment the Commission's Antin decision cites (T-219/10 RENV, T-399/11 RENV,
+  // T-624/15 RENV) named the judgment its own appeal had annulled — measured against
+  // CELLAR's declared ECLIs on 24 November 2026. A judgment only: anything else given on a
+  // renvoi is numbered among the case's other documents, and which one is not written down.
+  const kind = suffix?.toUpperCase();
+  if (kind === 'RENV') return documentType === 'judgment' ? `${celex}(01)` : undefined;
+  // Costs, revision and opposition are proceedings on a case already decided, under its
+  // number, and their documents are filed among its own the same way. No rule says where, so
+  // none is guessed: the ECLI, where the footnote gives one, or the CURIA link.
+  if (kind === 'DEP' || kind === 'REV' || kind === 'OP') return undefined;
+  return celex;
 }
 
 /** The court an ECLI names: `ECLI:EU:T:2024:431` is the General Court, whatever the prose says. */
@@ -874,7 +888,18 @@ function caseNameBefore(text: string, index: number, segmentStart: number): stri
     return !COURT_FORMATION.test(inner) && looksLikeCaseName(inner) && !/^[IVX]+$/.test(inner) ? inner : undefined;
   }
 
-  const previous = fragments[cursor - 1] ?? '';
+  // "LSEGH (Luxembourg) and London Stock Exchange Group Holdings (Italy) v Commission and
+  // Others, C-564/22 P": a party whose own name holds brackets is cut at each of them, and the
+  // last piece read alone titled the judgment "Italy) v Commission and Others". A piece closing
+  // a bracket it did not open is read back to where that bracket was opened.
+  const unmatched = (piece: string) => (piece.match(/\)/g)?.length ?? 0) - (piece.match(/\(/g)?.length ?? 0);
+  const raw = before.split(/[,;(]/);
+  const startOf = (at: number) => raw.slice(0, at).reduce((length, piece) => length + piece.length + 1, 0);
+  const end = startOf(cursor) + raw[cursor].length;
+  let first = cursor;
+  while (unmatched(before.slice(startOf(first), end)) > 0 && first > 0 && cursor - first < 6) first -= 1;
+  if (first < cursor && unmatched(before.slice(startOf(first), end)) === 0) fragments[cursor] = before.slice(startOf(first), end).trim();
+  const previous = fragments[first - 1] ?? '';
   // "Opinion of Advocate General Jääskinen of 25 June 2013 in Google Spain" — the whole
   // fragment is a document-type preamble, so it is rejected outright as a case name, but
   // what follows the "in" is the case. Without this an opinion carries no case name, and
@@ -1009,7 +1034,30 @@ function twoDigitActYear(value: string): string | undefined {
   return year >= 1958 && year <= 1998 ? String(year) : undefined;
 }
 
-function parseActNumbers(kind: string, hasSuffix: boolean, hasNo: boolean, first: string, second: string): { year: string; number: string } | undefined {
+/**
+ * The year of a regulation cited with its bracket but without the "No", where the bracket
+ * says its number came first; or nothing.
+ *
+ * A bracket dates a regulation even where the "No" that marks the number-first order is left
+ * out — `Regulation (EC) 1/2003`, `Commission Regulation (EC) 773/2004`, the Commission's own
+ * reports writing them so, and practitioners more often than not. `(EC)` and `(EEC)` ended with
+ * the Lisbon Treaty in 2009, so a regulation bracketed with either was numbered before its
+ * year, whatever the drafter left out: `(EC) 1998/2006` is the de minimis regulation of 2006,
+ * not a regulation of 1998. `(EU)` spans both conventions, so only a year it could still have
+ * carried number-first — 2009 to 2014 — is read second; from 2015 the year leads, and that is
+ * the reading below this one.
+ */
+function bracketedRegulationYear(bracket: string, second: string): string | undefined {
+  const eu = /^(?:EU|UE)$/i.test(bracket);
+  if (second.length === 4) {
+    const year = Number(second);
+    return year >= (eu ? 2009 : FIRST_ACT_YEAR) && year < (eu ? CURRENT_CONVENTION_FROM : 2010) ? second : undefined;
+  }
+  // `Regulation (EEC) 4064/89`: a two-digit year after an `(EEC)` regulation's number is its year.
+  return eu ? undefined : twoDigitActYear(second);
+}
+
+function parseActNumbers(kind: string, hasSuffix: boolean, hasNo: boolean, first: string, second: string, bracket?: string): { year: string; number: string } | undefined {
   const isYear = (value: string, from = FIRST_ACT_YEAR) =>
     value.length === 4 && Number(value) >= from && Number(value) <= new Date().getFullYear();
   if (hasSuffix && hasNo) return isYear(first) ? { year: first, number: second } : undefined;
@@ -1024,7 +1072,9 @@ function parseActNumbers(kind: string, hasSuffix: boolean, hasNo: boolean, first
     return old ? { year: old, number: first } : undefined;
   }
   const from = REGULATION_WORDS.test(kind) ? CURRENT_CONVENTION_FROM : FIRST_ACT_YEAR;
-  return isYear(first, from) ? { year: first, number: second } : undefined;
+  if (isYear(first, from)) return { year: first, number: second };
+  const dated = bracket && REGULATION_WORDS.test(kind) ? bracketedRegulationYear(bracket, second) : undefined;
+  return dated ? { year: dated, number: first } : undefined;
 }
 
 /** Detects EU legal references and attaches the official-source identifier where it can be derived safely. */
@@ -1167,10 +1217,21 @@ function namedInAnotherActsTitle(text: string, index: number, segmentStart: numb
 // Code" — and the letters are stepped over to reach the "of" that says whose it is.
 const PROVISION_OF_ANOTHER_INSTRUMENT = /^(?:\s*\([^()\s]{1,4}\))*(?:\s+[A-Z]{1,4}\b)?\s*(?:(?:of|de|du|des)\b(?!\s+(?:that|this|which|the\s+same|ce|cette|ledit|ladite)\b)|\[?(?:TFEU|TFUE|TEU|TUE|EC|EEC|CE|CEE|EEA|EEE)\]?(?![\p{L}]))/iu;
 
+// The same said with an act's abbreviation, where the title says the act was made under it:
+// `Commission Implementing Decision (EU) 2021/915 of 4 June 2021 on standard contractual
+// clauses … under Article 28(7) GDPR` (COM(2024) 357, footnote 118) opened the Decision at an
+// Article 28(7) it does not have. Only after `under` and its like, because `Regulation (EU)
+// 2016/679, Article 17 GDPR` is the act's own article under its own abbreviation.
+const UNDER_ANOTHER_ACT = /\b(?:under|pursuant\s+to|laid\s+down\s+in|referred\s+to\s+in|on\s+the\s+basis\s+of|in\s+accordance\s+with)\s*$/i;
+const ACT_ABBREVIATION = /^(?:\s*\([^()\s]{1,4}\))*\s+[A-Z][A-Z0-9]{1,5}(?![\p{L}\d])/u;
+
 function provisionOfAnotherInstrument(text: string, end: number, limit: number): boolean {
   const tail = text.slice(end, Math.min(limit, end + PINPOINT_SCAN_WINDOW));
   const match = PINPOINT_PATTERN.exec(tail);
-  return match !== null && PROVISION_OF_ANOTHER_INSTRUMENT.test(tail.slice((match.index ?? 0) + match[0].length));
+  if (match === null) return false;
+  const rest = tail.slice((match.index ?? 0) + match[0].length);
+  return PROVISION_OF_ANOTHER_INSTRUMENT.test(rest)
+    || (UNDER_ANOTHER_ACT.test(tail.slice(0, match.index ?? 0)) && ACT_ABBREVIATION.test(rest));
 }
 
 type NumberAt = { index: number; length: number; caseNumber: string };
@@ -1223,7 +1284,7 @@ function preGeneralCourtNumbers(scanned: string, ecliYear: number): NumberAt[] {
  */
 const DECISION_DATE = /\b(\d{1,2})(?:er)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December|janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[ûu]t|septembre|octobre|novembre|d[ée]cembre)\s+(\d{3,5})(?!\d)/gi;
 const DECISION_WORD_BEFORE = /\b(?:judgments?|orders?|opinions?|arr[êe]ts?|ordonnances?|conclusions|delivered|rendu(?:e|es)?)\b[^.;]{0,90}$/i;
-const OTHER_AUTHORITY_BETWEEN = /\b(?:ECLI:)?EU:[CT]:\d|\b(?:COMP\/)?(?:AT|SA|M)\.\d|\b(?:Directive|Regulation|Règlement|Decision|Décision)\b/i;
+const OTHER_AUTHORITY_BETWEEN = /\b(?:ECLI:)?EU:[CT]:\d|\b(?:COMP\/)?(?:AT|SA|M)\.(?:\d|\s\d{5})|\b(?:Directive|Regulation|Règlement|Decision|Décision)\b/i;
 
 function draftingProblems(before: string, ecli: string, caseNumber: string | undefined): DraftingProblem[] {
   const problems: DraftingProblem[] = [];
@@ -1372,7 +1433,6 @@ export function detectCitations(text: string): CitationMatch[] {
       caseMatches.push(...preGeneralCourtNumbers(scanned, Number(match[2])));
       caseMatches.sort((a, b) => a.index - b.index);
     }
-    for (const caseMatch of caseMatches) representedCaseNumbers.add(caseMatch.caseNumber);
     /*
      * Which of the case numbers before an ECLI is the one it belongs to.
      *
@@ -1398,6 +1458,20 @@ export function detectCitations(text: string): CitationMatch[] {
       lead -= 1;
     }
     const caseNumber = caseMatches[lead]?.caseNumber;
+    // Only the numbers this ECLI is the citation of are spoken for: its own group, and the
+    // same number written again earlier in the look-behind. A number before the group, with
+    // an authority's name or a pinpoint between, is a citation of its own — "Panellionios,
+    // C-373/11, paragraph 39, most recently recalled in … APVE and Others, C-671/15,
+    // EU:C:2017:860, paragraph 37" (COM(2026) 353, footnote 8) lost Panellionios outright,
+    // because every number the ECLI could see was marked as its own.
+    // Where the words "Joined Cases" open the look-behind, everything after them is the group,
+    // names between its numbers or not: "Joined Cases C-555/22 P, United Kingdom and Others v
+    // Commission, C-556/22 P, ITV v Commission and Others and C-564/22 P, LSEGH … v Commission
+    // and Others, ECLI:EU:C:2024:763" is one judgment (SWD(2026) 125, footnote 354).
+    const siblings = new Set(caseNumber ? [caseNumber, ...(joinedSiblings.get(caseNumber) ?? [])] : []);
+    caseMatches.forEach((caseMatch, position) => {
+      if (groupStart >= 0 || position >= lead || siblings.has(caseMatch.caseNumber)) representedCaseNumbers.add(caseMatch.caseNumber);
+    });
     const { documentType, stated } = documentTypeNear(text, index, match[0].length);
     const ecli = `ECLI:${match[0].toUpperCase().replace(/^ECLI:/, '')}`;
     const drafting = draftingProblems(before, ecli, caseNumber);
@@ -1461,12 +1535,12 @@ export function detectCitations(text: string): CitationMatch[] {
 
   for (const match of text.matchAll(new RegExp(String.raw`\b(${ACT_KEYWORDS})\s*(?:\((EU|EC|CE|EEC|EWG|UE|CEE)\)\s*)?(No\.?\s*)?(\d{1,4})\/(\d{1,4})(?:\/(EU|EC|CE|EEC|UE|CEE))?\b`, 'gi'))) {
     const index = match.index ?? 0;
-    const [, kind, , no, first, second, suffix] = match;
+    const [, kind, bracket, no, first, second, suffix] = match;
     // `Decision No 2064/86/ECSC` runs on into a suffix this pattern does not know, and the ECSC
     // numbered its acts under a sector of their own: read as a Community decision it would name
     // another document. Whatever continues past the numbers with a slash is left alone.
     if (text[index + match[0].length] === '/') continue;
-    const parsed = parseActNumbers(kind, Boolean(suffix), Boolean(no), first, second);
+    const parsed = parseActNumbers(kind, Boolean(suffix), Boolean(no), first, second, bracket);
     if (!parsed) continue;
     add({
       label: DIRECTIVE_WORDS.test(kind) ? 'EU directive' : REGULATION_WORDS.test(kind) ? 'EU regulation'
@@ -1533,8 +1607,24 @@ export function detectCitations(text: string): CitationMatch[] {
   const decisionDateFor = (index: number) => decisionDateBefore(text, index, segmentAt(segments, index).start);
 
   // M. (optionally "COMP/M.") is merger control.
-  for (const match of text.matchAll(/\b(?:COMP\/)?(AT|SA|M)\.(\d{3,6})\b/g)) {
+  //
+  // A space after the dot is the Commission's own habit too — `Case SA. 103901 – The
+  // Netherlands`, `Case M. 11807 – United Group/ Motor Oil`, five of them in the staff working
+  // document on its 2025 competition report — and each was read as no citation at all. Taken
+  // only where the number cannot be anything else: five or six digits, which no `SA` ending a
+  // company's name is followed by, or fewer after the word `Case` itself. The number is then
+  // carried in the register's own form, `SA.103901`, which is what the case is looked up by.
+  for (const match of text.matchAll(/\b(?:COMP\/)?(AT|SA|M)\.(\s?)(\d{3,6})\b/g)) {
     const index = match.index ?? 0;
+    const spaced = Boolean(match[2]);
+    if (spaced) {
+      const before = text.slice(Math.max(0, index - 12), index);
+      const afterCase = /\b(?:Cases?|affaires?)\s+$/i.test(before);
+      // Where a list or a note starts, never straight after a word: `Engie SA. 12345 …` is a
+      // company's name ending a sentence.
+      const opensCitation = afterCase || index === 0 || /(?:^|\b(?:and|et|see|See|cf\.)|[(;,:–—-])\s*$/.test(before);
+      if (!opensCitation || (match[3].length < 5 && !afterCase)) continue;
+    }
     const family = match[1] === 'AT' ? 'antitrust' : match[1] === 'SA' ? 'State aid' : 'merger';
     const caseName = commissionCaseName(text.slice(index + match[0].length, index + match[0].length + COMMISSION_NAME_WINDOW));
     const segment = segmentAt(segments, index);
@@ -1543,6 +1633,7 @@ export function detectCitations(text: string): CitationMatch[] {
     const section = parsed ? undefined : parseSectionPinpoint(own);
     add({
       label: `Commission ${family} case`, value: match[0], index, source: 'commission',
+      ...(spaced ? { caseNumber: `${match[1]}.${match[3]}` } : {}),
       ...(caseName ? { caseName } : {}),
       ...optionalDate(decisionDateFor(index)),
       ...(section ? { locator: section } : { locator: parsed?.locator, pinpoint: parsed?.pinpoint }),
@@ -1644,6 +1735,15 @@ function shortFormPattern(key: string): RegExp {
  */
 const DEFINED_TERM = /\(\s*(?:the\s+)?["“'‘]([^)]{1,80})["”'’]\s*\)/i;
 const DEFINED_TERM_SCAN_WINDOW = 160;
+
+/**
+ * A short form named in brackets straight after the citation, unquoted: `EU:C:2020:559
+ * (Schrems II).` A name only — a capital, no digits, nothing after the bracket but the end
+ * of the sentence or the clause — so "(Grand Chamber)", "(not yet published)" and
+ * "(OJ 2016 L 119, p. 1)" are left alone; `looksLikeCaseName` and the formation check refuse
+ * the rest.
+ */
+const UNQUOTED_NICKNAME = /^\s*,?\s*\(\s*([A-ZÀ-Þ][^()\d,;:«»"“”‘’]{1,40}?)\s*\)(?=\s*(?:[.,;:]|$))/u;
 const DEFINED_TERMS = new RegExp(DEFINED_TERM.source, 'gi');
 
 /**
@@ -2306,9 +2406,15 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[])
       // A worded definition can close the citation's bracket past a semicolon — "(C‑49/07,
       // EU:C:2008:376, paragraphs 51 and 52; ‘the judgment in MOTOE’)" — where the segment
       // ends; the nearest-citation rule below still keeps it from reaching another's term.
-      let parenthetical: RegExpExecArray | null = bracketed
+      // Or named in a bracket of its own straight after the identifier, with no quotation
+      // marks: "Case C-311/18, ECLI:EU:C:2020:559 (Schrems II)." and then "Schrems II, point
+      // 93" four times over (COM(2024) 357, footnotes 153 to 157), each one asked of the
+      // reviewer to confirm. Only where nothing else stands between, and only a name.
+      const nickname = bracketed ? null : UNQUOTED_NICKNAME.exec(after);
+      const named = nickname && looksLikeCaseName(nickname[1].trim()) && !COURT_FORMATION.test(nickname[1]) ? nickname : null;
+      let parenthetical: RegExpExecArray | null = bracketed ?? named
         ?? DEFINITION_CLAUSE.exec(text.slice(windowStart, Math.min(text.length, windowStart + reach)));
-      let worded = !bracketed && parenthetical !== null;
+      let worded = !bracketed && !named && parenthetical !== null;
       let start = windowStart + (parenthetical?.index ?? 0);
       // Or written just before it, inside the same bracket: "(6/72, ci-après l’« arrêt
       // Continental Can », EU:C:1973:22)" — the ECLI is the citation, and the term precedes it.
@@ -2441,6 +2547,9 @@ function pinpointKind(text: string, from: number, limit: number): 'recital' | 'a
   return /^(?:recital|consid)/i.test(word) ? 'recital' : 'article';
 }
 
+/** An article followed by what it is an article of: `Article 5(4) of the DMA`, `Article 6(5) DMA`, `Article 102 TFEU`. */
+const ARTICLE_OF_AN_INSTRUMENT = /^[\s,;:]*(?:at\s+)?(?:[Aa]rticles?|ARTICLES?|[Aa]rt\.)\s*\d+[a-z]?(?:\s*\(\s*\w{1,4}\s*\))*\s*(?:(?:of|de|du|des)\b|[A-Z]{2,6}\b)/u;
+
 /** Judgments, opinions and orders are numbered in paragraphs: a recital or an article is never theirs. */
 const onlyCourtDocuments = (citations: readonly { source: EuSource }[]) => citations.length > 0 && citations.every((citation) => citation.source === 'curia');
 
@@ -2514,6 +2623,12 @@ function resolveShortForms(
     // "Intel, recital 920": the name is a judgment's in this document, and a judgment has no
     // recitals, so the name cannot mean it here. Reported as unresolved, never as the judgment.
     const kind = pinpointKind(text, spanEnd + (cited?.length ?? 0), segment.end);
+    // "Apple Article 5(4) of the DMA", "Alphabet Article 6(5) DMA": the article is the act's,
+    // and the name is the party bound by it, not a short form of the Apple judgments the
+    // document cites elsewhere. SWD(2026) 123, footnote 93, offered three "Apple" chips for the
+    // reviewer to resolve. An article said to be another instrument's is no citation of a case.
+    if (kind === 'article' && onlyCourtDocuments(authorities.map((authority) => authority.citation))
+        && ARTICLE_OF_AN_INSTRUMENT.test(text.slice(spanEnd + (cited?.length ?? 0), segment.end))) continue;
     if (kind && onlyCourtDocuments(authorities.map((authority) => authority.citation))) {
       const parsed = parsePinpoint(text, spanEnd + (cited?.length ?? 0), segment.end);
       resolved.push({
