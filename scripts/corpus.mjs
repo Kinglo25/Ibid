@@ -201,7 +201,7 @@ for (const entry of manifest.documents) {
     continue;
   }
   const texts = [...got.notes, ...inText];
-  const detected = detectCitationsAcrossFootnotes(texts);
+  const detected = detectCitationsAcrossFootnotes(texts, { definitions: got.prose ?? [] });
   const citations = detected.flat();
   const missed = missedIn(texts, detected);
   report.totals.notes += got.notes.length;

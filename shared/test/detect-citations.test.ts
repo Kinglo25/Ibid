@@ -963,6 +963,83 @@ describe('detectCitationsAcrossFootnotes (explicitly defined short forms)', () =
     assert.deepEqual(second[0].locator, { kind: 'point', start: 45, paragraph: undefined, end: undefined });
   });
 
+  test('reads a short form the document defines in its running text, not in a note', () => {
+    // The 2026 draft merger guidelines open by defining the EUMR in their first paragraph and
+    // then cite "EUMR, Article 2" in 26 footnotes. Read from the notes alone, those came out as
+    // nothing at all where an article followed, and as an undefined short form where a recital
+    // did.
+    const prose = ['Council Regulation (EC) No 139/2004 of 20 January 2004 on the control of concentrations '
+      + 'between undertakings (\u2018EUMR\u2019) requires the Commission to appraise concentrations.'];
+    const notes = ['EUMR, Article 2.', 'EUMR, recital 6.'];
+    assert.deepEqual(detectCitationsAcrossFootnotes(notes)[0], [], 'without the prose there is nothing to resolve against');
+
+    const [article, recital] = detectCitationsAcrossFootnotes(notes, { definitions: prose });
+    assert.equal(article[0].celex, '32004R0139');
+    assert.equal(article[0].status, 'resolved');
+    assert.deepEqual(article[0].locator, { kind: 'article', start: 2, paragraph: undefined, end: undefined });
+    assert.equal(recital[0].celex, '32004R0139');
+    assert.deepEqual(recital[0].locator, { kind: 'point', start: 6, paragraph: undefined, end: undefined });
+  });
+
+  test('prose defines a name, never a concept', () => {
+    // A quoted parenthesis in prose is as often a concept as a short form, and the guidelines on
+    // exclusionary abuses put one a sentence after citing the Treaty article it belongs to.
+    const prose = ['Article 102 TFEU prohibits abuse of a dominant position. An undertaking may '
+      + 'nonetheless rely on an (\u2018objective necessity defence\u2019) in such a case.'];
+    assert.deepEqual(detectCitationsAcrossFootnotes(['Objective necessity defence, paragraph 5.'], { definitions: prose })[0], []);
+    // Nor across a sentence, even where the term does read as a name.
+    const across = ['Regulation (EU) 2022/1925 lays down harmonised rules. The Commission applies the (\u2018DMA\u2019).'];
+    assert.deepEqual(detectCitationsAcrossFootnotes(['DMA, Article 6(5).'], { definitions: across })[0], []);
+  });
+
+  test('a short form takes the pinpoint beside it, never one further on in the sentence', () => {
+    // Both from the 2026 draft merger guidelines, and both wrong the other way round: a short
+    // form standing in a footnote's prose reached a pinpoint belonging to something else.
+    const prose = ['Council Regulation (EC) No 139/2004 (\u2018EUMR\u2019) applies.'];
+
+    // The article is the Treaty's; the footnote says so.
+    const [first] = detectCitationsAcrossFootnotes([
+      'The rules set out in the EUMR are among the competition rules referred to in Article 3(1)(b) '
+      + 'of the TFEU as necessary for the functioning of the internal market.',
+    ], { definitions: prose });
+    const regulation = first.find((citation) => citation.celex === '32004R0139');
+    assert.ok(regulation, 'the Regulation is still cited');
+    assert.equal(regulation.pinpoint, undefined, 'and carries no pinpoint of its own');
+    assert.ok(first.some((citation) => citation.celex === '12016E003'), 'the Treaty article is its own citation');
+
+    // The paragraph is the judgment's, reached through "ibid.".
+    const [second] = detectCitationsAcrossFootnotes([
+      'EUMR, recital 6, and Judgment of 13 July 2023, European Commission v CK Telecoms UK Investments Ltd, '
+      + 'C-376/20 P, EU:C:2023:561, paragraph 87. The EUMR contains neither positive nor negative presumptions '
+      + 'that a merger is compatible or incompatible with the internal market (ibid., paragraph 71).',
+    ], { definitions: prose });
+    const inProse = second.filter((citation) => citation.celex === '32004R0139');
+    assert.ok(inProse.length >= 1);
+    assert.deepEqual(inProse.at(-1)?.pinpoint?.paragraphs, undefined, 'the prose mention takes no paragraph');
+    // Beside the term it is still read, in either of the two ways it is written.
+    assert.deepEqual(detectCitationsAcrossFootnotes(['EUMR, Article 2.'], { definitions: prose })[0][0]?.locator,
+      { kind: 'article', start: 2, paragraph: undefined, end: undefined });
+    assert.deepEqual(detectCitationsAcrossFootnotes(['EUMR (Article 2).'], { definitions: prose })[0][0]?.locator,
+      { kind: 'article', start: 2, paragraph: undefined, end: undefined });
+  });
+
+  test('a note defining the same term again is the nearer definition', () => {
+    const prose = ['Regulation (EU) 2016/679 (\u2018the Regulation\u2019) applies.'];
+    const [, second] = detectCitationsAcrossFootnotes([
+      'Council Regulation (EC) No 139/2004 (\u2018the Regulation\u2019).',
+      'The Regulation, Article 2.',
+    ], { definitions: prose });
+    assert.equal(second[0].celex, '32004R0139');
+  });
+
+  test('nothing the prose itself cites is reported as a citation of the document', () => {
+    // Only short forms are taken from the body here. The citations written into the running
+    // text are the parenthesis reader's to report, and are listed by the pane separately.
+    const prose = ['The Court held otherwise in Case C-413/14 P Intel v Commission, EU:C:2017:632, paragraph 138.'];
+    assert.deepEqual(detectCitationsAcrossFootnotes([], { definitions: prose }), []);
+    assert.deepEqual(detectCitationsAcrossFootnotes(['See above.'], { definitions: prose })[0], []);
+  });
+
   test('resolves a later footnote that only uses a defined legislation acronym', () => {
     const [, second] = detectCitationsAcrossFootnotes([
       'Regulation (EU) 2022/1925 (the "DMA").',

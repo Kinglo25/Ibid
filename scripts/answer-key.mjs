@@ -86,7 +86,9 @@ async function paneReading(path) {
   const prose = paragraphs.filter((paragraph) => !openings.some((opening) => paragraph.includes(opening)));
   const inText = parentheticalsInBody(prose).map((span) => span.text);
   const texts = [...notes, ...inText];
-  const citations = reresolveBackReferences(getCitationContextsForFootnotes(texts));
+  // The prose goes in as the pane passes it, for the short forms the document defines there
+  // rather than in a note.
+  const citations = reresolveBackReferences(getCitationContextsForFootnotes(texts, 180, { definitions: prose }));
   return {
     wordFootnotes: Math.min(footnoteReferences, notes.length),
     notes: notes.map((text, index) => ({ text, citations: citations[index] })),

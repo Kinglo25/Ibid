@@ -1927,6 +1927,46 @@ function sentenceEnd(text: string, from: number, limit: number): number {
   return stop ? from + (stop.index ?? 0) + 1 : limit;
 }
 
+/**
+ * A pinpoint written beside a short form, and only there: "EUMR, Article 2", "Akzo Nobel,
+ * cited above, paragraph 40", "Intel, at para 138". Nothing may stand between the two but
+ * punctuation, a word saying where the full citation was, and "at".
+ *
+ * Read anywhere in the sentence instead — which is what a pinpoint after a full citation is,
+ * since a footnote that cites is almost all citation — a short form standing in ordinary prose
+ * collected a pinpoint belonging to something else. Both of these are the 2026 draft merger
+ * guidelines': "The rules set out in the EUMR are among the competition rules referred to in
+ * Article 3(1)(b) of the TFEU" gave the Regulation the Treaty's article, and "The EUMR contains
+ * neither positive nor negative presumptions … (ibid., paragraph 71)" gave it the paragraph of
+ * the judgment cited beside it. A footnote's prose is the one place a short form appears with
+ * no pinpoint of its own and plenty of other authorities' nearby.
+ *
+ * An opening bracket counts as punctuation, because a pinpoint is routinely written in one
+ * straight after the name: Rantos in Super League writes "Judgment in MOTOE (paragraphs 51 and
+ * 52)". It opens nothing up — in both footnotes above, words stand between the term and the
+ * pinpoint, not a bracket.
+ *
+ * Bare "para" is admitted here although `PINPOINT_KEYWORD` refuses it, for the reason
+ * `ADJACENT_BARE_PARA` admits it: directly after the term it cannot be the ordinary word.
+ */
+const PINPOINT_BESIDE_TERM = new RegExp(
+  String.raw`^[\s,;:(\[]*(?:(?:cited\s+(?:above|supra|in\s+(?:foot)?notes?\s+\d+(?:\s+above)?)|op\.\s*cit\.|loc\.\s*cit\.|supra(?:,?\s+(?:foot)?note\s+\d+)?)[\s,;:(\[]*)?(?:at\s+)?(?=(?:${PINPOINT_KEYWORD}|paras?\b)\s*\d)`,
+  'i',
+);
+
+/** The pinpoint a short form carries, where it carries one: beside it, or written before it. */
+function pinpointForShortForm(
+  text: string, spanStart: number, from: number, segment: { start: number; end: number }, actsOnly: boolean,
+): ParsedPinpoint | undefined {
+  const before = actsOnly
+    ? provisionBeforeTerm(text, spanStart, segment.start)
+    : paragraphsBeforeTerm(text, spanStart, segment.start);
+  if (before) return before;
+  const limit = sentenceEnd(text, from, segment.end);
+  const beside = PINPOINT_BESIDE_TERM.exec(text.slice(from, limit));
+  return beside ? parsePinpoint(text, from + beside[0].length, limit) : undefined;
+}
+
 function provisionBeforeTerm(text: string, index: number, floor: number): ParsedPinpoint | undefined {
   const head = text.slice(Math.max(floor, index - PINPOINT_BEFORE_WINDOW), index);
   return fromPinpointMatch(PROVISION_BEFORE_TERM.exec(head)) ?? frenchArticleBefore(head);
@@ -1967,6 +2007,65 @@ const SENTENCE_BREAK = /[.!?]["”’']?\s+(?=[A-Z“‘"'])/g;
  * Wrong in the safe direction when it is wrong. A term refused here is left undefined, and a
  * later use of it resolves to nothing rather than to a document.
  */
+/**
+ * A name, as against a concept: what a document's running text may be read to define.
+ *
+ * In prose a quoted parenthesis is as often a concept as a short form — the guidelines on
+ * exclusionary abuses define "(‘objective necessity defence’)" one sentence after citing
+ * Article 102 TFEU, and taken as a short form that became a name for the Treaty article. An
+ * instrument's short form is capitalised throughout or is an acronym: EUMR, Merger Regulation,
+ * Digital Markets Act.
+ */
+const INSTRUMENT_SHORT_FORM = /^(?:[A-Z]{2,10}|(?:[A-Z][\w’'-]*)(?:\s+(?:of|on|and|the|de|du|des|la)\s+[\w’'-]+|\s+[A-Z][\w’'-]*)*)$/u;
+
+/**
+ * The short forms a document's own text defines, for the footnotes to resolve against.
+ *
+ * A document routinely defines its most-cited act in its first paragraph rather than in a
+ * note: the Commission's 2026 draft merger guidelines open "Council Regulation (EC) No
+ * 139/2004 of 20 January 2004 on the control of concentrations between undertakings (‘EUMR’)
+ * requires …" and then cite "EUMR, Article 2" in 26 footnotes. Reading the notes alone, those
+ * came out as nothing at all where an article followed the term, and as a short form the
+ * document never defined where a recital did.
+ *
+ * Deliberately narrower than what a note's citation may declare. Only a quoted parenthesis
+ * directly after the citation is read, it may not cross a sentence, and it has to read as a
+ * name — a note is a citation and nearly everything in it is about that citation, while prose
+ * is prose, and a sentence allowed to name a later footnote's authority is a sentence allowed
+ * to decide what that footnote means. Nothing the text cites is reported from here, and no
+ * generated case-name variant is registered: a citation in the running text is the
+ * parenthesis reader's to report.
+ */
+function termsDefinedInProse(paragraphs: readonly string[]): Array<{ key: string; citation: RegisteredCitation }> {
+  const found: Array<{ key: string; citation: RegisteredCitation }> = [];
+  for (const text of paragraphs) {
+    if (!DEFINED_TERM.test(text)) continue;
+    const hardMatches = detectCitations(text);
+    const segments = citationSegments(text);
+    for (const citation of hardMatches) {
+      const registered = toRegistered(citation);
+      if (!identityOf(registered)) continue;
+      const windowStart = citation.index + citation.value.length;
+      const segment = segmentAt(segments, citation.index);
+      const reach = citation.source === 'eur-lex' ? ACT_DEFINED_TERM_WINDOW : DEFINED_TERM_SCAN_WINDOW;
+      const after = text.slice(windowStart, Math.min(segment.end, windowStart + reach));
+      const parenthetical = DEFINED_TERM.exec(after);
+      if (!parenthetical) continue;
+      const start = windowStart + (parenthetical.index ?? 0);
+      const term = parenthetical[1].trim();
+      // The nearest citation before the term owns it, as in a note; and the refusals a note's
+      // definition gets apply here too.
+      if (hardMatches.some((other) => other.index >= windowStart && other.index < start)) continue;
+      if (new RegExp(SENTENCE_BREAK.source).test(after.slice(0, parenthetical.index ?? 0))) continue;
+      if (!INSTRUMENT_SHORT_FORM.test(term)) continue;
+      if (UNDETECTED_INSTRUMENT_TERM.test(term)) continue;
+      if (citedWithinAnotherInstrument(text, citation, segment.start)) continue;
+      found.push({ key: term.toLowerCase(), citation: registered });
+    }
+  }
+  return found;
+}
+
 function citedWithinAnotherInstrument(text: string, citation: Pick<CitationMatch, 'index' | 'source'>, segmentStart: number): boolean {
   if (citation.source !== 'eur-lex') return false;
   const before = text.slice(segmentStart, citation.index);
@@ -2438,9 +2537,23 @@ function withoutOverlaps(spans: ShortFormSpan[]): ShortFormSpan[] {
  * A registry entry is only available to footnotes *after* the one that defines it, so a
  * definition is never matched back against its own parenthetical.
  */
-export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[]): CitationMatch[][] {
+export type AcrossFootnotesOptions = {
+  /**
+   * The document's body paragraphs, read only for the short forms they define. See
+   * `termsDefinedInProse`, which says what is taken from them and what is not.
+   */
+  definitions?: readonly string[];
+};
+
+export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[], options: AcrossFootnotesOptions = {}): CitationMatch[][] {
   const registry: RegistryEntry[] = [];
   let order = 0;
+  // Registered before the first note, so a term a note defines again is the nearer definition
+  // and wins, and so a term is available to every note rather than only to later ones.
+  for (const { key, citation } of termsDefinedInProse(options.definitions ?? [])) {
+    if (registry.some((entry) => entry.key === key && sameAuthority(entry.citation, citation))) continue;
+    registry.push({ key, method: 'explicit_alias', order: order++, citation });
+  }
   /**
    * What each footnote established, indexed by its position. Back-references are numbered
    * against this: `footnoteTexts` is the document's own footnote order, so position `i`
@@ -2721,8 +2834,7 @@ function resolveShortForms(
     if (authorities.some((authority) => hardMatches.some((citation) => sameAuthority(toRegistered(citation), authority.citation)))) continue;
 
     const actsOnly = authorities.every((authority) => authority.citation.source === 'eur-lex');
-    const parsed = (actsOnly ? provisionBeforeTerm(text, span.index, segment.start) : paragraphsBeforeTerm(text, span.index, segment.start))
-      ?? parsePinpoint(text, spanEnd + (cited?.length ?? 0), sentenceEnd(text, spanEnd, segment.end));
+    const parsed = pinpointForShortForm(text, span.index, spanEnd + (cited?.length ?? 0), segment, actsOnly);
     // "Intel v Commission, cited in footnote 2" where the document cites two Intels: the
     // footnote named is what the drafter used to say which, so it settles it — provided
     // that footnote is above this one and cites exactly one of them.
@@ -3146,6 +3258,8 @@ export function getCitationContexts(text: string, radius = 180): CitationContext
 }
 
 /** Document-level counterpart of `getCitationContexts` — see `detectCitationsAcrossFootnotes`. */
-export function getCitationContextsForFootnotes(footnoteTexts: readonly string[], radius = 180): CitationContext[][] {
-  return detectCitationsAcrossFootnotes(footnoteTexts).map((matches, i) => toContexts(matches, footnoteTexts[i], radius));
+export function getCitationContextsForFootnotes(
+  footnoteTexts: readonly string[], radius = 180, options: AcrossFootnotesOptions = {},
+): CitationContext[][] {
+  return detectCitationsAcrossFootnotes(footnoteTexts, options).map((matches, i) => toContexts(matches, footnoteTexts[i], radius));
 }

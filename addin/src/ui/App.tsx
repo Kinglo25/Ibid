@@ -191,7 +191,7 @@ async function notesInBody(
   }
 }
 
-async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
+async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[]; definitions: string[] }> {
   return Word.run(async (context) => {
     const body = context.document.body;
     const footnotes = body.footnotes;
@@ -203,7 +203,12 @@ async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
 
     const inBody = await notesInBody(context, body);
     const bodyText = body.text.trim();
+    const prose = inBody?.prose ?? bodyProseLines(bodyText);
     return {
+      // The document's own prose, for the short forms it defines there rather than in a note.
+      // The same paragraphs the parenthesised citations are read out of, passed on unchanged;
+      // what is taken from them is `termsDefinedInProse`'s decision, not the pane's.
+      definitions: prose,
       footnotes: [
         // Every footnote, empties included: numbering is what back-references count on, and
         // dropping one here shifts every footnote after it. See `toReviewFootnotes`.
@@ -221,7 +226,7 @@ async function readWordDocument(): Promise<{ footnotes: ReviewFootnote[] }> {
         // Citations the drafter wrote into the running text. Appended after the notes, and
         // for the same reason they are: these carry no number of their own, so they can only
         // ever sit past the end of the numbering rather than anywhere inside it.
-        ...parentheticalsInBody(inBody?.prose ?? bodyProseLines(bodyText)),
+        ...parentheticalsInBody(prose),
       ],
     };
   });
@@ -881,6 +886,8 @@ function UnresolvedReview({ citation, authorities, onConfirm }: {
 
 export default function App() {
   const [footnotes, setFootnotes] = useState<ReviewFootnote[]>([]);
+  // The body paragraphs of the document now open, read only for the short forms they define.
+  const [definitions, setDefinitions] = useState<readonly string[]>([]);
   const [status, setStatus] = useState('Loading source material…');
   const [selected, setSelected] = useState<{ citation: CitationContext; footnote: ReviewFootnote } | null>(null);
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
@@ -927,6 +934,7 @@ export default function App() {
     const runtimeAvailable = await waitForWordRuntime();
     if (!runtimeAvailable) {
       setFootnotes(sampleFootnotes);
+      setDefinitions([]);
       setStatus('Browser preview: sample footnotes are shown. Open Ibid in Word to review your document.');
       return;
     }
@@ -936,6 +944,7 @@ export default function App() {
     try {
       const next = await readWordDocument();
       setFootnotes(next.footnotes);
+      setDefinitions(next.definitions);
       setStatus(next.footnotes.length
         ? `${next.footnotes.length} footnote${next.footnotes.length === 1 ? '' : 's'} ready for review.`
         : 'No footnotes found in this document.');
@@ -1174,8 +1183,8 @@ export default function App() {
   // detectCitationsAcrossFootnotes. Per-footnote detection alone cannot do this, since it
   // has no memory of what was cited earlier in the document.
   const detected = useMemo(
-    () => getCitationContextsForFootnotes(footnotes.map((footnote) => footnote.text)),
-    [footnotes],
+    () => getCitationContextsForFootnotes(footnotes.map((footnote) => footnote.text), 180, { definitions }),
+    [footnotes, definitions],
   );
 
   // Confirmations are applied on top of detection rather than fed back into it, so the
@@ -1269,14 +1278,18 @@ export default function App() {
    * form defined in some earlier footnote will not resolve here. That is the honest limit:
    * the passage is not in the document's footnote sequence, so there is no position from
    * which "the case cited above" means anything.
+   *
+   * A term the document's own text defines is not subject to that limit and is passed in: it
+   * is declared in the body rather than at a position in the numbering, so it holds wherever
+   * the passage sits, and "EUMR, Article 2" means the same thing here as in the list.
    */
   const strayFootnote = useMemo<ReviewFootnote | null>(
     () => (stray ? { id: 'selection', number: 0, text: stray } : null),
     [stray],
   );
   const strayCitations = useMemo(
-    () => (stray ? getCitationContextsForFootnotes([stray])[0] ?? [] : []),
-    [stray],
+    () => (stray ? getCitationContextsForFootnotes([stray], 180, { definitions })[0] ?? [] : []),
+    [stray, definitions],
   );
 
   const authorities = useMemo(() => citedAuthorities(detected), [detected]);
