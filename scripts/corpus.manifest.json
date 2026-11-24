@@ -1,38 +1,339 @@
 {
-  "documents": [
-    { "id": "data-retention-memo", "kind": "docx", "path": "samples/ibid-demo-docx/EU_Data_Retention_Memo.docx" },
-    { "id": "decision-intel-converted", "kind": "docx", "path": "samples/ibid-demo-docx/EC Decision - Intel (2009).docx", "note": "The document this was built against. Not in the repository; skipped where absent." },
-
-    { "id": "ag-achmea", "kind": "cellar", "celex": "62016CC0284", "note": "Footnote-dense, modern bare-ECLI style." },
-    { "id": "ag-google-spain", "kind": "cellar", "celex": "62012CC0131" },
-    { "id": "ag-schrems-ii", "kind": "cellar", "celex": "62018CC0311" },
-    { "id": "ag-wouters", "kind": "cellar", "celex": "61999CC0309", "note": "Pre-2012: cites by European Court Reports volume, not ECLI." },
-    { "id": "ag-intel", "kind": "cellar", "celex": "62014CC0413" },
-    { "id": "ag-digital-rights", "kind": "cellar", "celex": "62012CC0293" },
-
-    { "id": "judgment-achmea", "kind": "cellar", "celex": "62016CJ0284" },
-    { "id": "judgment-google-spain", "kind": "cellar", "celex": "62012CJ0131" },
-    { "id": "judgment-akzo-nobel", "kind": "cellar", "celex": "62008CJ0097" },
-    { "id": "judgment-wouters", "kind": "cellar", "celex": "61999CJ0309" },
-    { "id": "judgment-schrems-ii", "kind": "cellar", "celex": "62018CJ0311" },
-    { "id": "judgment-intel-gc", "kind": "cellar", "celex": "62009TJ0286", "note": "General Court, so the T sectors are exercised too." },
-    { "id": "judgment-hofner", "kind": "cellar", "celex": "61990CJ0041", "note": "1991: the text/html-only era." },
-
-    { "id": "decision-austrian-banks", "kind": "cellar", "celex": "32004D0138", "note": "Lombard Club. 542 notes, and the densest citer in the corpus." },
-    { "id": "decision-french-beef", "kind": "cellar", "celex": "32003D0600", "note": "Cites by ECR volume throughout: Case C-1/00 Commission v France [2001] ECR I-9989." },
-    { "id": "decision-carbonless-paper", "kind": "cellar", "celex": "32004D0337", "note": "386 notes, mostly file references — the ratio a real decision has." },
-    { "id": "decision-deutsche-telekom", "kind": "cellar", "celex": "32003D0707" },
-    { "id": "decision-deutsche-post", "kind": "cellar", "celex": "32001D0354" },
-    { "id": "decision-amino-acids", "kind": "cellar", "celex": "32001D0418" },
-
-    { "id": "judgment-booking-gc-2026", "kind": "cellar", "celex": "62023TJ1139", "note": "General Court, 2026, a merger prohibition. The Court cites in the running text, in parentheses, and is read as the pane reads it." },
-    { "id": "judgment-crown-2026", "kind": "cellar", "celex": "62024CJ0855", "note": "Cartel appeal, 2026." },
-    { "id": "judgment-imi-2026", "kind": "cellar", "celex": "62023CJ0258", "note": "Grand Chamber, 2026, Article 101 TFEU." },
-    { "id": "judgment-jelgavas-2026", "kind": "cellar", "celex": "62025CJ0011", "note": "Article 102 TFEU, 2026." },
-    { "id": "judgment-ryanair-klm-2026", "kind": "cellar", "celex": "62024CJ0266", "note": "State aid appeal, 2026." },
-    { "id": "ag-aroma-obst-2026", "kind": "cellar", "celex": "62025CC0592", "note": "November 2026, provisional edition: CURIA's own rendition, in French, the only one a new opinion has." },
-    { "id": "decision-real-madrid-2025", "kind": "cellar", "celex": "32025D2488", "note": "State aid, 2025, in the Official Journal." },
-    { "id": "decision-antin-2025", "kind": "cellar", "celex": "32025D1235", "note": "State aid, 2025: an arbitration award, and the Court's Achmea line." },
-    { "id": "decision-lng-lithuania-2026", "kind": "cellar", "celex": "32026D2114", "note": "State aid, 2026." }
-  ]
+ "documents": [
+  {
+   "id": "data-retention-memo",
+   "kind": "docx",
+   "path": "samples/ibid-demo-docx/EU_Data_Retention_Memo.docx"
+  },
+  {
+   "id": "decision-intel-converted",
+   "kind": "docx",
+   "path": "samples/ibid-demo-docx/EC Decision - Intel (2009).docx",
+   "note": "The document this was built against. Not in the repository; skipped where absent."
+  },
+  {
+   "id": "ag-achmea",
+   "kind": "cellar",
+   "celex": "62016CC0284",
+   "note": "Footnote-dense, modern bare-ECLI style."
+  },
+  {
+   "id": "ag-google-spain",
+   "kind": "cellar",
+   "celex": "62012CC0131"
+  },
+  {
+   "id": "ag-schrems-ii",
+   "kind": "cellar",
+   "celex": "62018CC0311"
+  },
+  {
+   "id": "ag-wouters",
+   "kind": "cellar",
+   "celex": "61999CC0309",
+   "note": "Pre-2012: cites by European Court Reports volume, not ECLI."
+  },
+  {
+   "id": "ag-intel",
+   "kind": "cellar",
+   "celex": "62014CC0413"
+  },
+  {
+   "id": "ag-digital-rights",
+   "kind": "cellar",
+   "celex": "62012CC0293"
+  },
+  {
+   "id": "judgment-achmea",
+   "kind": "cellar",
+   "celex": "62016CJ0284"
+  },
+  {
+   "id": "judgment-google-spain",
+   "kind": "cellar",
+   "celex": "62012CJ0131"
+  },
+  {
+   "id": "judgment-akzo-nobel",
+   "kind": "cellar",
+   "celex": "62008CJ0097"
+  },
+  {
+   "id": "judgment-wouters",
+   "kind": "cellar",
+   "celex": "61999CJ0309"
+  },
+  {
+   "id": "judgment-schrems-ii",
+   "kind": "cellar",
+   "celex": "62018CJ0311"
+  },
+  {
+   "id": "judgment-intel-gc",
+   "kind": "cellar",
+   "celex": "62009TJ0286",
+   "note": "General Court, so the T sectors are exercised too."
+  },
+  {
+   "id": "judgment-hofner",
+   "kind": "cellar",
+   "celex": "61990CJ0041",
+   "note": "1991: the text/html-only era."
+  },
+  {
+   "id": "decision-austrian-banks",
+   "kind": "cellar",
+   "celex": "32004D0138",
+   "note": "Lombard Club. 542 notes, and the densest citer in the corpus."
+  },
+  {
+   "id": "decision-french-beef",
+   "kind": "cellar",
+   "celex": "32003D0600",
+   "note": "Cites by ECR volume throughout: Case C-1/00 Commission v France [2001] ECR I-9989."
+  },
+  {
+   "id": "decision-carbonless-paper",
+   "kind": "cellar",
+   "celex": "32004D0337",
+   "note": "386 notes, mostly file references \u2014 the ratio a real decision has."
+  },
+  {
+   "id": "decision-deutsche-telekom",
+   "kind": "cellar",
+   "celex": "32003D0707"
+  },
+  {
+   "id": "decision-deutsche-post",
+   "kind": "cellar",
+   "celex": "32001D0354"
+  },
+  {
+   "id": "decision-amino-acids",
+   "kind": "cellar",
+   "celex": "32001D0418"
+  },
+  {
+   "id": "judgment-booking-gc-2026",
+   "kind": "cellar",
+   "celex": "62023TJ1139",
+   "note": "General Court, 2026, a merger prohibition. The Court cites in the running text, in parentheses, and is read as the pane reads it."
+  },
+  {
+   "id": "judgment-crown-2026",
+   "kind": "cellar",
+   "celex": "62024CJ0855",
+   "note": "Cartel appeal, 2026."
+  },
+  {
+   "id": "judgment-imi-2026",
+   "kind": "cellar",
+   "celex": "62023CJ0258",
+   "note": "Grand Chamber, 2026, Article 101 TFEU."
+  },
+  {
+   "id": "judgment-jelgavas-2026",
+   "kind": "cellar",
+   "celex": "62025CJ0011",
+   "note": "Article 102 TFEU, 2026."
+  },
+  {
+   "id": "judgment-ryanair-klm-2026",
+   "kind": "cellar",
+   "celex": "62024CJ0266",
+   "note": "State aid appeal, 2026."
+  },
+  {
+   "id": "ag-aroma-obst-2026",
+   "kind": "cellar",
+   "celex": "62025CC0592",
+   "note": "November 2026, provisional edition: CURIA's own rendition, in French, the only one a new opinion has."
+  },
+  {
+   "id": "decision-real-madrid-2025",
+   "kind": "cellar",
+   "celex": "32025D2488",
+   "note": "State aid, 2025, in the Official Journal."
+  },
+  {
+   "id": "decision-antin-2025",
+   "kind": "cellar",
+   "celex": "32025D1235",
+   "note": "State aid, 2025: an arbitration award, and the Court's Achmea line."
+  },
+  {
+   "id": "decision-lng-lithuania-2026",
+   "kind": "cellar",
+   "celex": "32026D2114",
+   "note": "State aid, 2026."
+  },
+  {
+   "id": "reply-baker-mckenzie-a102",
+   "kind": "docx",
+   "path": ".samples-cache/docx/baker-mckenzie-a102.docx",
+   "note": "Law firm's reply to the 2024 Article 102 consultation, 65 pages: the densest citer found, about 445 case numbers and 415 ECLIs. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-icla-a102",
+   "kind": "docx",
+   "path": ".samples-cache/docx/icla-a102.docx",
+   "note": "In-house lawyers' association: European Court Reports and pre-1989 case numbers. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-aapdc-a102",
+   "kind": "docx",
+   "path": ".samples-cache/docx/aapdc-a102.docx",
+   "note": "French competition lawyers writing in English, citing by case number with almost no ECLI. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-marinova-a102",
+   "kind": "docx",
+   "path": ".samples-cache/docx/marinova-a102.docx",
+   "note": "Academic, citing by European Court Reports volume. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-aba-a102",
+   "kind": "docx",
+   "path": ".samples-cache/docx/aba-a102.docx",
+   "note": "American lawyers writing about EU law: Id. and supra throughout. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-icle-a102",
+   "kind": "docx",
+   "path": ".samples-cache/docx/icle-a102.docx",
+   "note": "Think tank: 64 uses of ibid, id. or supra. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-afec-a102",
+   "kind": "docx",
+   "path": ".samples-cache/docx/afec-a102.docx",
+   "note": "French then English in one document. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-vogel-a102",
+   "kind": "docx",
+   "path": ".samples-cache/docx/vogel-a102.docx",
+   "note": "Law firm, in French. Word's conversion left it with no footnotes at all: every citation is in the running text. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-weck-a102",
+   "kind": "docx",
+   "path": ".samples-cache/docx/weck-a102.docx",
+   "note": "German, then English from page 20. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-rbb-merger-review",
+   "kind": "docx",
+   "path": ".samples-cache/docx/rbb-merger-review.docx",
+   "note": "Economic consultancy on the merger guidelines review, 60 pages: merger decisions and economics literature. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-us-chamber-merger-review",
+   "kind": "docx",
+   "path": ".samples-cache/docx/us-chamber-merger-review.docx",
+   "note": "Business association, 45 pages, 26 uses of id. or supra. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "reply-dci-merger-review",
+   "kind": "docx",
+   "path": ".samples-cache/docx/dci-merger-review.docx",
+   "note": "Academic on the merger guidelines review, 67 pages. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-bellis",
+   "kind": "docx",
+   "path": ".samples-cache/docx/bellis-ttber.docx",
+   "note": "Brussels competition lawyer, on the 2025 draft revised Technology Transfer Block Exemption Regulation. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-iba",
+   "kind": "docx",
+   "path": ".samples-cache/docx/iba-ttber.docx",
+   "note": "Bar association. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-icle",
+   "kind": "docx",
+   "path": ".samples-cache/docx/icle-ttber.docx",
+   "note": "Think tank: id. and supra throughout. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-brak",
+   "kind": "docx",
+   "path": ".samples-cache/docx/brak-ttber.docx",
+   "note": "German federal bar. Word's conversion left it with no footnotes: all citations are in the running text. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-eplit",
+   "kind": "docx",
+   "path": ".samples-cache/docx/eplit-ttber.docx",
+   "note": "European patent litigators. No footnotes after conversion either. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-colangelo",
+   "kind": "docx",
+   "path": ".samples-cache/docx/colangelo-ttber.docx",
+   "note": "Academic; three of its notes were left in the body by the conversion. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-fair-standards",
+   "kind": "docx",
+   "path": ".samples-cache/docx/fair-standards-alliance-ttber.docx",
+   "note": "Industry association on standard-essential patents. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-ip-europe",
+   "kind": "docx",
+   "path": ".samples-cache/docx/ip-europe-ttber.docx",
+   "note": "Industry association, the other side of the same argument. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-nokia",
+   "kind": "docx",
+   "path": ".samples-cache/docx/nokia-ttber.docx",
+   "note": "Licensor; six notes left in the body. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-ericsson",
+   "kind": "docx",
+   "path": ".samples-cache/docx/ericsson-ttber.docx",
+   "note": "Licensor. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-avanci",
+   "kind": "docx",
+   "path": ".samples-cache/docx/avanci-ttber.docx",
+   "note": "Licensing platform; seven notes left in the body. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-sisvel",
+   "kind": "docx",
+   "path": ".samples-cache/docx/sisvel-ttber.docx",
+   "note": "Licensing company. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-preiskel",
+   "kind": "docx",
+   "path": ".samples-cache/docx/preiskel-ttber.docx",
+   "note": "Law firm writing for a campaign group. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-access-advance",
+   "kind": "docx",
+   "path": ".samples-cache/docx/access-advance-ttber.docx",
+   "note": "Patent pool administrator, the longest reply: fourteen notes left in the body. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-itif",
+   "kind": "docx",
+   "path": ".samples-cache/docx/itif-ttber.docx",
+   "note": "Think tank. Fetched by `npm run samples`; not in the repository."
+  },
+  {
+   "id": "ttber-cncpi",
+   "kind": "docx",
+   "path": ".samples-cache/docx/cncpi-ttber.docx",
+   "note": "French, with a machine translation appended: one document in two languages, and no footnotes after conversion. Fetched by `npm run samples`; not in the repository."
+  }
+ ]
 }

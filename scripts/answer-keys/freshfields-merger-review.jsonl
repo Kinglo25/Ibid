@@ -1,0 +1,38 @@
+{"document": "freshfields-merger-review.docx", "source": "the published PDF (15 pages, 27 footnotes), text extracted with pdftotext -layout and read note by note", "scope": "every footnote, and the parentheses in the body that cite or name an authority (n 'body', 'at' quoting the parenthesis)", "built": "2026-09-17, by Claude, without reference to Ibid's output; case numbers and ECLIs checked against CELLAR", "rules": "as merger-guidelines-2026.jsonl. The consultation papers ('Topic B', 'Topic D') are what the document responds to and are 'incidental', as are Competition Policy and Merger Briefs, a UK CMA guidance note and the US Merger Guidelines, none of them a source of EU law, and an authority named in passing without a pinpoint."}
+{"n": 1, "k": "notice", "name": "Horizontal Merger Guidelines", "role": "incidental", "note": "'the current Horizontal and Non-Horizontal Merger Guidelines published in 2004 and 2008', named in a definition"}
+{"n": 1, "k": "notice", "name": "Non-Horizontal Merger Guidelines", "role": "incidental"}
+{"n": 2, "k": "notice", "name": "HMG", "oj": "C 31, 5.2.2004, p. 5", "pin": ["para 17", "para 18"], "note": "by title only, with no Official Journal reference; defines 'HMG'"}
+{"n": 3, "k": "notice", "name": "HMG", "via": "short", "ante": 2, "pin": ["para 14"]}
+{"n": 4, "k": "other", "name": "Consultation paper, Topic B", "role": "incidental", "pin": ["para 45"]}
+{"n": 5, "k": "other", "name": "Consultation paper, Topic B", "role": "incidental", "via": "ibid", "ante": 4, "pin": ["para 45"]}
+{"n": 6, "k": "judgment", "case": "T-79/12", "ecli": "EU:T:2013:635", "name": "Cisco Systems v Commission", "pin": ["para 48"]}
+{"n": 6, "k": "judgment", "case": "C-413/06 P", "ecli": "EU:C:2008:392", "name": "Bertelsmann and Sony Corporation of America v Impala", "pin": ["para 48"], "note": "written 'Case C-413/06 P, Bertelsmann Sony, [2008] EU:C:2008:392'"}
+{"n": 7, "k": "judgment", "case": "T-399/16", "ecli": "EU:T:2020:217", "name": "CK Telecoms UK Investments v Commission", "pin": ["para 118", "para 281"]}
+{"n": 8, "k": "other", "name": "Consultation paper, Topic B", "role": "incidental", "pin": ["para 35"]}
+{"n": 9, "k": "judgment", "case": "T-79/12", "ecli": "EU:T:2013:635", "name": "Cisco Systems v Commission", "pin": ["para 48"]}
+{"n": 9, "k": "judgment", "case": "C-413/06 P", "ecli": "EU:C:2008:392", "name": "Bertelsmann and Sony Corporation of America v Impala", "pin": ["para 48"]}
+{"n": 10, "k": "judgment", "case": "T-79/12", "ecli": "EU:T:2013:635", "name": "Cisco Systems v Commission", "via": "ibid", "ante": 9, "pin": ["para 48"], "note": "footnote 9 cites two authorities, and 'Ibid.' repeats both; the sentence says 'reaffirmed by the CJEU'"}
+{"n": 10, "k": "judgment", "case": "C-413/06 P", "ecli": "EU:C:2008:392", "name": "Bertelsmann and Sony Corporation of America v Impala", "via": "ibid", "ante": 9, "pin": ["para 48"]}
+{"n": 11, "k": "notice", "name": "Horizontal Cooperation Guidelines", "oj": "C 259, 21.7.2023, p. 1", "note": "'(2023/C 259/01)': the OJ notice number, not the page, and no date; defines 'Horizontal Cooperation Guidelines'; no pinpoint"}
+{"n": 11, "k": "treaty", "treaty": "TFEU", "role": "incidental", "pin": ["art 101"], "note": "inside the guidelines' title"}
+{"n": 12, "k": "other", "name": "Competition Merger Brief 2/2023", "role": "incidental"}
+{"n": 13, "k": "decision", "m": "M.6850", "written": {"m": "COMP/M.6850"}, "name": "Marine Harvest/Morpol", "note": "'decision of 30 September 2013'; no pinpoint"}
+{"n": 14, "k": "notice", "name": "Market Definition Notice", "oj": "C/2024/1645, 22.2.2024", "pin": ["para 15"], "note": "written 'C/2024/1645', with neither 'OJ' nor the date"}
+{"n": 15, "k": "other", "name": "Consultation paper, Topic D", "role": "incidental", "pin": ["footnote 61"]}
+{"n": 16, "k": "decision", "m": "M.8084", "written": {"m": "COMP/M.8084"}, "name": "Bayer/Monsanto", "pin": ["para 3020"], "note": "'decision of 29 May 2018'; the clearance decision is believed to be of 21 March 2018 (not verified)"}
+{"n": 17, "k": "judgment", "case": "T-79/12", "ecli": "EU:T:2013:635", "name": "Cisco v Commission", "pin": ["para 118"], "note": "followed by a quotation in a parenthesis"}
+{"n": 17, "k": "judgment", "case": "T-342/99", "ecli": "EU:T:2002:146", "name": "Airtours v Commission", "pin": ["para 58"], "note": "'[2002] ECR II-2585, para. 58', no ECLI"}
+{"n": 18, "k": "other", "name": "Competition Policy Brief 1/2024", "role": "incidental", "pin": ["page 5"]}
+{"n": 18, "k": "other", "name": "Competition Merger Brief 2/2023", "role": "incidental", "pin": ["page 2", "page 5"]}
+{"n": 19, "k": "notice", "name": "Horizontal Cooperation Guidelines", "oj": "C 259, 21.7.2023, p. 1", "pin": ["section 9.4.3.1", "section 9.4.3.2"], "note": "cited in full again, '(2023/C 259/01), sections 9.4.3.1. and 9.4.3.2.'"}
+{"n": 19, "k": "treaty", "treaty": "TFEU", "role": "incidental", "pin": ["art 101"], "note": "inside the guidelines' title"}
+{"n": 20, "k": "notice", "name": "Horizontal Cooperation Guidelines", "via": "short", "ante": 11, "pin": ["para 591"]}
+{"n": 21, "k": "decision", "m": "M.7932", "written": {"m": "COMP/M.7932"}, "name": "Dow/DuPont", "note": "'decision of 27 March 2017'; no pinpoint"}
+{"n": 22, "k": "notice", "name": "Horizontal Cooperation Guidelines", "via": "short", "ante": 11, "pin": ["para 562"]}
+{"n": 23, "k": "other", "name": "CMA Informal Guidance: WWF Basket", "role": "incidental"}
+{"n": 25, "k": "other", "name": "US Merger Guidelines (2023)", "role": "incidental", "pin": ["guideline 10"]}
+{"n": 26, "k": "notice", "name": "Market Definition Notice", "oj": "C/2024/1645, 22.2.2024", "note": "written 'C/2024/1645'; no pinpoint"}
+{"n": 27, "k": "other", "name": "Competition Policy Brief 1/2024", "role": "incidental"}
+{"n": "body", "at": "(e.g. closeness of competition in Sika/MBCC", "k": "other", "name": "Sika/MBCC; KPS Capital Partners/Real Alloy Europe", "role": "incidental", "note": "two merger decisions named in passing, without case numbers or pinpoints"}
+{"n": "body", "at": "(e.g. Dow/DuPont)", "k": "decision", "m": "M.7932", "name": "Dow/DuPont", "role": "incidental", "note": "named; footnote 21 gives the case number"}
+{"n": "body", "at": "(see paragraph 63 of the existing horizontal", "k": "notice", "name": "HMG", "via": "short", "ante": 2, "pin": ["para 63"], "note": "'(see paragraph 63 of the existing horizontal guidelines)': the document's own name for the HMG, not the short form it defined"}

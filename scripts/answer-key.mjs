@@ -62,6 +62,8 @@ import { docxBody, notesFromDocx } from './corpus-sources.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const keys = join(root, 'scripts', 'answer-keys');
 const samples = join(root, 'samples', 'ibid-demo-docx');
+// The public documents `npm run samples` fetches and converts. See scripts/samples.mjs.
+const fetched = join(root, '.samples-cache', 'docx');
 const writeKnown = process.argv.includes('--write-known');
 
 const MUST_BE_ZERO = new Set(['wrong-document', 'wrong-pinpoint']);
@@ -393,8 +395,8 @@ async function main() {
     const base = file.replace(/\.jsonl$/, '');
     const key = (await readFile(join(keys, file), 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line));
     const header = key[0];
-    const path = join(samples, header.document);
-    if (!existsSync(path)) {
+    const path = [join(samples, header.document), join(fetched, header.document)].find((candidate) => existsSync(candidate));
+    if (!path) {
       console.log(`${base}: skipped, ${header.document} is not in this checkout`);
       report.documents.push({ id: base, skipped: `${header.document} is not present` });
       continue;

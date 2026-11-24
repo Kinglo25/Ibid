@@ -1,0 +1,79 @@
+{"document": "city-of-london-law-society-a102.docx", "source": "the published PDF (15 pages, 62 footnotes), text extracted with pdftotext -layout and read note by note", "scope": "every footnote, and the one parenthesis in the body that cites an authority (paragraph 7); entries for the body have n 'body' and quote the parenthesis in 'at'", "built": "2026-09-17, by Claude, without reference to Ibid's output; case numbers and ECLIs checked against CELLAR", "rules": "as merger-guidelines-2026.jsonl. The document defines 'Guidance' in its first paragraph as the draft guidelines under consultation, and 'Enforcement Priority Guidelines' at footnote 1 as the 2009 Guidance on enforcement priorities; every 'Guidance, paragraph n' is the draft, which is what the document discusses rather than an authority it cites, and is 'incidental'. A citation inside a quotation, and an authority named without a pinpoint in passing, are 'incidental' too."}
+{"n": 1, "k": "notice", "name": "Enforcement Priority Guidelines", "oj": "C 45, 24.2.2009, p. 7", "note": "'Guidance on the Commission's enforcement priorities … published 24 February 2009 (2009/C 45/02)': the OJ notice number, not the page; the body defines 'Enforcement Priority Guidelines' at the footnote mark; no pinpoint"}
+{"n": 1, "k": "treaty", "treaty": "EC", "role": "incidental", "pin": ["art 82"], "note": "inside the Guidance's title"}
+{"n": "body", "at": "(as codified in Article 6(2) of the European Convention on Human Rights", "k": "other", "name": "European Convention on Human Rights", "pin": ["art 6(2)"]}
+{"n": "body", "at": "(as codified in Article 6(2) of the European Convention on Human Rights", "k": "treaty", "treaty": "Charter", "pin": ["art 48(1)"], "note": "'Article 48(1) of the Charter of Fundamental Rights of the European Union'"}
+{"n": 2, "k": "other", "name": "Engel v The Netherlands (ECtHR)", "note": "'(1976) 1 EHRR 647'"}
+{"n": 3, "k": "judgment", "case": "C-89/11 P", "ecli": "EU:C:2012:738", "name": "E.ON Energie v Commission", "pin": ["para 73"], "note": "written 'E.ON Energi v Commission (2012), C-89/11 P, paragraph 73'"}
+{"n": 3, "k": "judgment", "case": "C-199/92 P", "ecli": "EU:C:1999:358", "name": "Hüls v Commission", "pin": ["para 149", "para 150"], "note": "'(1999) ECR I‑4287, paragraphs 149 and 150'"}
+{"n": 3, "k": "judgment", "case": "C-235/92 P", "ecli": "EU:C:1999:362", "name": "Montecatini v Commission", "via": "short", "pin": ["para 175", "para 176"], "note": "'Montecatini v Commission, paragraphs 175 and 176', by name only; the case number comes after, in footnote 4"}
+{"n": 4, "k": "judgment", "case": "C-235/92 P", "written": {"case": "C-235/92"}, "ecli": "EU:C:1999:362", "name": "Montecatini v Commission", "note": "'Case C-235/92, judgement of 8 July 1999.' — no name, no 'P', no pinpoint; the body names 'Montecatini v Commission (1999)' at the mark"}
+{"n": 5, "k": "judgment", "case": "C-235/92 P", "ecli": "EU:C:1999:362", "name": "Montecatini v Commission", "via": "ibid", "ante": 4, "pin": ["para 176"]}
+{"n": 6, "k": "judgment", "case": "27/76", "written": {"case": "C-27/76"}, "ecli": "EU:C:1978:22", "name": "United Brands v Commission", "note": "a 1978 case written 'C-27/76'; no pinpoint; the note goes on to quote it without one"}
+{"n": 7, "k": "judgment", "case": "T-286/09 RENV", "ecli": "EU:T:2022:19", "name": "Intel v Commission (RENV)", "pin": ["para 161"]}
+{"n": 7, "k": "judgment", "case": "T-67/00", "joined": ["T-68/00", "T-71/00", "T-78/00"], "ecli": "EU:T:2004:221", "name": "JFE Engineering v Commission", "note": "'citing: T-67/00 and others'; no pinpoint"}
+{"n": 8, "k": "legislation", "celex": "32003R0001", "name": "Regulation 1/2003", "note": "no pinpoint in the note; the body writes 'Article 2 Regulation 1/2003' before the mark"}
+{"n": 8, "k": "treaty", "treaty": "EC", "role": "incidental", "pin": ["art 81", "art 82"], "note": "inside the Regulation's title"}
+{"n": 9, "k": "legislation", "celex": "32003R0001", "name": "Regulation 1/2003", "pin": ["art 2"], "note": "'Article 2, Regulation 1/2003 continues: …'"}
+{"n": 9, "k": "treaty", "treaty": "EC", "role": "incidental", "pin": ["art 81(3)"], "note": "inside the quotation of Article 2"}
+{"n": 10, "k": "judgment", "case": "C-48/22 P", "written": {"case": "C-48.22 P"}, "ecli": "EU:C:2024:726", "name": "Google Shopping 2024", "err": "case number written 'C-48.22 P'", "note": "'Google and Alphabet v Commission (Google Shopping 2024) 10 September 2024'; no pinpoint"}
+{"n": 11, "k": "judgment", "case": "C-48/22 P", "ecli": "EU:C:2024:726", "name": "Google Shopping 2024", "via": "ibid", "ante": 10, "pin": ["para 224"]}
+{"n": 12, "k": "judgment", "case": "C-413/14 P", "ecli": "EU:C:2017:632", "name": "Intel", "note": "'Case C-413/14 P.' alone; the body names 'Intel Corporation Inc. v European Commission (2017)' and defines 'Intel'"}
+{"n": 13, "k": "judgment", "case": "C-413/14 P", "ecli": "EU:C:2017:632", "name": "Intel", "via": "ibid", "ante": 12, "pin": ["para 139"]}
+{"n": 13, "k": "judgment", "case": "T-612/17", "ecli": "EU:T:2021:763", "name": "Google and Alphabet v Commission (Google Shopping 2021)", "pin": ["para 441"]}
+{"n": 14, "k": "judgment", "case": "C-413/14 P", "ecli": "EU:C:2017:632", "name": "Intel", "via": "ibid", "ante": 13, "pin": ["para 141"], "note": "footnote 13 cites Intel and then the General Court's Google Shopping; the body sentence is 'Intel also makes clear…', so this 'Ibid' is Intel and not the authority cited last"}
+{"n": 15, "k": "judgment", "case": "27/76", "written": {"case": "C-27/76"}, "ecli": "EU:C:1978:22", "name": "United Brands v Commission", "pin": ["para 65"]}
+{"n": 16, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 19"], "note": "'Guidance, paragraph 19.'"}
+{"n": 17, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 20"]}
+{"n": 18, "k": "notice", "name": "Market Definition Notice", "oj": "C/2024/1645, 22.2.2024", "pin": ["para 9"], "note": "cited by title only, with no Official Journal reference"}
+{"n": 19, "k": "judgment", "case": "6/72", "ecli": "EU:C:1973:22", "name": "Europemballage and Continental Can v Commission", "pin": ["para 32"], "note": "'Case 6/72 Continental Can at paragraph 32'"}
+{"n": 19, "k": "judgment", "case": "322/81", "ecli": "EU:C:1983:313", "name": "Michelin v Commission", "pin": ["para 57"]}
+{"n": 20, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 26"]}
+{"n": 21, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 30"]}
+{"n": 22, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 33"]}
+{"n": 23, "k": "decision", "m": "M.2072", "written": {"m": "COMP/M.2072"}, "name": "Philip Morris/Nabisco", "pin": ["para 25"], "note": "'Case COMP/M.2072, Phillip Morris/Nabisco, Commission decision of October 16, 2000, para. 25.;'"}
+{"n": 23, "k": "decision", "m": "M.2399", "written": {"m": "COMP/M.2399"}, "name": "Friesland Coberco/Nutricia", "pin": ["para 25"]}
+{"n": 24, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 28"]}
+{"n": 25, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 30"]}
+{"n": 26, "k": "judgment", "case": "T-68/89", "joined": ["T-77/89", "T-78/89"], "written": {"case": "T-68/69"}, "ecli": "EU:T:1992:38", "name": "Società Italiana Vetro v Commission", "pin": ["para 360"], "err": "case number written 'T-68/69'; Italian Flat Glass is T-68/89", "note": "'Cases T-68/69 etc Societa Italiano Vetro SpA v Commission (1992) II ECR 1403, (1992) 5 CMLR 302 at paragraph 360'"}
+{"n": 27, "k": "judgment", "case": "C-395/96 P", "joined": ["C-396/96 P"], "ecli": "EU:C:2000:132", "name": "Compagnie Maritime Belge", "pin": ["para 44"]}
+{"n": 28, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 44"]}
+{"n": 29, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia Mkt. Operations", "note": "'Case C-680/20 - Unilever Italia Mkt Operations.'; no pinpoint"}
+{"n": 30, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 49"], "note": "'In reference to paragraph 49 of the Guidance.'"}
+{"n": 31, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 55"]}
+{"n": 32, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 55(b)"]}
+{"n": 33, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 55(d)"]}
+{"n": 34, "k": "other", "name": "DG Competition discussion paper on exclusionary abuses (December 2005)", "note": "published by DG Competition, not in the Official Journal; no pinpoint"}
+{"n": 34, "k": "treaty", "treaty": "EC", "role": "incidental", "pin": ["art 82"], "note": "inside the discussion paper's title"}
+{"n": 35, "k": "other", "name": "DG Competition discussion paper on exclusionary abuses (December 2005)", "via": "ibid", "ante": 34, "pin": ["para 128"]}
+{"n": 36, "k": "other", "name": "DG Competition discussion paper on exclusionary abuses (December 2005)", "via": "ibid", "ante": 35, "pin": ["para 129"]}
+{"n": 37, "k": "judgment", "case": "C-413/14 P", "ecli": "EU:C:2017:632", "name": "Intel", "via": "short", "pin": ["paras 133-134"]}
+{"n": 38, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 60(b)"]}
+{"n": 39, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 60(b)"]}
+{"n": 40, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 59"]}
+{"n": 41, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 61"]}
+{"n": 42, "k": "notice", "name": "Enforcement Priority Guidelines", "via": "short", "ante": 1, "role": "incidental", "note": "'(in the Enforcement Priority Guidelines)', named in passing with no pinpoint"}
+{"n": 42, "k": "judgment", "case": "C-23/14", "ecli": "EU:C:2015:651", "name": "Post-Danmark II", "via": "short", "role": "incidental", "note": "named in passing with no pinpoint, and never cited in full in this document"}
+{"n": 42, "k": "judgment", "case": "C-48/22 P", "ecli": "EU:C:2024:726", "name": "Google Shopping 2024", "via": "short", "pin": ["para 87"]}
+{"n": 42, "k": "judgment", "case": "C-333/21", "ecli": "EU:C:2023:1011", "name": "European Superleague Company", "role": "incidental", "pin": ["para 124"], "note": "inside the quotation of Google Shopping 2024, paragraph 87"}
+{"n": 43, "k": "judgment", "case": "T-814/17", "ecli": "EU:T:2020:545", "name": "Lietuvos geležinkeliai v Commission (Lithuanian Railways)", "pin": ["para 80"]}
+{"n": 44, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia", "pin": ["para 42"]}
+{"n": 45, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 67"]}
+{"n": 45, "k": "judgment", "case": "T-612/17", "ecli": "EU:T:2021:763", "name": "Google and Alphabet v Commission (Google Shopping 2021)", "pin": ["para 377", "para 378"]}
+{"n": 46, "k": "judgment", "case": "T-612/17", "ecli": "EU:T:2021:763", "name": "Google and Alphabet v Commission (Google Shopping 2021)", "pin": ["para 378"], "note": "written 'paragraphs 378'"}
+{"n": 47, "k": "judgment", "case": "C-48/22 P", "ecli": "EU:C:2024:726", "name": "Google Shopping 2024", "via": "short", "pin": ["para 165"]}
+{"n": 48, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 64"]}
+{"n": 49, "k": "judgment", "case": "T-286/09 RENV", "ecli": "EU:T:2022:19", "name": "Intel Corporation Inc. v European Commission (2022)", "pin": ["para 165"]}
+{"n": 50, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["footnote 199"]}
+{"n": 51, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 99(b)"]}
+{"n": 52, "k": "judgment", "case": "C-7/97", "ecli": "EU:C:1998:569", "name": "Bronner", "note": "'Case C-7/97, judgement of 26 November 1998.'; the body names 'Oscar Bronner v Mediaprint (1998)'; no pinpoint"}
+{"n": 53, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 101"], "note": "'Paragraph 101.' alone, at 'The Guidance' in the body"}
+{"n": 54, "k": "judgment", "case": "C-7/97", "ecli": "EU:C:1998:569", "name": "Bronner", "pin": ["para 47"]}
+{"n": 55, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 119"]}
+{"n": 56, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 155"]}
+{"n": 57, "k": "notice", "name": "Enforcement Priority Guidelines", "via": "short", "ante": 1, "pin": ["para 60"]}
+{"n": 58, "k": "notice", "name": "Enforcement Priority Guidelines", "via": "short", "ante": 1, "pin": ["para 61"]}
+{"n": 59, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 166(c)"]}
+{"n": 60, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 166(d)"]}
+{"n": 61, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 167"]}
+{"n": 62, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "role": "incidental", "pin": ["para 170"]}

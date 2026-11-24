@@ -41,3 +41,7 @@ samples/ibid-demo-docx/*
 # confidential as the document it was drawn from. The scripts that produce them are in the
 # repository; their output never is. See docs/ACCURACY.md.
 .accuracy/
+
+# Public documents fetched to test against (consultation responses and the like): re-fetchable,
+# and kept out of the repository for the same reason as the samples below. See scripts/README.md.
+.samples-cache/

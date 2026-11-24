@@ -210,9 +210,11 @@ function decodeEntities(value) {
 /**
  * Enough of a zip reader to open a .docx, so this script needs no dependency and no
  * `unzip` on the path. Only the stored and deflated methods exist in practice in an
- * Office file, and only four entries are ever wanted out of it.
+ * Office file, and only four entries are ever wanted out of it. `scripts/samples.mjs` also
+ * takes one PDF at a time out of the archive DG Competition publishes its consultation
+ * replies in, which is why the bytes are available as they are.
  */
-function readZip(buffer, wanted) {
+export function zipEntries(buffer, wanted) {
   const end = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
   if (end < 0) throw new Error('not a zip file');
   const count = buffer.readUInt16LE(end + 10);
@@ -231,12 +233,14 @@ function readZip(buffer, wanted) {
       const method = buffer.readUInt16LE(offset + 8);
       const compressed = buffer.readUInt32LE(at + 20);
       const raw = buffer.subarray(start, start + compressed);
-      found.set(name, (method === 0 ? raw : inflateRawSync(raw)).toString('utf8'));
+      found.set(name, method === 0 ? raw : inflateRawSync(raw));
     }
     at += 46 + nameLength + extraLength + commentLength;
   }
   return found;
 }
+
+const readZip = (buffer, wanted) => new Map([...zipEntries(buffer, wanted)].map(([name, bytes]) => [name, bytes.toString('utf8')]));
 
 /**
  * The text of a run of Word XML, with the things that are whitespace on the page but not
