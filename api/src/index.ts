@@ -177,6 +177,20 @@ export type SourcePreview = {
    * text under the wrong description, and the reviewer is told rather than left to find out.
    */
   documentType?: 'judgment' | 'opinion' | 'order';
+  /**
+   * The case the retrieved court document is, set only where that is not the case number the
+   * citation wrote beside its ECLI.
+   *
+   * The ECLI is asked first, and a drafter who copies a date and an ECLI from one citation onto
+   * the case number of another gets the other case's document: the City of London Law Society's
+   * reply to the 2024 consultation on exclusionary abuses cites "Judgment of 10 July 2001, joined
+   * cases C-395/96 P and C-396/96 P, Compagnie maritime belge transports and Others,
+   * ECLI:EU:C:2001:393", and EU:C:2001:393 is the order dismissing Irish Sugar's appeal in
+   * C-497/99 P. Neither identifier can be taken as the right one — the draft merger guidelines
+   * write "C-584/19 P" beside a General Court ECLI whose case really is T-584/19 — so the
+   * document is shown as what it is, and the reviewer is told the two disagree.
+   */
+  caseMismatch?: { cited: string; shown: string };
 };
 
 export type ResolveOptions = {
@@ -787,6 +801,68 @@ export function documentTypeOf(html: string): 'judgment' | 'opinion' | 'order' |
     .filter((heading): heading is { type: 'judgment' | 'opinion' | 'order'; at: number } => heading.at !== undefined)
     .sort((a, b) => a.at - b.at);
   return found[0]?.type;
+}
+
+/**
+ * The case numbers a court document states for itself, as `C-395/96` without a procedural
+ * suffix, or nothing where it states none that can be read.
+ *
+ * Two places, because the three renditions keep them in different ones. Formex and the older
+ * EUR-Lex rendering carry the CELEX in `<title>` (`62012CJ0295`, `EUR-Lex - 61996J0395 - EN`),
+ * which names the lead case of a joined group. The CURIA-native rendition has no title and opens
+ * on "Case T‑464/04 Independent Music Publishers…" or "Joined Cases T-191/98, T-212/98 to
+ * T-214/98 …", and a joined group's other members are only ever written there. So both are read,
+ * and the opening is read generously — it also names the judgment under appeal, and the case of
+ * a Commission decision's number (`COMP/C-3/37.990`). That only ever adds numbers, and a number
+ * too many can only keep a disagreement from being noticed, never invent one. Checked on
+ * 2026-09-17 against the 176 case-law documents in the local cache: 173 state at least one.
+ */
+export function caseNumbersOf(html: string): string[] {
+  const numbers = new Set<string>();
+  const title = /<title>\s*(?:EUR-Lex\s*-\s*)?6(\d{4})([CTF]?)([A-Z])(\d{4})/i.exec(html.slice(0, 5_000));
+  if (title) {
+    // The pre-Formex sector letters stand alone: A and B are the Court of First Instance's
+    // judgments and orders, everything else the Court's.
+    const court = title[2] || (/^[AB]$/i.test(title[3]) ? 'T' : 'C');
+    numbers.add(`${court.toUpperCase()}-${Number(title[4])}/${title[1].slice(2)}`);
+  }
+  const opening = decodeHtml(html.slice(0, 60_000)).replace(/\s+/g, ' ').slice(0, 2_500);
+  for (const match of opening.matchAll(/\b([CTF])\s?[-‑–]\s?(\d{1,4})\/(\d{2})(?!\d)(?:\s+to\s+[CTF]\s?[-‑–]\s?(\d{1,4})\/\3(?!\d))?/g)) {
+    const [from, to] = [Number(match[2]), Number(match[4] ?? match[2])];
+    for (let number = from; number <= Math.min(to, from + 20); number += 1) numbers.add(`${match[1]}-${number}/${match[3]}`);
+  }
+  // Before 1989 there was one court and no letter: "Case 311/84".
+  for (const match of opening.matchAll(/\bCases?\s+(\d{1,3})\/(\d{2})(?!\d)/g)) numbers.add(`C-${Number(match[1])}/${match[2]}`);
+  return [...numbers];
+}
+
+/** A case number as `caseNumbersOf` writes it: court, number and year, without what was done in the case. */
+function caseKey(caseNumber: string): string | undefined {
+  const match = /^\s*([CTF])?\s?[-‑–]?\s?(\d{1,4})\/(\d{2})(?!\d)/i.exec(caseNumber);
+  return match ? `${(match[1] ?? 'C').toUpperCase()}-${Number(match[2])}/${match[3]}` : undefined;
+}
+
+/** The case a CELEX files, as `caseNumbersOf` writes it: `62022CJ0611` is C-611/22. */
+function caseKeyOfCelex(celex: string): string | undefined {
+  const match = /^6\d{2}(\d{2})([CTF])[A-Z](\d{4})/.exec(celex);
+  return match ? `${match[2]}-${Number(match[3])}/${match[1]}` : undefined;
+}
+
+/**
+ * Where the court document retrieved is a different case from the one the citation numbers.
+ *
+ * Asked only where both sides are known: a citation with no case number, or a document stating
+ * none, is not a disagreement. A joined group's other members count as the citation's own, since
+ * CELLAR files the group's document under whichever of them it chose.
+ */
+function caseMismatchOf(html: string, lookup: EuLookup): SourcePreview['caseMismatch'] {
+  const cited = lookup.caseNumber ? caseKey(lookup.caseNumber) : undefined;
+  if (!cited || !lookup.caseNumber) return undefined;
+  const stated = caseNumbersOf(html);
+  if (!stated.length) return undefined;
+  const ours = new Set([cited, ...(lookup.alternativeCelexes ?? []).map(caseKeyOfCelex).filter((key): key is string => Boolean(key))]);
+  if (stated.some((number) => ours.has(number))) return undefined;
+  return { cited: lookup.caseNumber, shown: stated[0] };
 }
 
 function extractJudgmentPoint(html: string, lookup: EuLookup): Excerpt {
@@ -1640,10 +1716,20 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
     // which document is fetched. Titled as what it is, and the reviewer told.
     const retrieved = caseLaw ? documentTypeOf(html) : undefined;
     const differs = retrieved && retrieved !== (lookup.documentType ?? 'judgment') ? retrieved : undefined;
+    // And whose case it is: the name the footnote gives belongs to the number it wrote, so a
+    // document of another case is titled by its own number alone.
+    const caseMismatch = caseLaw ? caseMismatchOf(html, lookup) : undefined;
+    // Reached under another case's CELEX — a number written beside this one, which may be a
+    // joined member filed under its lead or a separate case altogether — and not stating this
+    // case: it is the other case's document, and this citation has none in CELLAR.
+    if (caseMismatch && url !== cellarUrl(celex, cellarBaseUrl) && !(lookup.ecli && url === ecliUrl(lookup.ecli, cellarBaseUrl))) {
+      throw new Error('EUR-Lex/CELLAR lookup failed (404).');
+    }
+    const described = { ...lookup, ...(differs ? { documentType: differs } : {}), ...(caseMismatch ? { caseNumber: caseMismatch.shown, caseName: undefined } : {}) };
     const base: SourcePreview = caseLaw
       ? {
-          title: describeDocument(differs ? { ...lookup, documentType: differs } : lookup), ...caseLaw,
-          ...(differs ? { documentType: differs } : {}), url, source, locator: locatorLabel(lookup), language,
+          title: describeDocument(described), ...caseLaw,
+          ...(differs ? { documentType: differs } : {}), ...(caseMismatch ? { caseMismatch } : {}), url, source, locator: locatorLabel(lookup), language,
           // The grounds this document does not contain, on the service that has them. Only
           // here: everywhere else `url` already leads to the whole text, and a second link
           // beside it would say there is more to find when there is not.

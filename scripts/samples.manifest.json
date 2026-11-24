@@ -1,0 +1,357 @@
+{
+ "archives": {
+  "article-102-replies": {
+   "url": "https://competition-policy.ec.europa.eu/document/download/23fa5ffc-7ca7-468d-92f9-2542fbba529c_en?filename=2024_article_102_guidelines_replies.zip",
+   "page": "https://competition-policy.ec.europa.eu/public-consultations/2024-article-102-guidelines_en"
+  }
+ },
+ "consultations": {
+  "article-102-guidelines-2024": "Replies to the public consultation on the draft Guidelines on exclusionary abuses of dominance (2024), published by DG Competition as one archive.",
+  "merger-guidelines-review-2025": "Feedback to the call for evidence and public consultation on the review of the Merger Guidelines (2025), on Have Your Say (initiative 14596). The download serves a PDF whatever the upload was."
+ },
+ "documents": [
+  {
+   "id": "baker-mckenzie-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "baker_mckenzie_en.pdf.pdf",
+   "note": "Law firm. 65 pages and the densest citer found: about 445 case numbers and 415 ECLIs."
+  },
+  {
+   "id": "allen-overy-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "allen_overy_shearman_sterling_en.pdf.pdf",
+   "note": "Law firm, 10 pages."
+  },
+  {
+   "id": "linklaters-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "linklaters_en.pdf.pdf",
+   "note": "Law firm, 7 pages."
+  },
+  {
+   "id": "freshfields-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "freshfields_bruckhaus_deringer_en.pdf.pdf",
+   "note": "Law firm, 31 pages."
+  },
+  {
+   "id": "dentons-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "dentons_europe_en.pdf.pdf",
+   "note": "Law firm, 10 pages."
+  },
+  {
+   "id": "gleiss-lutz-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "gleiss_lutz_en.pdf.pdf",
+   "note": "Law firm, 9 pages."
+  },
+  {
+   "id": "cms-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "cms_en.pdf.pdf",
+   "note": "Law firm, 8 pages."
+  },
+  {
+   "id": "vogel-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "vogel_and_vogel_fr.pdf.pdf",
+   "note": "Law firm, in French."
+  },
+  {
+   "id": "city-of-london-law-society-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "city_of_london_law_society_en.pdf.pdf",
+   "note": "Lawyers' association. Cites by European Court Reports and pre-1989 case number as well as ECLI."
+  },
+  {
+   "id": "european-competition-lawyers-forum-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "european_competition_lawyers_forum_en.pdf.pdf",
+   "note": "Lawyers' association."
+  },
+  {
+   "id": "european-competition-lawyers-association-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "european_competition_lawyers_association_en.pdf.pdf",
+   "note": "Lawyers' association."
+  },
+  {
+   "id": "icla-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "icla_inhouse_competition_lawyers_association_en.pdf.pdf",
+   "note": "In-house lawyers' association. ECR and pre-1989 case numbers."
+  },
+  {
+   "id": "aapdc-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "association_des_avocats_pratiquant_le_droit_de_la_concurrence_en.pdf.pdf",
+   "note": "French competition lawyers' association, in English. Cites by case number with almost no ECLI."
+  },
+  {
+   "id": "afec-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "association_francaise_d_etude_de_la_concurrence_fr_en.pdf.pdf",
+   "note": "French then English in one document."
+  },
+  {
+   "id": "aedc-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "asociacion_espanola_para_la_defensa_de_la_competencia_en.pdf.pdf",
+   "note": "Spanish competition association, in English."
+  },
+  {
+   "id": "lidc-hungary-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "lidc_hungarian_competition_law_association_en.pdf.pdf",
+   "note": "Hungarian competition law association, in English."
+  },
+  {
+   "id": "iba-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "international_bar_association_en.pdf.pdf",
+   "note": "Bar association, 50 pages."
+  },
+  {
+   "id": "aba-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "antitrust_law_section_and_international_law_section_american_bar_association_en.pdf.pdf",
+   "note": "American lawyers writing about EU law: Id. and supra."
+  },
+  {
+   "id": "icc-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "international_chamber_of_commerce_en.pdf.pdf",
+   "note": "Business association."
+  },
+  {
+   "id": "icc-france-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "french_committee_to_the_international_chamber_of_commerce_en.pdf.pdf",
+   "note": "Business association, 16 uses of ibid."
+  },
+  {
+   "id": "afep-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "association_francaise_des_entreprises_privees_fr.pdf.pdf",
+   "note": "Business association, in French."
+  },
+  {
+   "id": "ert-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "european_round_table_for_industry_en.pdf.pdf",
+   "note": "Business association."
+  },
+  {
+   "id": "assonime-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "assonime_en.pdf.pdf",
+   "note": "Italian business association, in English."
+  },
+  {
+   "id": "beuc-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "beuc_bureau_europeen_des_unions_de_consommateurs_en.pdf.pdf",
+   "note": "Consumer organisation."
+  },
+  {
+   "id": "google-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "google_en.pdf.pdf",
+   "note": "Company."
+  },
+  {
+   "id": "telefonica-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "telefonica_en.pdf.pdf",
+   "note": "Company."
+  },
+  {
+   "id": "emisa-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "emisa_en.pdf.pdf",
+   "note": "Company."
+  },
+  {
+   "id": "deutsche-telekom-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "deutsche telekom_en.pdf",
+   "note": "Company."
+  },
+  {
+   "id": "solano-diaz-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "solano_diaz_pablo_en.pdf.pdf",
+   "note": "Individual lawyer."
+  },
+  {
+   "id": "witt-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "witt_anne_en.pdf.pdf",
+   "note": "Academic."
+  },
+  {
+   "id": "werden-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "werden_gregory_j_en.pdf.pdf",
+   "note": "Academic."
+  },
+  {
+   "id": "marinova-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "miroslava_marinova_en.pdf.pdf",
+   "note": "Academic. Cites by European Court Reports."
+  },
+  {
+   "id": "akman-fumagalli-motta-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "pınar_akman_chiara_fumagalli_and_massimo_motta_en.pdf.pdf",
+   "note": "Academics."
+  },
+  {
+   "id": "podszun-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "rupprecht_podszun_tristan_rohner_and_others_en.pdf.pdf",
+   "note": "Academics."
+  },
+  {
+   "id": "halbach-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "halbach_jule_en_de.pdf.pdf",
+   "note": "Academic, 28 uses of ibid."
+  },
+  {
+   "id": "icle-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "international_center_for_law_and_economics_en.pdf.pdf",
+   "note": "Think tank, 64 uses of ibid, id. or supra."
+  },
+  {
+   "id": "weck-a102",
+   "consultation": "article-102-guidelines-2024",
+   "archive": "article-102-replies",
+   "member": "weck_thomas_en_de.pdf.pdf",
+   "note": "German, then English from page 20."
+  },
+  {
+   "id": "freshfields-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e521b4167c",
+   "note": "Law firm, 15 pages. Merger decisions by case number.",
+   "sha256": "ed6393576fe854f0ca096ec5f7258287667b252eceb2d13b4148244870fce9f7"
+  },
+  {
+   "id": "weil-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e521b41607",
+   "note": "Law firm, 10 pages, almost no citations: what a lawyer's prose does to detection.",
+   "sha256": "b90b095b1c25923cc9743590893b0c16033c40b89ba58853b54608f6e2e24192"
+  },
+  {
+   "id": "baker-mckenzie-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e52196baf6",
+   "note": "Law firm, 18 pages.",
+   "sha256": "b82f2225697e22271f6751cfdcee10ee41523f7daff1a07009428899ddfdbba1"
+  },
+  {
+   "id": "clls-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e521a08e3b",
+   "note": "Lawyers' association, 5 pages.",
+   "sha256": "78adb36f18300be45f513cfd574b5447846cdc50e1ed31e0413d7aa0b5b5dabe"
+  },
+  {
+   "id": "iba-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e5219e6c2b",
+   "note": "Bar association, 22 pages.",
+   "sha256": "672900590d3b0926b2cdb602fe2762449d24cd99734403c1796d70c99d8fa972"
+  },
+  {
+   "id": "us-chamber-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e521a57149",
+   "note": "Business association, 45 pages, 26 uses of id. or supra.",
+   "sha256": "b7c8a6b0e497dfa88046dfb1d92653fe2e53c422090cef9713dcd08a69f8c00d"
+  },
+  {
+   "id": "rbb-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e5227b7688",
+   "note": "Economic consultancy, 60 pages. Merger decisions, and economics literature.",
+   "sha256": "33dbb9534db8d2ea1295fcf1e47165e2d9d3d553129318cc8688c94e4e996fa6"
+  },
+  {
+   "id": "dci-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e522603cf8",
+   "note": "Academic, 67 pages.",
+   "sha256": "d9958b660d17547e7c1ca3b60c915b0d3fbaf6e117aac4fe77f78a5ebea48912"
+  },
+  {
+   "id": "digital-merger-watch-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e521b41950",
+   "note": "NGO, 16 pages.",
+   "sha256": "0af21da155d75965b13e7a0f964f9603c3f2ecce6cbc8bbc9b2a0c9397ccbf51"
+  },
+  {
+   "id": "masorange-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e521a57444",
+   "note": "Company, 34 pages.",
+   "sha256": "6a22c279ca412569211d5feee944eca27223de7262d08aeaa3a4ccc306f73d4d"
+  },
+  {
+   "id": "masorange-sources-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e521a57446",
+   "note": "Company: a two-page list of sources.",
+   "sha256": "7da9bbd58b4d187325ba36bbdd161edbac509b2fd707b83842ee13f10a9b5b5b"
+  },
+  {
+   "id": "medef-merger-review",
+   "consultation": "merger-guidelines-review-2025",
+   "url": "https://ec.europa.eu/info/law/better-regulation/api/download/090166e521ab589f",
+   "note": "Business association, in French, no citations to speak of.",
+   "sha256": "0d6808561b18fba36b49ae10971801c6b7b2efe2a8ddcbf7b73bce68b2d6cfd8"
+  }
+ ]
+}

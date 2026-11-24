@@ -4,7 +4,7 @@ import { prefetchStatus, prefetchTargets, startConfirmations, startPrefetch, typ
 import {
   candidateKey, candidateLabel, citationKey, confirmationKey, curiaSearchUrl,
   autoSelectable, bodyProseLines, inlineFootnotesInBody, INLINE_NOTE_CEILING, INLINE_NOTE_FLOOR, INLINE_NOTE_SHAPE, needsReview, officialSourceUrl, parentheticalsInBody,
-  documentTypeNote, excerptPassages, followingNote, numberMismatchNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
+  caseMismatchNote, documentTypeNote, excerptPassages, followingNote, numberMismatchNote, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, type NumberMismatch,
   unresolvedMessage, verificationNote, type ReviewFootnote,
 } from './citation-view';
 
@@ -20,6 +20,8 @@ type ReviewDocument = {
   numberMismatch?: NumberMismatch;
   /** What a court document is by its own heading, where the citation called it something else. */
   documentType?: 'judgment' | 'opinion' | 'order';
+  /** The case a court document is, where that is not the case number the citation wrote beside its ECLI. */
+  caseMismatch?: { cited: string; shown: string };
   /** Where the grounds are, when EUR-Lex published only a summary of them. Set with `passage: 'summary'` and never otherwise. */
   fullTextUrl?: string;
   language?: 'en' | 'fr';
@@ -692,10 +694,14 @@ function CaseNumberWarning({ documents }: { documents: ReviewDocument[] }) {
   return note ? <p className="source-warning" role="alert">{note}</p> : null;
 }
 
-/** Says that the court document shown is not the kind the footnote called it — see `documentTypeNote`. */
+/**
+ * Says that the court document shown is not the case, or not the kind of document, the footnote
+ * called it — see `caseMismatchNote` and `documentTypeNote`. Another case first: that the order
+ * shown is an order matters less than that it is Irish Sugar's.
+ */
 function DocumentTypeWarning({ document, citation }: { document: ReviewDocument; citation: CitationContext }) {
-  const note = documentTypeNote(citation, document.documentType);
-  return note ? <p className="source-warning" role="alert">{note}</p> : null;
+  const notes = [caseMismatchNote(document.caseMismatch, citation.ecli), documentTypeNote(citation, document.documentType)].filter(Boolean);
+  return notes.length ? <>{notes.map((note) => <p key={note} className="source-warning" role="alert">{note}</p>)}</> : null;
 }
 
 /**

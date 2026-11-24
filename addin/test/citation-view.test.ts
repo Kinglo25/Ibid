@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCitationsAcrossFootnotes, getCitationContextsForFootnotes, type CitationContext } from '../../shared/src/index.ts';
-import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, confirmationKey, documentTypeNote, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, parentheticalsInBody, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
+import { autoSelectable, bodyProseLines, candidateKey, candidateLabel, caseMismatchNote, confirmationKey, documentTypeNote, excerptPassages, followingNote, inlineFootnotesInBody, needsReview, numberMismatchNote, officialSourceUrl, parentheticalsInBody, resolutionNote, sourceChanged, toReviewFootnotes, unlocatedNote, unresolvedMessage, verificationNote } from '../src/ui/citation-view.ts';
 
 const context = (footnotes: string[], index: number): CitationContext[] => getCitationContextsForFootnotes(footnotes)[index];
 const one = (footnotes: string[], index: number): CitationContext => {
@@ -434,6 +434,19 @@ describe('a court document that is not what the footnote called it', () => {
   test('says nothing where the two agree, or where the document said nothing', () => {
     assert.equal(documentTypeNote({ documentType: 'opinion', documentTypeStated: true }, 'opinion'), undefined);
     assert.equal(documentTypeNote({ documentType: 'judgment', documentTypeStated: true }, undefined), undefined);
+  });
+});
+
+describe('a court document of another case than the one the footnote numbers', () => {
+  // The City of London Law Society's reply to the 2024 consultation on exclusionary abuses:
+  // Compagnie maritime belge's case numbers beside EU:C:2001:393, the order in Irish Sugar.
+  test('says what the footnote numbers, what the ECLI names, and which is shown', () => {
+    assert.equal(caseMismatchNote({ cited: 'C-395/96 P', shown: 'C-497/99' }, 'ECLI:EU:C:2001:393'),
+      'Check the citation. The footnote numbers the case C-395/96 P, but its ECLI, EU:C:2001:393, names Case C-497/99, and that is the document shown here.');
+  });
+
+  test('says nothing where there is no disagreement', () => {
+    assert.equal(caseMismatchNote(undefined, 'ECLI:EU:C:2001:393'), undefined);
   });
 });
 

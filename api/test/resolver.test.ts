@@ -1809,6 +1809,39 @@ describe('a footnote that calls an Opinion a judgment', () => {
     assert.equal(preview.title, 'Superleague v FIFA, C-333/21 (opinion)');
   });
 
+  // The City of London Law Society's reply to the 2024 consultation on exclusionary abuses:
+  // "Judgment of 10 July 2001, joined cases C-395/96 P and C-396/96 P, Compagnie maritime belge
+  // transports and Others, ECLI:EU:C:2001:393". The case numbers and the name are Compagnie
+  // maritime belge's; EU:C:2001:393 is the order dismissing Irish Sugar's appeal (CELLAR, checked
+  // 2026-09-17). The order was titled with Compagnie maritime belge's name.
+  test('names another case where the document its ECLI names is one, and titles it as what it is', async () => {
+    const order = documentResponse('<title>61999CO0497</title><p>ORDER OF THE COURT (Fifth Chamber) 10 July 2001</p>'
+      + '<p>In Case C-497/99 P, Irish Sugar plc, appellant, APPEAL against the judgment of the Court of First Instance in Case T-228/97</p>');
+    const { fetcher } = stubFetcher([order]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [preview] = await resolver.resolve(superleague({
+      value: 'ECLI:EU:C:2001:393', ecli: 'ECLI:EU:C:2001:393', caseNumber: 'C-395/96 P', caseName: 'Compagnie maritime belge transports and Others',
+      celex: '61996CJ0395', alternativeCelexes: ['61996CJ0396'], locator: undefined, paragraphs: undefined,
+    }));
+    assert.deepEqual(preview.caseMismatch, { cited: 'C-395/96 P', shown: 'C-497/99' });
+    assert.equal(preview.title, 'C-497/99 (order)');
+  });
+
+  test('says nothing where the document states the case, or a member of its joined group, or no case at all', async () => {
+    const joined = () => documentResponse('<p>JUDGMENT OF THE COURT</p><p>In Joined Cases C‑611/22 P and C‑625/22 P, Illumina, Inc.</p>');
+    const titled = () => documentResponse('<title>EUR-Lex - 61996J0395 - EN</title><p>Judgment of the Court of 16 March 2000.</p>');
+    const { fetcher } = stubFetcher([joined(), titled(), JUDGMENT()]);
+    const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
+
+    const [illumina] = await resolver.resolve(superleague({ value: 'C-625/22 P', ecli: 'ECLI:EU:C:2024:677', caseNumber: 'C-625/22 P', caseName: undefined, celex: '62022CJ0625', locator: undefined, paragraphs: undefined }));
+    assert.equal(illumina.caseMismatch, undefined);
+    const [belge] = await resolver.resolve(superleague({ value: 'C-396/96 P', ecli: 'ECLI:EU:C:2000:132', caseNumber: 'C-396/96 P', caseName: undefined, celex: '61996CJ0396', alternativeCelexes: ['61996CJ0395'], locator: undefined, paragraphs: undefined }));
+    assert.equal(belge.caseMismatch, undefined, 'the joined group\'s lead number is filed in the title');
+    const [plain] = await resolver.resolve(superleague({ ecli: 'ECLI:EU:C:2023:1011', value: 'EU:C:2023:1011' }));
+    assert.equal(plain.caseMismatch, undefined);
+  });
+
   test('says nothing where the document is what the citation called it', async () => {
     const { fetcher } = stubFetcher([JUDGMENT()]);
     const { resolver } = makeResolver({ fetcher, minRequestIntervalMs: 0 });
@@ -2109,6 +2142,20 @@ describe('a joined case filed under a sibling number', () => {
       'https://example.test/celex/62012CJ0594',
       'https://example.test/celex/62012CJ0293',
     ]);
+  });
+
+  // "CJUE 3 septembre 2024, C-611/22 P et C-625/22 P": no "Joined Cases", so the two numbers are
+  // offered as each other's filing without being taken for one judgment. Where they are two
+  // judgments, the other one's document must not stand in for a number CELLAR does not hold.
+  test('a document under the other number is shown only if it states this one', async () => {
+    const lookup = joined({ value: 'C-625/22 P', caseNumber: 'C-625/22 P', celex: '62022CJ0625', alternativeCelexes: ['62022CJ0611'] });
+    const member = stubFetcher([noSuchDocument('62022CJ0625'), html('<p>JUDGMENT OF THE COURT</p><p>In Joined Cases C‑611/22 P and C‑625/22 P, Illumina</p>')]);
+    const [shown] = await makeResolver({ fetcher: member.fetcher, minRequestIntervalMs: 0 }).resolver.resolve(lookup);
+    assert.equal(shown.url, 'https://example.test/celex/62022CJ0611');
+
+    const other = stubFetcher([noSuchDocument('62022CJ0625'), html('<p>JUDGMENT OF THE COURT</p><p>In Case C‑611/22 P, Illumina</p>')]);
+    const [refused] = await makeResolver({ fetcher: other.fetcher, minRequestIntervalMs: 0 }).resolver.resolve(lookup);
+    assert.ok(refused.url.startsWith('https://curia.europa.eu/'), `another case's judgment is not this citation's: ${refused.url}`);
   });
 
   test('a malformed alternative is dropped rather than requested', async () => {

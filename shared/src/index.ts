@@ -303,8 +303,29 @@ export type ParsedPinpoint = { locator: CitationLocator; pinpoint?: Pinpoint };
 export function parsePinpoint(text: string, index: number, limit = text.length): ParsedPinpoint | undefined {
   const tail = text.slice(index, Math.min(limit, index + PINPOINT_SCAN_WINDOW));
   const match = PINPOINT_PATTERN.exec(tail);
-  if (match && endsOnLetteredNumber(tail, match)) return undefined;
+  if (match && (endsOnLetteredNumber(tail, match) || namesItsOwnInstrument(tail, match))) return undefined;
   return fromPinpointMatch(match);
+}
+
+/**
+ * Whether the provisions a pinpoint pattern matched are followed by the instrument they are
+ * provisions of.
+ *
+ * `Council Regulation (EC) No 1/2003 of 16 December 2002 on the implementation of the rules on
+ * competition laid down in Articles 81 and 82 of the Treaty.` is the Regulation cited with no
+ * provision at all: the articles are the Treaty's, named in the Regulation's title. Read as
+ * the Regulation's, the pane put Article 81 of Regulation 1/2003 on screen — a real article,
+ * on penalties' limitation periods, and nothing the footnote cited. The City of London Law
+ * Society's reply to the 2024 consultation on exclusionary abuses cites it this way; almost
+ * every act adopted under the Treaty's competition articles carries them in its title.
+ *
+ * Refused rather than read: the provision named after the list is another instrument's, and
+ * the one before it is this citation's only if nothing says otherwise.
+ */
+const ANOTHER_INSTRUMENT = /^\s*(?:(?:of|to)\s+(?:the\s+)?(?:(?:EC|EEC|EU|EEA|FEU)\s+)?(?:Treaty|TFEU|TEU|Charter|Agreement|Convention|Protocol|Regulation|Directive|Decision|Statute|Rules\s+of\s+Procedure)\b|(?:du|de\s+la|de\s+l['’])\s*(?:trait[ée]|TFUE|TUE|Charte|r[èe]glement|directive|d[ée]cision)|(?:TFEU|TEU|TFUE|TUE|EC|EEC|CE)\b)/i;
+
+function namesItsOwnInstrument(tail: string, match: RegExpExecArray): boolean {
+  return ANOTHER_INSTRUMENT.test(tail.slice((match.index ?? 0) + match[0].length));
 }
 
 /**
@@ -502,6 +523,15 @@ const JOINED_GROUP = new RegExp(
   String.raw`\b(?:joined\s+cases?|affaires?\s+jointes?)\s+((?:${CASE_NUMBER_INLINE}(?:${GROUP_SEPARATOR}${GROUP_RESTATED_KEYWORD})?)+)`,
   'gi',
 );
+
+/** Case numbers with nothing but a connector between them: "C-611/22 P and C-625/22 P", "C-611/22 P et C-625/22 P". */
+const ADJACENT_CASE_NUMBERS = new RegExp(String.raw`${CASE_NUMBER_INLINE}(?:\s*(?:,|\band\b|\bet\b|&)\s*${CASE_NUMBER_INLINE})+`, 'gi');
+
+/** `C-611/22 P` → `C/22`: the court and year a case number was registered in. */
+function courtAndYear(caseNumber: string): string {
+  const match = /^([CT])-\d+\/(\d{2})/i.exec(caseNumber);
+  return match ? `${match[1].toUpperCase()}/${match[2]}` : caseNumber;
+}
 
 /** Rewrites any accepted spelling of a case number to the single canonical form used as its identity. */
 export function normaliseCaseNumber(caseNumber: string): string {
@@ -1009,8 +1039,28 @@ export function detectCitations(text: string): CitationMatch[] {
     return siblings?.length ? siblings : undefined;
   };
 
+  // The Court's own style names no "Joined Cases": "Illumina v Commission, C-611/22 P and
+  // C-625/22 P", or in French "CJUE 3 septembre 2024, C-611/22 P et C-625/22 P". Two numbers of
+  // one court and one year written side by side are often one joined judgment and sometimes two
+  // judgments, and nothing in the text says which, so they stay two citations — but each is
+  // given the other as a name its document may be filed under. Where the number is a case of
+  // its own, CELLAR serves it under that number first and the other is never asked; where it is
+  // a joined member CELLAR holds under the lead (`62022CJ0625` does not exist), the lead's
+  // document is fetched instead, and the resolver shows it only if it states the member's
+  // number. Vogel & Vogel's reply to the 2024 consultation on exclusionary abuses cites Illumina
+  // this way, and `C-625/22 P` reached nothing.
+  const neighbours = new Map<string, string[]>();
+  for (const run of text.matchAll(ADJACENT_CASE_NUMBERS)) {
+    const numbers = [...run[0].matchAll(caseNumberPattern)].map((number) => normaliseCaseNumber(number[0]));
+    for (const caseNumber of numbers) {
+      if (joinedSiblings.has(caseNumber)) continue;
+      const same = numbers.filter((other) => other !== caseNumber && courtAndYear(other) === courtAndYear(caseNumber));
+      if (same.length) neighbours.set(caseNumber, [...new Set([...(neighbours.get(caseNumber) ?? []), ...same])]);
+    }
+  }
+
   const alternativesFor = (caseNumber: string | undefined, options: { documentType?: CuriaDocumentType; court?: string }): string[] | undefined => {
-    const siblings = siblingsOf(caseNumber);
+    const siblings = siblingsOf(caseNumber) ?? (caseNumber ? neighbours.get(caseNumber) : undefined);
     if (!siblings) return undefined;
     const celexes = siblings.map((sibling) => celexForCase(sibling, options)).filter((celex): celex is string => celex !== undefined);
     return celexes.length ? celexes : undefined;

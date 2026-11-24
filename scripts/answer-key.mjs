@@ -62,6 +62,8 @@ import { docxBody, notesFromDocx } from './corpus-sources.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const keys = join(root, 'scripts', 'answer-keys');
 const samples = join(root, 'samples', 'ibid-demo-docx');
+// The public documents `npm run samples` fetches and converts. See scripts/samples.mjs.
+const fetched = join(root, '.samples-cache', 'docx');
 const writeKnown = process.argv.includes('--write-known');
 
 const MUST_BE_ZERO = new Set(['wrong-document', 'wrong-pinpoint']);
@@ -269,7 +271,7 @@ function names(entry, citation) {
     case 'notice':
       return citation.source === 'eur-lex' && Boolean(citation.oj) && citation.oj === entry.publication;
     case 'treaty': {
-      const letter = { TFEU: 'E', TEU: 'M' }[entry.treaty];
+      const letter = { TFEU: 'E', TEU: 'M', Charter: 'P' }[entry.treaty];
       return citation.source === 'eur-lex' && new RegExp(`^1\\d{4}${letter}\\d+$`).test(citation.celex ?? '')
         && keyPins([entry]).articles.some((article) => citation.locator && articleCovers({ ...article, paragraph: undefined }, { ...citation.locator, paragraph: undefined }));
     }
@@ -317,11 +319,12 @@ function check(key, published, pane) {
   const outcomes = [];
   const add = (note, outcome, what, detail) => outcomes.push({ note, outcome, identity: what, ...(detail ? { detail } : {}) });
 
-  const entries = key.filter((line) => 'n' in line);
+  const entries = key.filter((line) => typeof line.n === 'number');
+  const everyEntry = key.filter((line) => 'n' in line);
   // A notice is identified by where it was published: its own reference, or for a short form the
   // reference of the footnote that defined it. A reference with no page names no one publication.
   const noticeAt = new Map(entries.filter((entry) => entry.k === 'notice' && entry.oj).map((entry) => [entry.n, entry]));
-  for (const entry of entries.filter((e) => e.k === 'notice')) entry.publication = publicationOf(entry.oj ?? noticeAt.get(entry.ante)?.oj);
+  for (const entry of everyEntry.filter((e) => e.k === 'notice')) entry.publication = publicationOf(entry.oj ?? noticeAt.get(entry.ante)?.oj);
   // Every note that reached the pane, including the ones citing nothing: what Ibid reports in a
   // footnote the key says cites nothing is exactly what `unexpected` is for.
   const byPaneNote = new Map([...new Set(noteOf.values())].map((index) => [index, []]));
@@ -339,74 +342,92 @@ function check(key, published, pane) {
 
   for (const [index, noteEntries] of byPaneNote) {
     const note = [...noteOf].filter(([, i]) => i === index).map(([number]) => number).sort((a, b) => a - b).join('+');
-    const citations = pane.notes[index].citations;
-    const claimed = new Set();
-    // One authority cited twice in a note is one authority: its pinpoints are compared together.
-    const groups = new Map();
-    for (const entry of noteEntries) {
-      const id = `${entry.role ?? 'cited'}|${identity(entry)}|${entry.decisionDate ?? ''}`;
-      if (!groups.has(id)) groups.set(id, []);
-      groups.get(id).push(entry);
-    }
-    // Two decisions in one case cited in one note — `M.4197 – E.ON/Endesa (decision of
-    // 20.12.2006), paragraph 25; Case M.4197 – E.ON/Endesa (decision of 26.09.2006), paragraph
-    // 24` — are two authorities that name the same case, so each takes the citation in its turn.
-    const turns = new Map();
-    // Cited entries before incidental ones, and an incidental entry takes only what they left:
-    // "See, e.g., EUMR, Article 14. See also Annex I to … implementing Council Regulation (EC) No
-    // 139/2004" cites the Merger Regulation once and names it once, and the citation is the
-    // cited entry's even though both are the same act.
-    const ordered = [...groups.values()].sort((a, b) => Number(a[0].role === 'incidental') - Number(b[0].role === 'incidental'));
-    for (const group of ordered) {
-      const [entry] = group;
-      const sameCase = [...groups.values()].filter((other) => identity(other[0]) === identity(entry) && (other[0].role ?? '') === (entry.role ?? ''));
-      const turn = sameCase.indexOf(group);
-      const hits = citations.filter((citation, at) => {
-        if (entry.role === 'incidental' && claimed.has(at)) return false;
-        if (!group.some((member) => names(member, citation))) return false;
-        if (sameCase.length > 1) {
-          const seen = turns.get(identity(entry)) ?? [];
-          if (!seen.includes(at)) seen.push(at);
-          turns.set(identity(entry), seen);
-          if (seen.indexOf(at) !== turn) return false;
-        }
-        claimed.add(at);
-        return true;
-      });
-      const what = identity(entry);
-      if (entry.role === 'incidental') {
-        for (const hit of hits.filter((citation) => citation.status === 'resolved')) {
-          const { wrong } = comparePins(group, [hit]);
-          if (wrong.length) add(note, 'wrong-pinpoint', what, `named only incidentally, pinpointed at ${wrong.join('; ')}`);
-        }
-        continue;
-      }
-      const resolved = hits.filter((citation) => citation.status === 'resolved');
-      if (!resolved.length) {
-        const shortForm = citations.findIndex((citation, at) => !claimed.has(at) && citation.status !== 'resolved'
-          && entry.name && citation.value.toLowerCase() === entry.name.toLowerCase());
-        if (shortForm >= 0) claimed.add(shortForm);
-        if (hits.length || shortForm >= 0) add(note, 'unresolved', what);
-        else if (['judgment', 'opinion', 'order', 'decision', 'legislation', 'treaty'].includes(entry.k)) add(note, 'missed', what);
-        else if (entry.k === 'notice') add(note, 'missed', what, 'a notice');
-        else add(note, 'missed', what, 'neither an act, a case nor a publication detection reads');
-        continue;
-      }
-      const other = resolved.filter((citation) => !sameDocument(entry, citation));
-      if (other.length) {
-        add(note, 'wrong-document', what, other.map((c) => `${c.ecli ?? c.celex} (${c.documentType})`).join('; '));
-        continue;
-      }
-      const { wrong, missing } = comparePins(group, resolved);
-      if (wrong.length) add(note, 'wrong-pinpoint', what, wrong.join('; '));
-      if (missing.length) add(note, 'pinpoint-missing', what, missing.join('; '));
-    }
-    citations.forEach((citation, at) => {
-      if (!claimed.has(at)) add(note, 'unexpected', `${citation.label}: ${citation.value}`, citation.status);
-    });
+    judge(note, noteEntries, pane.notes[index].citations, add);
   }
-  pane.inText.forEach((span) => span.citations.forEach((citation) => add('running text', 'unexpected', `${citation.label}: ${citation.value}`, `(${span.text.slice(0, 60)})`)));
+
+  // A citation in a parenthesis of the running text is keyed with `n: "body"` and the opening of
+  // its parenthesis in `at`, and is found in the span the pane read that parenthesis as. Compared
+  // without whitespace: the PDF breaks a line where Word does not, and "C-" then "413/14 P" is one
+  // case number either way.
+  const squeeze = (text) => text.replace(/[\s\u00a0]+/g, '').replace(/[‑–—]/g, '-');
+  // A parenthesis written twice word for word is two citations, and each is judged where it is.
+  const bySpan = new Map(pane.inText.map((_, index) => [index, []]));
+  for (const entry of key.filter((line) => line.n === 'body')) {
+    const at = squeeze(entry.at).replace(/^\(/, '').replace(/\)$/, '');
+    const spans = pane.inText.map((span, index) => (squeeze(span.text).includes(at) ? index : -1)).filter((index) => index >= 0);
+    if (!spans.length && entry.role !== 'incidental') add('running text', 'lost', identity(entry), entry.at);
+    for (const index of spans) bySpan.get(index).push(entry);
+  }
+  for (const [index, spanEntries] of bySpan) judge('running text', spanEntries, pane.inText[index].citations, add, pane.inText[index].text);
   return { outcomes, noteText: (number) => pane.notes[noteOf.get(Number(number))]?.text ?? '' };
+}
+
+/** Sort one note's (or one parenthesis's) keyed authorities against what Ibid reported in it. */
+function judge(note, noteEntries, citations, add, span) {
+  const claimed = new Set();
+  // One authority cited twice in a note is one authority: its pinpoints are compared together.
+  const groups = new Map();
+  for (const entry of noteEntries) {
+    const id = `${entry.role ?? 'cited'}|${identity(entry)}|${entry.decisionDate ?? ''}`;
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(entry);
+  }
+  // Two decisions in one case cited in one note — `M.4197 – E.ON/Endesa (decision of
+  // 20.12.2006), paragraph 25; Case M.4197 – E.ON/Endesa (decision of 26.09.2006), paragraph
+  // 24` — are two authorities that name the same case, so each takes the citation in its turn.
+  const turns = new Map();
+  // Cited entries before incidental ones, and an incidental entry takes only what they left:
+  // "See, e.g., EUMR, Article 14. See also Annex I to … implementing Council Regulation (EC) No
+  // 139/2004" cites the Merger Regulation once and names it once, and the citation is the
+  // cited entry's even though both are the same act.
+  const ordered = [...groups.values()].sort((a, b) => Number(a[0].role === 'incidental') - Number(b[0].role === 'incidental'));
+  for (const group of ordered) {
+    const [entry] = group;
+    const sameCase = [...groups.values()].filter((other) => identity(other[0]) === identity(entry) && (other[0].role ?? '') === (entry.role ?? ''));
+    const turn = sameCase.indexOf(group);
+    const hits = citations.filter((citation, at) => {
+      if (entry.role === 'incidental' && claimed.has(at)) return false;
+      if (!group.some((member) => names(member, citation))) return false;
+      if (sameCase.length > 1) {
+        const seen = turns.get(identity(entry)) ?? [];
+        if (!seen.includes(at)) seen.push(at);
+        turns.set(identity(entry), seen);
+        if (seen.indexOf(at) !== turn) return false;
+      }
+      claimed.add(at);
+      return true;
+    });
+    const what = identity(entry);
+    if (entry.role === 'incidental') {
+      for (const hit of hits.filter((citation) => citation.status === 'resolved')) {
+        const { wrong } = comparePins(group, [hit]);
+        if (wrong.length) add(note, 'wrong-pinpoint', what, `named only incidentally, pinpointed at ${wrong.join('; ')}`);
+      }
+      continue;
+    }
+    const resolved = hits.filter((citation) => citation.status === 'resolved');
+    if (!resolved.length) {
+      const shortForm = citations.findIndex((citation, at) => !claimed.has(at) && citation.status !== 'resolved'
+        && entry.name && citation.value.toLowerCase() === entry.name.toLowerCase());
+      if (shortForm >= 0) claimed.add(shortForm);
+      if (hits.length || shortForm >= 0) add(note, 'unresolved', what);
+      else if (['judgment', 'opinion', 'order', 'decision', 'legislation', 'treaty'].includes(entry.k)) add(note, 'missed', what);
+      else if (entry.k === 'notice') add(note, 'missed', what, 'a notice');
+      else add(note, 'missed', what, 'neither an act, a case nor a publication detection reads');
+      continue;
+    }
+    const other = resolved.filter((citation) => !sameDocument(entry, citation));
+    if (other.length) {
+      add(note, 'wrong-document', what, other.map((c) => `${c.ecli ?? c.celex} (${c.documentType})`).join('; '));
+      continue;
+    }
+    const { wrong, missing } = comparePins(group, resolved);
+    if (wrong.length) add(note, 'wrong-pinpoint', what, wrong.join('; '));
+    if (missing.length) add(note, 'pinpoint-missing', what, missing.join('; '));
+  }
+  citations.forEach((citation, at) => {
+    if (!claimed.has(at)) add(note, 'unexpected', `${citation.label}: ${citation.value}`, span ? `(${span.slice(0, 60)})` : citation.status);
+  });
 }
 
 const keyOf = (outcome) => `${outcome.note}|${outcome.outcome}|${outcome.identity}`;
@@ -421,8 +442,8 @@ async function main() {
     const base = file.replace(/\.jsonl$/, '');
     const key = (await readFile(join(keys, file), 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line));
     const header = key[0];
-    const path = join(samples, header.document);
-    if (!existsSync(path)) {
+    const path = [join(samples, header.document), join(fetched, header.document)].find((candidate) => existsSync(candidate));
+    if (!path) {
       console.log(`${base}: skipped, ${header.document} is not in this checkout`);
       report.documents.push({ id: base, skipped: `${header.document} is not present` });
       continue;

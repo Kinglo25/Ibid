@@ -1,0 +1,38 @@
+{"document": "linklaters-a102.docx", "source": "the published PDF (7 pages, 27 footnotes), text extracted with pdftotext -layout and read note by note", "scope": "every footnote; the body names cases in prose and in one parenthesis ('(Compagnies Maritimes Belges and Irish Sugar)') without citing them, and refers to the draft guidelines' own paragraphs ('(para. 60(b))'), neither of which is an authority to be found", "built": "2026-09-17, by Claude, without reference to Ibid's output; case numbers and ECLIs checked against CELLAR", "rules": "as merger-guidelines-2026.jsonl; the draft guidelines under consultation are what the document discusses, not an authority it cites, and a citation of them is 'incidental' (neither required nor held against Ibid), as is a press release"}
+{"n": 1, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "note": "the document under consultation, cited by title", "role": "incidental"}
+{"n": 1, "k": "treaty", "treaty": "TFEU", "role": "incidental", "pin": ["art 102"], "note": "inside the draft guidelines' title"}
+{"n": 2, "k": "other", "name": "Press release IP/24/3623", "note": "a press release; not an authority, keyed so that anything Ibid makes of it is seen", "role": "incidental"}
+{"n": 3, "k": "notice", "name": "Guidance on Enforcement Priorities", "oj": "C 45, 24.2.2009, p. 7", "pin": ["para 19"], "note": "cited by date and OJ notice number, '24 February 2009, 2009/C 45/02', not by page; defines the short form 'Guidance on Enforcement Priorities'"}
+{"n": 3, "k": "treaty", "treaty": "EC", "role": "incidental", "pin": ["art 82"], "note": "inside the Guidance's title"}
+{"n": 4, "k": "judgment", "case": "C-413/14 P", "ecli": "EU:C:2017:632", "name": "Intel", "pin": ["para 134"]}
+{"n": 4, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "pin": ["para 51"], "note": "in prose: 'the Guidelines paraphrase the principle in para. 51'", "role": "incidental"}
+{"n": 4, "k": "treaty", "treaty": "TFEU", "role": "incidental", "pin": ["art 102"], "note": "inside the paraphrase of the draft guidelines"}
+{"n": 5, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "pin": ["para 60(b)"], "role": "incidental"}
+{"n": 6, "k": "judgment", "case": "C-240/22 P", "ecli": "EU:C:2024:915", "name": "Commission v Intel", "pin": ["para 110"], "note": "the PDF text reads 'Case C 240/22 P', with no hyphen"}
+{"n": 7, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "pin": ["para 56"], "role": "incidental"}
+{"n": 7, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia Mkt. Operations", "pin": ["para 59"]}
+{"n": 8, "k": "judgment", "case": "C-377/20", "ecli": "EU:C:2022:379", "name": "Servizio Elettrico Nazionale", "pin": ["para 79"]}
+{"n": 9, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "pin": ["footnote 41"], "role": "incidental"}
+{"n": 10, "k": "notice", "name": "De Minimis Notice", "oj": "C 291, 30.8.2014, p. 1", "pin": ["para 8"], "note": "cited by date and OJ notice number, '30 August 2014, 2014/C 291/01'; defines 'De Minimis Notice'"}
+{"n": 10, "k": "treaty", "treaty": "TFEU", "role": "incidental", "pin": ["art 101(1)"], "note": "inside the notice's title"}
+{"n": 11, "k": "judgment", "case": "C-395/96 P", "joined": ["C-396/96 P"], "ecli": "EU:C:2000:132", "written": {"ecli": "EU:C:2001:393"}, "name": "Compagnie maritime belge transports", "err": "the case numbers and name are Compagnie maritime belge (judgment of 16 March 2000, EU:C:2000:132); the date '10 July 2001' and ECLI EU:C:2001:393 are the order in C-497/99 P Irish Sugar, the other case the body names at this footnote"}
+{"n": 11, "k": "order", "case": "C-497/99 P", "ecli": "EU:C:2001:393", "written": {"case": "C-395/96 P"}, "name": "Irish Sugar", "err": "named only in the body; the footnote carries its date and ECLI under Compagnie maritime belge's case numbers and name"}
+{"n": 12, "k": "judgment", "case": "T-342/99", "ecli": "EU:T:2002:146", "name": "Airtours", "note": "no case number written; 'Judgment of 6 June 2002, Airtours, ECLI:EU:T:2002:146'; no pinpoint"}
+{"n": 13, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "pin": ["footnote 99"], "role": "incidental"}
+{"n": 14, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia Mkt. Operations", "pin": ["para 33"]}
+{"n": 15, "k": "judgment", "case": "C-377/20", "ecli": "EU:C:2022:379", "name": "Servizio Elettrico Nazionale", "pin": ["para 78"]}
+{"n": 15, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia Mkt. Operations", "pin": ["para 57"]}
+{"n": 15, "k": "judgment", "case": "C-62/86", "ecli": "EU:C:1991:286", "name": "AKZO v Commission", "pin": ["paras 70-71"]}
+{"n": 16, "k": "judgment", "case": "C-377/20", "ecli": "EU:C:2022:379", "name": "Servizio Elettrico Nazionale", "pin": ["para 82"]}
+{"n": 16, "k": "judgment", "case": "T-612/17", "ecli": "EU:T:2021:763", "name": "Google Shopping", "pin": ["paras 170-173", "paras 224-225"]}
+{"n": 17, "k": "judgment", "case": "C-457/10 P", "ecli": "EU:C:2012:770", "name": "AstraZeneca", "pin": ["para 110"]}
+{"n": 18, "k": "judgment", "case": "C-48/22 P", "ecli": "EU:C:2024:726", "name": "Google Shopping", "pin": ["para 195"]}
+{"n": 19, "k": "judgment", "case": "C-23/14", "ecli": "EU:C:2015:651", "name": "Post Danmark II", "pin": ["para 60"]}
+{"n": 20, "k": "notice", "name": "Guidance on Enforcement Priorities", "via": "short", "ante": 3, "pin": ["para 20"]}
+{"n": 21, "k": "judgment", "case": "C-23/14", "ecli": "EU:C:2015:651", "name": "Post Danmark II", "pin": ["para 67"]}
+{"n": 22, "k": "judgment", "case": "T-399/16", "ecli": "EU:T:2020:217", "name": "CK Telecoms UK", "pin": ["para 118"], "note": "the body attributes it to 'the Court of Justice in CK Hutchison'; the footnote cites the General Court's judgment and its number, date and ECLI agree"}
+{"n": 23, "k": "judgment", "case": "C-240/22 P", "ecli": "EU:C:2024:915", "name": "Commission v Intel", "pin": ["para 181"], "note": "written 'Case C 240/22 P'"}
+{"n": 24, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia Mkt. Operations", "pin": ["para 59"]}
+{"n": 25, "k": "judgment", "case": "T-235/18", "ecli": "EU:T:2022:358", "name": "Qualcomm (exclusivity payments)", "pin": ["para 414"]}
+{"n": 26, "k": "judgment", "case": "C-240/22 P", "ecli": "EU:C:2024:915", "name": "Commission v Intel", "pin": ["para 181"], "note": "written 'Case C 240/22 P'"}
+{"n": 27, "k": "judgment", "case": "C-413/14 P", "ecli": "EU:C:2017:632", "name": "Intel", "pin": ["para 140"]}

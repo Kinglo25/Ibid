@@ -498,6 +498,21 @@ export function documentTypeNote(citation: Pick<CitationContext, 'documentType' 
     : `The document this citation names is ${what}.`;
 }
 
+/**
+ * Says that the court document shown is another case from the one the footnote numbers.
+ *
+ * The document shown is the one the footnote's ECLI names, and a footnote can pair one case's
+ * ECLI with another's number — the City of London Law Society writes Compagnie maritime belge's
+ * case numbers beside the ECLI of the order in Irish Sugar. Which half is the mistake is not
+ * something Ibid can know, so it says what each names and which one is on screen, rather than
+ * titling Irish Sugar's order with Compagnie maritime belge's name.
+ */
+export function caseMismatchNote(mismatch: { cited: string; shown: string } | undefined, ecli: string | undefined): string | undefined {
+  if (!mismatch) return undefined;
+  const named = ecli ? `its ECLI, ${ecli.replace(/^ECLI:/i, '')}, names Case ${mismatch.shown}` : `the document retrieved is Case ${mismatch.shown}`;
+  return `Check the citation. The footnote numbers the case ${mismatch.cited}, but ${named}, and that is the document shown here.`;
+}
+
 export type NumberMismatch = { cited: string; citedTitle?: string; name: string; caseNumber?: string };
 
 /**

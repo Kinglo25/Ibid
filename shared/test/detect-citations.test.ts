@@ -745,6 +745,40 @@ describe('a lettered paragraph is not the paragraph its number names', () => {
   });
 });
 
+describe('case numbers written side by side without "Joined Cases"', () => {
+  // Vogel & Vogel's reply to the 2024 consultation on exclusionary abuses. CELLAR files the joined
+  // judgment under C-611/22 P; `62022CJ0625` names nothing.
+  test('are each offered the other as a filing, and stay two citations', () => {
+    const citations = detectCitations('(CJUE 3 septembre 2024, C-611/22 P et C-625/22 P).');
+    assert.deepEqual(citations.map((citation) => citation.caseNumber), ['C-611/22 P', 'C-625/22 P']);
+    assert.deepEqual(find('Illumina v Commission, C-611/22 P and C-625/22 P.', 'C-625/22 P')?.alternativeCelexes, ['62022CJ0611']);
+    assert.equal(find('Illumina v Commission, C-611/22 P and C-625/22 P.', 'C-625/22 P')?.joinedCaseNumbers, undefined, 'not declared joined');
+  });
+
+  test('but not across courts or years, which no joined group spans', () => {
+    assert.equal(find('Intel, C-413/14 P and C-240/22 P.', 'C-240/22 P')?.alternativeCelexes, undefined);
+    assert.equal(find('Google Shopping, T-612/17 and C-48/17 P.', 'C-48/17 P')?.alternativeCelexes, undefined);
+  });
+});
+
+describe('the Treaty articles in an act\'s own title', () => {
+  // The City of London Law Society's reply to the 2024 consultation on exclusionary abuses,
+  // footnote 8. The articles are the Treaty's; Article 81 of Regulation 1/2003 is a provision
+  // about limitation periods that the footnote never cited.
+  test('are not the act\'s pinpoint', () => {
+    const text = 'Council Regulation (EC) No 1/2003 of 16 December 2002 on the implementation of the rules on competition laid down in Articles 81 and 82 of the Treaty.';
+    assert.equal(find(text, 'Regulation (EC) No 1/2003')?.locator, undefined);
+    assert.equal(find('Regulation (EC) No 1/2003, implementing Articles 101 and 102 TFEU.', 'Regulation (EC) No 1/2003')?.locator, undefined);
+    assert.equal(find('Règlement (CE) n° 1/2003 relatif à la mise en œuvre des règles de concurrence prévues aux articles 81 et 82 du traité.', 'Règlement (CE) n° 1/2003')?.locator, undefined);
+  });
+
+  test('while a provision of the act itself still reads', () => {
+    assert.equal(find('Regulation (EC) No 1/2003, Article 2.', 'Regulation (EC) No 1/2003')?.locator?.start, 2);
+    assert.equal(find('Regulation (EC) No 1/2003, Article 23(2), which implements Article 103 TFEU.', 'Regulation (EC) No 1/2003')?.locator?.start, 23);
+    assert.equal(find('Case C-413/14 P, Intel, paragraph 138 of the judgment.', 'C-413/14 P')?.locator?.start, 138);
+  });
+});
+
 describe('an act named in the title of another act', () => {
   // Footnote 47 of the 2026 draft merger guidelines. The paragraphs are the Form's, in Annex I
   // to Regulation 2023/914; the acts the title names were given them.

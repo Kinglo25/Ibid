@@ -8,6 +8,9 @@ node_modules
 *:mshield
 # Corpus harness downloads: public documents, but large and re-fetchable.
 .corpus-cache/
+# Public documents fetched to test against (consultation responses and the like): re-fetchable,
+# and kept out of the repository for the same reason as the samples below. See scripts/README.md.
+.samples-cache/
 corpus-report.json
 answer-key-report.json
 # The retrieved-document cache, if IBID_CACHE_DIR is ever pointed inside the tree. It

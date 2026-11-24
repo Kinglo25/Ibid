@@ -1,0 +1,32 @@
+{"document": "allen-overy-a102.docx", "source": "the published PDF (10 pages, 28 footnotes), text extracted with pdftotext -layout and read note by note", "scope": "every footnote; in the body, '(see, e.g., paragraph 40 of the Vertical Guidelines 1)' is the only parenthesis citing an authority, and body sentences give pinpoints the footnotes do not ('paragraphs 540-541 in the judgment of the General Court in … Google Shopping', footnote 15); both are recorded as notes, not as entries", "built": "2026-09-17, by Claude, without reference to Ibid's output; case numbers and ECLIs checked against CELLAR", "rules": "as merger-guidelines-2026.jsonl; the draft guidelines under consultation are what the document discusses, not an authority it cites, and a citation of them is 'incidental' (neither required nor held against Ibid), as is a press release"}
+{"n": 1, "k": "notice", "name": "Vertical Guidelines", "oj": "C 248, 30.6.2022, p. 1", "note": "written 'OJ 2022, C 248/1', with no date; the pinpoint, paragraph 40, is in the body parenthesis the footnote mark sits in"}
+{"n": 2, "k": "notice", "name": "2008 Guidance", "via": "short", "pin": ["para 14"], "note": "the Guidance on enforcement priorities in applying Article 82 (OJ C 45, 24.2.2009, p. 7), which this document never cites in full; 'The 2008 Guidance' is how the body names it"}
+{"n": 3, "k": "judgment", "case": "C-377/20", "ecli": "EU:C:2022:379", "name": "Servizio Elettrico Nazionale", "pin": ["para 103"]}
+{"n": 4, "k": "judgment", "case": "C-333/21", "ecli": "EU:C:2023:1011", "name": "European Superleague Company", "pin": ["para 131"]}
+{"n": 5, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia Mkt. Operations", "pin": ["para 39"]}
+{"n": 6, "k": "judgment", "case": "C-413/14 P", "ecli": "EU:C:2017:632", "name": "Intel v Commission", "pin": ["paras 138-141"]}
+{"n": 7, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia Mkt. Operations", "pin": ["paras 47-55"]}
+{"n": 8, "k": "judgment", "case": "C-413/14 P", "ecli": "EU:C:2017:632", "name": "Intel v Commission", "pin": ["para 139"]}
+{"n": 9, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia Mkt. Operations", "pin": ["para 54"]}
+{"n": 10, "k": "judgment", "case": "C-89/11 P", "ecli": "EU:C:2012:738", "name": "E.ON Energie v Commission", "pin": ["paras 72-73"]}
+{"n": 11, "k": "judgment", "case": "C-240/22 P", "ecli": "EU:C:2024:915", "name": "Commission v Intel Corporation", "pin": ["paras 183-208"]}
+{"n": 12, "k": "judgment", "case": "C-413/14 P", "ecli": "EU:C:2017:632", "name": "Intel v Commission", "pin": ["para 139"]}
+{"n": 13, "k": "judgment", "case": "C-48/22 P", "ecli": "EU:C:2024:726", "name": "Google and Alphabet v Commission (Google Shopping)", "pin": ["para 265"]}
+{"n": 13, "k": "judgment", "case": "C-240/22 P", "ecli": "EU:C:2024:915", "name": "Commission v Intel Corporation", "pin": ["paras 180-181"]}
+{"n": 14, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia Mkt. Operations", "pin": ["paras 59-60"]}
+{"n": 15, "k": "judgment", "case": "T-612/17", "ecli": "EU:T:2021:763", "name": "Google and Alphabet v Commission (Google Shopping)", "note": "no pinpoint in the footnote; the sentence it supports names paragraphs 540-541"}
+{"n": 16, "k": "judgment", "case": "C-48/22 P", "ecli": "EU:C:2024:726", "name": "Google and Alphabet v Commission (Google Shopping)", "pin": ["paras 266-268"], "note": "written 'paragraphs 266-268'"}
+{"n": 17, "k": "judgment", "case": "C-377/20", "ecli": "EU:C:2022:379", "name": "Servizio Elettrico Nazionale", "pin": ["para 80"]}
+{"n": 18, "k": "judgment", "case": "C-680/20", "ecli": "EU:C:2023:33", "name": "Unilever Italia Mkt. Operations", "pin": ["para 59"]}
+{"n": 19, "k": "other", "name": "Draft Guidelines on exclusionary abuses (2024)", "pin": ["footnote 128"], "note": "written only 'Footnote 128.'; the sentence says it is a footnote of the Draft Guidelines", "role": "incidental"}
+{"n": 20, "k": "judgment", "case": "C-48/22 P", "ecli": "EU:C:2024:726", "name": "Google and Alphabet v Commission (Google Shopping)", "pin": ["para 266"]}
+{"n": 21, "k": "judgment", "case": "C-48/22 P", "ecli": "EU:C:2024:726", "name": "Google and Alphabet v Commission (Google Shopping)", "pin": ["para 265"]}
+{"n": 21, "k": "judgment", "case": "C-240/22 P", "ecli": "EU:C:2024:915", "name": "Commission v Intel Corporation", "pin": ["paras 180-181"]}
+{"n": 22, "k": "judgment", "case": "T-30/89", "ecli": "EU:T:1991:70", "name": "Hilti v Commission", "note": "no pinpoint"}
+{"n": 23, "k": "judgment", "case": "T-83/91", "ecli": "EU:T:1994:246", "name": "Tetra Pak v Commission", "note": "no pinpoint"}
+{"n": 24, "k": "judgment", "case": "C-377/20", "ecli": "EU:C:2022:379", "name": "Servizio Elettrico Nazionale", "pin": ["para 80"]}
+{"n": 25, "k": "judgment", "case": "C-377/20", "ecli": "EU:C:2022:379", "name": "Servizio Elettrico Nazionale", "note": "no pinpoint"}
+{"n": 26, "k": "judgment", "case": "C-23/14", "ecli": "EU:C:2015:651", "name": "Post Danmark", "note": "no pinpoint"}
+{"n": 27, "k": "judgment", "case": "C-23/14", "ecli": "EU:C:2015:651", "name": "Post Danmark", "pin": ["para 60"], "note": "followed by a quotation of the paragraph"}
+{"n": 28, "k": "decision", "m": "AT.39740", "name": "Google Search (Shopping)", "pin": ["para 649"], "note": "'Commission Decision of 27 June 2017 relating to proceedings under Article 102 … (AT.39740 – Google Search (Shopping)), C(2017) 4444 final, para. 649'"}
+{"n": 28, "k": "treaty", "treaty": "TFEU", "role": "incidental", "pin": ["art 102"], "note": "inside the decision's title, with Article 54 of the EEA Agreement"}
