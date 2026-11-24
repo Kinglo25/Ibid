@@ -116,6 +116,14 @@ restart Word.
 
 Either way the add-in appears on the **Home** tab as **Ibid. > Review citations**.
 
+**A trial address that changes reaches desktop Word late.** `npm run trial` mints a new
+tunnel address whenever it is restarted, and writes it into a new manifest under the same
+`<Id>` and `<Version>`. Word on the web takes the new file at its next upload. Desktop Word
+keeps the add-in it already loaded in a cache of its own, keyed by that `<Id>`, so the client
+replaces the file in the shared folder (or `wef`), restarts Word, and — if the old address
+still opens — clears that cache. Keeping the machine awake for the length of the trial avoids
+all of it.
+
 Sideloading may be disabled by policy on a firm-managed machine. That is a control working
 as intended, not an obstacle to route around — and a client document should never be opened
 on an unmanaged device in order to try a tool out. Two routes stay open instead: evaluate

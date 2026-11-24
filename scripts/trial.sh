@@ -167,7 +167,10 @@ echo "  Send:     $DELIVERED"
 echo "  Add-in:   $ADDIN_ID  (unchanged, so this updates rather than duplicates)"
 echo "  Logs:     $STATE/server.log, $STATE/tunnel.log"
 echo
-echo "  The client uploads that one file in Word on the web:"
-echo "    Home > Add-ins > More Settings > Upload My Add-in > Browse > Upload"
+echo "  The client loads that one file into Word:"
+echo "    on the web: Home > Add-ins > More Settings > Upload My Add-in > Browse > Upload"
+echo "    on Windows or Mac desktop: docs/HOSTING.md, \"Sideloading, for the client\""
 echo
 echo "  This URL dies when the machine sleeps or the tunnel stops. Run this again for a new one."
+echo "  Desktop Word caches the add-in: with a new file, the client replaces the old one and"
+echo "  restarts Word, and clears its add-in cache if the old address still opens."
