@@ -1557,7 +1557,21 @@ export function parseLookup(input: unknown): EuLookup | undefined {
   };
 }
 
-export function createApiHealthCheck() { return { status: 'ok' as const }; }
+/**
+ * What the service is, and which build of it is answering.
+ *
+ * The commit is reported because "is what I pushed live?" is otherwise a question nobody can
+ * answer from outside: a platform host redeploys on a push, or it does not, and the pane is a
+ * page that looks the same either way. Asked of the deployment, this settles it in one request.
+ *
+ * Read from `IBID_COMMIT`, which a host sets at build time, and from `RENDER_GIT_COMMIT` where
+ * the host is Render and sets it already. Absent — a local run, or a host that says nothing —
+ * the field is left out rather than filled with a guess.
+ */
+export function createApiHealthCheck(env: Record<string, string | undefined> = process.env) {
+  const commit = env.IBID_COMMIT ?? env.RENDER_GIT_COMMIT;
+  return { status: 'ok' as const, ...(commit ? { commit: commit.slice(0, 40) } : {}) };
+}
 
 /**
  * Resolves each official-source family through a deliberately small adapter.

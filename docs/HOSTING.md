@@ -38,6 +38,39 @@ IBID_USER_AGENT='Ibid/1.0 (+https://your-host; you@example.com)' \
 That is the whole difference. The pane calls `/api/...` either way and does not have to know
 which deployment it is in. See `api/README.md` for what the static server refuses to serve.
 
+### Where it is actually hosted, and how to tell what is deployed
+
+Today that platform host is **Render**, at `https://ibid.onrender.com`, built from the GitHub
+repository: build `npm ci && npm run build`, start `IBID_STATIC_DIR=./addin/dist node
+api/server.mjs`, with `IBID_BIND_HOST=0.0.0.0` so it binds the port Render gives it.
+
+**A push is not a deployment, and the pane looks identical either way.** Whether the host
+redeployed is not visible in Word, and a reviewer who cannot see a change concludes the feature
+is missing rather than that the build is old. So the service names the build answering:
+
+```bash
+curl -s https://ibid.onrender.com/api/health
+```
+
+`{"status":"ok","commit":"…"}` — Render sets `RENDER_GIT_COMMIT` itself, and any other host can
+set `IBID_COMMIT` at build time. Compare it with `git rev-parse HEAD`. Where they differ, the
+deployment is behind: check that the service's branch is the one being pushed to and that
+auto-deploy is on, or deploy the latest commit by hand.
+
+The pane's own bundle is content-hashed, so the same question can be asked of it without
+trusting any cache:
+
+```bash
+curl -s https://ibid.onrender.com/taskpane.html | grep -o 'main-[A-Za-z0-9_-]*\.js'
+```
+
+That filename changes with every change to the pane, and `addin/dist/assets/` holds the one a
+local `npm run build` produces. Two different names mean two different builds.
+
+Desktop Word caches the pane's page as any browser would. After a redeploy to the same address,
+close and reopen the task pane, or restart Word; the bundle's hashed name means a stale copy of
+the code cannot survive a refetch of the HTML.
+
 **A trial has a confidentiality choice in it that a deployment does not.** No text from the
 client's document ever reaches the server — that is structural, and `DATA-FLOW.md` is
 written for their IT to check it. But the *lookups* name the authorities their document

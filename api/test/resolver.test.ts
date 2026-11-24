@@ -85,7 +85,18 @@ const eurLexLookup = (overrides: Partial<EuLookup> = {}): EuLookup => ({
 
 describe('health check', () => {
   test('reports ok', () => {
-    assert.deepEqual(createApiHealthCheck(), { status: 'ok' });
+    assert.deepEqual(createApiHealthCheck({}), { status: 'ok' });
+  });
+
+  test('names the build that is answering, where the host says what it is', () => {
+    // "Is what I pushed live?" cannot be answered from outside a deployment otherwise: the
+    // pane is a page that looks the same whether the host redeployed or not.
+    assert.deepEqual(createApiHealthCheck({ IBID_COMMIT: 'e54f367' }), { status: 'ok', commit: 'e54f367' });
+    // Render sets its own, so a deployment there needs nothing configured.
+    assert.deepEqual(createApiHealthCheck({ RENDER_GIT_COMMIT: 'abc1234' }), { status: 'ok', commit: 'abc1234' });
+    assert.deepEqual(createApiHealthCheck({ IBID_COMMIT: 'set', RENDER_GIT_COMMIT: 'ignored' }), { status: 'ok', commit: 'set' });
+    // Left out rather than guessed at where nothing says.
+    assert.deepEqual(createApiHealthCheck({ IBID_COMMIT: '' }), { status: 'ok' });
   });
 });
 
