@@ -56,13 +56,19 @@ curl -s https://ibid.onrender.com/api/health
 set `IBID_COMMIT` at build time. Compare it with `git rev-parse HEAD`.
 
 Where they differ the deployment is behind, and a push is not what tells you: on 24 November
-2026 ten commits sat on `master` while the service went on serving a build from before them,
-answering healthily the whole time. Three things to look at, in this order — whether the
-service's **Auto-Deploy** is on, whether the branch it watches is the branch being pushed to,
-and whether the recent builds **failed**, because a failed build leaves the last good deploy
-running and that is indistinguishable from a deploy that never started. Render records none of
-this on the commit: there were no GitHub deployment records and no commit statuses either, so
-the service's own event log is the only place it shows.
+2026 eleven commits sat on `master` while the service went on serving a build from before them,
+answering healthily the whole time. The cause was the first of three things worth looking at, in
+this order — the service's **Auto-Deploy** was simply off; then whether the branch it watches is
+the branch being pushed to; then whether the recent builds **failed**, because a failed build
+leaves the last good deploy running and that is indistinguishable from a deploy that never
+started. Render records none of this on the commit: there were no GitHub deployment records and
+no commit statuses either, so the service's own event log is the only place it shows. Nor is the
+setting in the repository — there is no `render.yaml` here, so the service is configured in
+Render's dashboard, and nothing about it can be read from a clone.
+
+**Turning Auto-Deploy on does not deploy what is already pushed.** It takes effect from the next
+commit Render sees, so a repository that has run ahead of the service stays behind until either
+a manual deploy is triggered or something further is pushed.
 
 The pane's own bundle is content-hashed, so the same question can be asked of it without
 trusting any cache:
