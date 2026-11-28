@@ -260,7 +260,11 @@ say, and the largest thing in them by far is one gap seen from two sides: a noti
 guidelines or a communication is cited by where it was published and not by any number of its
 own, an Official Journal reference is not read, and so the instrument is never reported and
 every short form the document then uses for it has nothing to resolve against. In competition
-practice the Commission's own notices are among the most-cited instruments there are.
+practice the Commission's own notices are among the most-cited instruments there are. Detection
+reads an Official Journal reference since 28 November 2026, but the known lists below were
+written before that and have not been rewritten, because that needs the Word-converted
+documents: the next run will report the notices it now finds as fixed (see `docs/HANDOFF.md`,
+"The parked detection line").
 
 After that it is mostly the conversion rather than Ibid: footnotes merged into the one before
 them, footnotes reduced to their pinpoint with the authority lost out of the file altogether,

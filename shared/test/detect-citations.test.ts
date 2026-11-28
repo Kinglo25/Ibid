@@ -1145,10 +1145,11 @@ describe('detectCitationsAcrossFootnotes (explicitly defined short forms)', () =
       'See Commission Notice on a simplified treatment for certain concentrations under Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings, OJ C 160, 5.5.2023, p.1 (‘Notice on Simplified Procedure’).',
       'Notice on Simplified Procedure, paragraph 5(d)(bb).',
     ]);
-    assert.deepEqual(first.map((citation) => citation.celex), ['32004R0139'], 'the Regulation is still cited where it is named');
-    // What is left is the ordinary report of a name Ibid cannot place: asked about, not answered.
-    assert.ok(second.length > 0);
-    assert.ok(second.every((citation) => citation.status !== 'resolved' && !citation.celex && !citation.ecli && !citation.caseNumber));
+    assert.deepEqual(first.map((citation) => citation.celex ?? citation.oj), ['32004R0139', 'JOC_2023_160_R_0001'],
+      'the Regulation is still cited where it is named, and the notice by its publication');
+    // The term is the notice's. Before notices were read by their publication, what was left was
+    // a name Ibid could not place; now it is the notice, and never the Regulation its title names.
+    assert.deepEqual(second.map((citation) => [citation.status, citation.oj, citation.celex]), [['resolved', 'JOC_2023_160_R_0001', undefined]]);
   });
 
   test('does not give a term to an act named inside another act’s title', () => {
@@ -2021,5 +2022,83 @@ describe('a provision cited down to its point', () => {
   test('"Articles 101(1)(a) and 102(b) TFEU"', () => {
     const found = detectCitations('Articles 101(1)(a) and 102(b) TFEU.');
     assert.deepEqual(found.map((citation) => [citation.locator?.start, citation.locator?.paragraph, citation.locator?.point]), [[101, 1, 'a'], [102, undefined, 'b']]);
+  });
+});
+/**
+ * A Commission notice or set of guidelines is cited by where it was published. Every text below
+ * is from the Commission's 2026 draft merger guidelines, the guidelines on exclusionary abuses,
+ * or the corpus of decisions and opinions, and every identifier was confirmed to serve the
+ * document from CELLAR's `oj` resource on 2026-09-17.
+ */
+describe('an Official Journal publication', () => {
+  const references = (text: string) => detectCitations(text).filter((c) => c.oj).map((c) => [c.oj, c.ojDate, c.locator?.start]);
+
+  test('in every shape its reference is written', () => {
+    assert.deepEqual(references('See Commission Notice on a simplified treatment, OJ C 160, 5.5.2023, p.1 (‘Notice on Simplified Procedure’).'),
+      [['JOC_2023_160_R_0001', '5.5.2023', undefined]]);
+    assert.deepEqual(references('Commission Notice on the definition of the relevant market (‘Market Definition Notice’), OJ C/2024/1645, 22.2.2024, paragraph 8.'),
+      [['C_202401645', '22.2.2024', 8]]);
+    assert.deepEqual(references('(‘Market Definition Notice’), OJ C, C/2024/1645, 22.2.2024, ELI: http://data.europa.eu/eli/C/2024/1645/oj, paragraph 15.'),
+      [['C_202401645', '22.2.2024', 15]]);
+    assert.deepEqual(references('Directive of the European Parliament and of the Council of 24 October 1995 (OJ 1995 L 281, p. 31), as amended.'),
+      [['JOL_1995_281_R_0031', '1995', undefined]]);
+    assert.deepEqual(references('OJ L 24, 29.1.2004, p. 1.'), [['JOL_2004_024_R_0001', '29.1.2004', undefined]]);
+  });
+
+  test('not where it is the publication of an act, judgment or decision cited before it', () => {
+    assert.deepEqual(references('Regulation (EU) 2022/1925 of the European Parliament and of the Council of 14 September 2022 on contestable and fair markets, OJ L 265, 12.10.2022, pp. 1-66.'), []);
+    assert.deepEqual(references('Commission Implementing Decision (EU) 2016/2297 of 16 December 2016 (OJ 2016 L 344, p. 100).'), []);
+  });
+
+  test('but where the act before it is named only in its title', () => {
+    assert.deepEqual(references('Commission Notice on a simplified treatment for certain concentrations under Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings, OJ C 160, 5.5.2023, p.1.').map(([oj]) => oj),
+      ['JOC_2023_160_R_0001']);
+  });
+
+  test('not without a page, which would leave the publication a guess among an issue', () => {
+    assert.deepEqual(references('(‘Horizontal Co-operation Guidelines’), OJ C 259, 21.7.2023, paragraph 578.'), []);
+  });
+
+  test('takes no pinpoint from the next sentence', () => {
+    assert.deepEqual(references('Charter of Fundamental Rights of the European Union, OJ C 364, 18.12.2000, p. 1. Article 12(1) of the Charter states that everyone has the right to freedom of assembly.'),
+      [['JOC_2000_364_R_0001', '18.12.2000', undefined]]);
+  });
+
+  test('and the short form a notice is given resolves to it, before or after the reference (footnotes 100 and 5)', () => {
+    const [, market, , simplified] = detectCitationsAcrossFootnotes([
+      'Commission Notice on the definition of the relevant market for the purposes of Union competition law (‘Market Definition Notice’), OJ C/2024/1645, 22.2.2024, paragraph 8.',
+      'See Market Definition Notice, paragraphs 90-93.',
+      'See Commission Notice on a simplified treatment for certain concentrations under Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings, OJ C 160, 5.5.2023, p.1 (‘Notice on Simplified Procedure’).',
+      'Notice on Simplified Procedure, paragraph 5(d)(bb).',
+    ]);
+    assert.deepEqual(market.map((c) => [c.oj, c.status, c.resolutionMethod, c.pinpoint]), [['C_202401645', 'resolved', 'explicit_alias', { paragraphs: [90, 91, 92, 93] }]]);
+    assert.deepEqual(simplified.map((c) => [c.oj, c.pinpoint]), [['JOC_2023_160_R_0001', { paragraphs: [5] }]]);
+  });
+});
+
+describe('an Ibid. opening a note', () => {
+  test('is a back-reference however the sentence goes on (32003D0707, footnote 80)', () => {
+    const [, ibid] = detectCitationsAcrossFootnotes([
+      'Commission notice on agreements of minor importance, OJ C 265, 22.8.1998, p. 2, paragraph 22.',
+      'Ibid., paragraph 60, which refers to the Commission decision of 15 December 1982, AROW/BNIC (OJ L 379, 31.12.1982, p. 19).',
+    ]);
+    const back = ibid.find((c) => c.value === 'Ibid.');
+    assert.deepEqual([back?.status, back?.oj, back?.pinpoint], ['resolved', 'JOC_1998_265_R_0002', { paragraphs: [60] }]);
+  });
+});
+
+describe('an Ibid. opening a sentence that goes on to cite something else', () => {
+  test('still points back (City of London Law Society, footnotes 12 to 14)', () => {
+    // The body says "Intel also makes clear…", so footnote 14's "Ibid" is Intel, not the General
+    // Court's Google Shopping named after footnote 13's own "Ibid". Footnote 13's Ibid used to be
+    // dropped because its sentence names T-612/17, and footnote 14 then resolved to that alone.
+    const [, thirteen, fourteen] = detectCitationsAcrossFootnotes([
+      'Judgment of 6 September 2017, Intel v Commission, C-413/14 P, EU:C:2017:632, paragraph 138.',
+      'Ibid, paragraph 139. The General Court also set out its interpretation of the Intel decision in Google and Alphabet v Commission, 10 November 2021, Case T-612/17, at paragraph 441.',
+      'Ibid, paragraph 141.',
+    ]);
+    const back = thirteen.find((c) => c.value === 'Ibid');
+    assert.deepEqual([back?.status, back?.caseNumber, back?.pinpoint], ['resolved', 'C-413/14 P', { paragraphs: [139] }]);
+    assert.equal(fourteen.find((c) => c.value === 'Ibid')?.status, 'unresolved_ambiguous', 'two authorities above it, so the reviewer is asked');
   });
 });

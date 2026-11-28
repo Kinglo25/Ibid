@@ -95,6 +95,8 @@ export type CitationCandidate = {
   celex?: string;
   ecli?: string;
   documentType?: CuriaDocumentType;
+  oj?: string;
+  ojDate?: string;
 };
 
 export type CitationMatch = {
@@ -164,6 +166,17 @@ export type CitationMatch = {
    * confidently-wrong citation the rest of this module refuses to produce.
    */
   backReference?: { footnote?: number };
+  /**
+   * The identifier CELLAR files an Official Journal publication under, where the citation is
+   * one: `C_202401645` for "OJ C/2024/1645", `JOC_2004_031_R_0005` for "OJ C 31, 5.2.2004, p. 5".
+   *
+   * A Commission notice or set of guidelines is cited by where it was published, not by any
+   * number of its own, and its CELEX cannot be derived from that — `52004XC0205(02)` carries a
+   * sequence number nothing in the citation states. CELLAR answers by the reference itself.
+   */
+  oj?: string;
+  /** The date the reference gives, `d.m.yyyy`, or the year alone where only a year is written, to check the retrieved document against. */
+  ojDate?: string;
   /**
    * The footnote a short form says its authority was cited in — "Intel v Commission, cited in
    * footnote 2" — and whether that footnote does cite it. Set only where the text names one.
@@ -1751,9 +1764,70 @@ export function detectCitations(text: string): CitationMatch[] {
     });
   }
 
+  // Official Journal publications. Read last, so the citations before each reference are known:
+  // a reference that follows an act, a judgment or a decision in the same sentence is where
+  // that one was published, and is not a second authority. One that follows only a name —
+  // "Commission Notice on … (‘Market Definition Notice’), OJ C/2024/1645" — or nothing, or an
+  // act named inside the notice's own title, is the citation.
+  for (const reference of officialJournalReferences(text)) {
+    const segment = segmentAt(segments, reference.index);
+    const sentenceStart = Math.max(segment.start, lastSentenceBreak(text, segment.start, reference.index));
+    const cited = matches.filter((citation) => citation.index >= sentenceStart && citation.index < reference.index)
+      .filter((citation) => !/article$/.test(citation.label))
+      .filter((citation) => !(citation.source === 'eur-lex' && namedInAnotherActsTitle(text, citation.index, segment.start)));
+    if (cited.length) continue;
+    // Its pinpoint from its own part of the sentence, as a Commission case's is: "OJ C 364,
+    // 18.12.2000, p. 1. Article 12(1) of the Charter states …" is not a citation of Article 12
+    // of the publication.
+    const parsed = commissionCasePinpoint(commissionCaseTail(text, reference.index + reference.value.length, segment.end));
+    add({
+      label: 'Official Journal publication', value: reference.value, index: reference.index, source: 'eur-lex',
+      oj: reference.oj, ojDate: reference.date, locator: parsed?.locator, pinpoint: parsed?.pinpoint,
+    });
+  }
+
   matches.sort((a, b) => a.index - b.index);
   assignRespectively(text, segments, matches);
   return matches;
+}
+
+function lastSentenceBreak(text: string, from: number, to: number): number {
+  let at = from;
+  for (const boundary of text.slice(from, to).matchAll(SENTENCE_BREAK)) at = from + (boundary.index ?? 0) + boundary[0].length;
+  return at;
+}
+
+const OJ_DATED = /\b(OJ|JO)\s+([CL])\s+(\d{1,3})\s*(?:,|du)\s*(\d{1,2})\.(\d{1,2})\.(\d{4})\s*,\s*pp?\.\s*(\d{1,4})/g;
+const OJ_COURT_STYLE = /\bOJ\s+(\d{4})\s+([CL])\s+(\d{1,3})\s*,\s*pp?\.\s*(\d{1,4})/g;
+const OJ_NUMBERED = /\bOJ\s+([CL])(?:\s*,\s*[CL])?\s*\/?\s*(\d{4})\/(\d{1,5})\b(?:\s*,\s*(\d{1,2})\.(\d{1,2})\.(\d{4}))?/g;
+
+/**
+ * The Official Journal references a text makes, each with the identifier CELLAR files that
+ * publication under. Confirmed live on 2026-09-17 and again on 2026-11-28: `oj/C_202401645`
+ * serves the Market Definition Notice, `oj/JOC_2023_160_R_0001` the Notice on Simplified
+ * Procedure, and `oj/JOC_2004_031_R_0005_01` the 2004 Horizontal Merger Guidelines — the older
+ * ones filed with a sequence suffix the newer ones lack, which the resolver tries both ways.
+ *
+ * Only a reference that states its page, or its number in the numbering begun in October 2023,
+ * is read. "OJ C 259, 21.7.2023" alone names an issue holding several publications, and picking
+ * the first page of it would be a guess.
+ */
+function officialJournalReferences(text: string): Array<{ index: number; value: string; oj: string; date?: string }> {
+  const pad = (value: string, width: number) => value.padStart(width, '0');
+  const found: Array<{ index: number; value: string; oj: string; date?: string }> = [];
+  for (const m of text.matchAll(OJ_DATED)) {
+    const [, , series, issue, day, month, year, page] = m;
+    found.push({ index: m.index ?? 0, value: m[0], oj: `JO${series}_${year}_${pad(issue, 3)}_R_${pad(page, 4)}`, date: `${Number(day)}.${Number(month)}.${year}` });
+  }
+  for (const m of text.matchAll(OJ_COURT_STYLE)) {
+    const [, year, series, issue, page] = m;
+    found.push({ index: m.index ?? 0, value: m[0], oj: `JO${series}_${year}_${pad(issue, 3)}_R_${pad(page, 4)}`, date: year });
+  }
+  for (const m of text.matchAll(OJ_NUMBERED)) {
+    const [, series, year, number, day, month, dateYear] = m;
+    found.push({ index: m.index ?? 0, value: m[0], oj: `${series}_${year}${pad(number, 5)}`, date: day ? `${Number(day)}.${Number(month)}.${dateYear}` : year });
+  }
+  return found.sort((a, b) => a.index - b.index);
 }
 
 /**
@@ -1833,6 +1907,19 @@ const DEFINED_TERM_SCAN_WINDOW = 160;
  */
 const UNQUOTED_NICKNAME = /^\s*,?\s*\(\s*([A-ZÀ-Þ][^()\d,;:«»"“”‘’]{1,40}?)\s*\)(?=\s*(?:[.,;:]|$))/u;
 const DEFINED_TERMS = new RegExp(DEFINED_TERM.source, 'gi');
+const TERM_BEFORE_REFERENCE = /\(\s*(?:the\s+)?["“'‘]([^)]{1,80})["”'’]\s*\)\s*,?\s*$/i;
+
+/**
+ * The short form written straight before an Official Journal reference, which is where a
+ * drafter puts a notice's: "Commission Notice on the definition of the relevant market for the
+ * purposes of Union competition law (‘Market Definition Notice’), OJ C/2024/1645". The match's
+ * first group is the term, as `DEFINED_TERM`'s is.
+ */
+function termBeforeReference(text: string, citation: Pick<CitationMatch, 'index'>, segmentStart: number): { match: RegExpExecArray; start: number } | undefined {
+  const from = Math.max(segmentStart, citation.index - DEFINED_TERM_SCAN_WINDOW);
+  const match = TERM_BEFORE_REFERENCE.exec(text.slice(from, citation.index));
+  return match ? { match, start: from + (match.index ?? 0) } : undefined;
+}
 
 /**
  * A term defined in words rather than by a bracket of its own: "ci-après l’« arrêt Continental
@@ -2060,6 +2147,13 @@ function termsDefinedInProse(paragraphs: readonly string[]): Array<{ key: string
       if (!identityOf(registered)) continue;
       const windowStart = citation.index + citation.value.length;
       const segment = segmentAt(segments, citation.index);
+      // A publication's term is written before its reference, as in a note.
+      const before = citation.oj ? termBeforeReference(text, citation, segment.start) : undefined;
+      if (before) {
+        const term = before.match[1].trim();
+        if (INSTRUMENT_SHORT_FORM.test(term)) found.push({ key: term.toLowerCase(), citation: registered });
+        continue;
+      }
       const reach = citation.source === 'eur-lex' ? ACT_DEFINED_TERM_WINDOW : DEFINED_TERM_SCAN_WINDOW;
       const after = text.slice(windowStart, Math.min(segment.end, windowStart + reach));
       const parenthetical = DEFINED_TERM.exec(after);
@@ -2071,8 +2165,9 @@ function termsDefinedInProse(paragraphs: readonly string[]): Array<{ key: string
       if (hardMatches.some((other) => other.index >= windowStart && other.index < start)) continue;
       if (new RegExp(SENTENCE_BREAK.source).test(after.slice(0, parenthetical.index ?? 0))) continue;
       if (!INSTRUMENT_SHORT_FORM.test(term)) continue;
-      if (UNDETECTED_INSTRUMENT_TERM.test(term)) continue;
-      if (citedWithinAnotherInstrument(text, citation, segment.start)) continue;
+      // A notice's own term is a publication reference's to take, and only its.
+      if (!citation.oj && UNDETECTED_INSTRUMENT_TERM.test(term)) continue;
+      if (!citation.oj && citedWithinAnotherInstrument(text, citation, segment.start)) continue;
       found.push({ key: term.toLowerCase(), citation: registered });
     }
   }
@@ -2088,7 +2183,7 @@ function citedWithinAnotherInstrument(text: string, citation: Pick<CitationMatch
   return INSTRUMENT_NOUN.test(before.slice(from));
 }
 
-type RegisteredCitation = Pick<CitationMatch, 'label' | 'source' | 'celex' | 'ecli' | 'caseNumber' | 'caseName' | 'documentType' | 'documentTypeStated'>;
+type RegisteredCitation = Pick<CitationMatch, 'label' | 'source' | 'celex' | 'ecli' | 'caseNumber' | 'caseName' | 'documentType' | 'documentTypeStated' | 'oj' | 'ojDate'>;
 
 type RegistryEntry = {
   key: string;
@@ -2101,7 +2196,7 @@ type RegistryEntry = {
 };
 
 function identityOf(citation: RegisteredCitation): string | undefined {
-  return citation.ecli ?? citation.celex ?? citation.caseNumber ?? citation.caseName;
+  return citation.ecli ?? citation.celex ?? citation.oj ?? citation.caseNumber ?? citation.caseName;
 }
 
 /**
@@ -2141,6 +2236,7 @@ function sameAuthority(a: RegisteredCitation, b: RegisteredCitation): boolean {
   // its CELEX said otherwise — so the reviewer was offered the same judgment twice, one of
   // the two under a name that had lost its suffix.
   if (a.ecli && b.ecli) return a.ecli === b.ecli;
+  if (a.oj && b.oj) return a.oj === b.oj;
   if (a.celex && b.celex) return a.celex === b.celex;
   if (a.caseNumber && b.caseNumber) return caseIdentity(a.caseNumber) === caseIdentity(b.caseNumber);
   return Boolean(a.caseName && b.caseName && a.caseName.toLowerCase() === b.caseName.toLowerCase());
@@ -2195,6 +2291,7 @@ function mergeCitations(a: RegisteredCitation, b: RegisteredCitation): Registere
     caseNumber: a.caseNumber ?? b.caseNumber, caseName: a.caseName ?? b.caseName,
     documentType: a.documentType ?? b.documentType,
     documentTypeStated: a.documentTypeStated || b.documentTypeStated,
+    oj: a.oj ?? b.oj, ojDate: a.ojDate ?? b.ojDate,
   };
 }
 
@@ -2203,6 +2300,7 @@ function toRegistered(citation: CitationMatch): RegisteredCitation {
     label: citation.label, source: citation.source, celex: citation.celex, ecli: citation.ecli,
     caseNumber: citation.caseNumber, caseName: citation.caseName,
     documentType: citation.documentType, documentTypeStated: citation.documentTypeStated,
+    oj: citation.oj, ojDate: citation.ojDate,
   };
 }
 
@@ -2210,6 +2308,7 @@ function toCandidate(citation: RegisteredCitation): CitationCandidate {
   return {
     label: citation.label, source: citation.source, caseName: citation.caseName,
     caseNumber: citation.caseNumber, celex: citation.celex, ecli: citation.ecli, documentType: citation.documentType,
+    oj: citation.oj, ojDate: citation.ojDate,
   };
 }
 
@@ -2617,6 +2716,17 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[],
         ?? DEFINITION_CLAUSE.exec(text.slice(windowStart, Math.min(text.length, windowStart + reach)));
       let worded = !bracketed && !named && parenthetical !== null;
       let start = windowStart + (parenthetical?.index ?? 0);
+      // A publication reference follows the instrument's name, and the term often comes between
+      // the two: "Commission Notice on the definition of the relevant market … (‘Market
+      // Definition Notice’), OJ C/2024/1645". The term is then directly before the reference.
+      if (citation.oj) {
+        const termBefore = termBeforeReference(text, citation, segment.start);
+        if (termBefore) {
+          parenthetical = termBefore.match;
+          start = termBefore.start;
+          worded = false;
+        }
+      }
       // Or written just before it, inside the same bracket: "(6/72, ci-après l’« arrêt
       // Continental Can », EU:C:1973:22)" — the ECLI is the citation, and the term precedes it.
       if (!parenthetical) {
@@ -2635,9 +2745,12 @@ export function detectCitationsAcrossFootnotes(footnoteTexts: readonly string[],
         // citation in reach register it and the latest win came to the same thing until the
         // nearest one is refused below — and then the next one back would inherit a term that
         // was never about it either.
-        const nearer = hardMatches.some((other) => other.index >= windowStart && other.index < start);
-        if (!nearer && !UNDETECTED_INSTRUMENT_TERM.test(worded ? definedTermOf(parenthetical) : parenthetical[1])
-            && !citedWithinAnotherInstrument(text, citation, segment.start)) {
+        // A term written before the reference has nothing between it and its citation.
+        const nearer = start >= windowStart && hardMatches.some((other) => other.index >= windowStart && other.index < start);
+        // A notice, guidelines or communication: detection reads them only by where they were
+        // published, so a term naming one belongs to a publication reference and to nothing else.
+        if (!nearer && (citation.oj || (!UNDETECTED_INSTRUMENT_TERM.test(worded ? definedTermOf(parenthetical) : parenthetical[1])
+            && !citedWithinAnotherInstrument(text, citation, segment.start)))) {
           const key = worded ? definedKey(definedTermOf(parenthetical)) : parenthetical[1].trim().toLowerCase();
           newEntries.push({ key, method: 'explicit_alias', order: order++, citation: registered });
           // "arrêt TeliaSonera" is then cited as "TeliaSonera, point 76", and "the judgment in
@@ -2902,7 +3015,7 @@ function establishedAuthorities(matches: readonly CitationMatch[], before = Numb
   for (const citation of [...matches].sort((a, b) => a.index - b.index)) {
     if (citation.index >= before || citation.status !== 'resolved') continue;
     const registered = toRegistered(citation);
-    if (!registered.ecli && !registered.celex && !registered.caseNumber) continue;
+    if (!registered.ecli && !registered.celex && !registered.caseNumber && !registered.oj) continue;
 
     const existing = established.findIndex((authority) => sameAuthority(authority.citation, registered));
     const merged = existing === -1 ? registered : mergeCitations(registered, established[existing].citation);
@@ -2943,12 +3056,17 @@ function resolveBackReferences(
 
   for (const segment of segments) {
     // A segment that already names an authority is not making a back-reference; the words
-    // are part of that citation ("Akzo Nobel, supra note 4" is one reference, not two).
-    if (identified.some((citation) => citation.index >= segment.start && citation.index < segment.end)) continue;
+    // are part of that citation ("Akzo Nobel, supra note 4" is one reference, not two). Except
+    // an `Ibid.` opening it, which is only ever a reference of its own, whatever the sentence
+    // goes on to name: "Ibid., paragraph 60, which refers to the Commission decision of 15
+    // December 1982, AROW/BNIC (OJ L 379, 31.12.1982, p. 19)" was dropped once the decision it
+    // mentions became a citation, and so was "Ibid, paragraph 139. The General Court also set
+    // out its interpretation … in Google and Alphabet v Commission, … Case T-612/17".
     const body = text.slice(segment.start, segment.end);
-
+    const namesAuthority = identified.some((citation) => citation.index >= segment.start && citation.index < segment.end);
     const ibid = IBID_REFERENCE.exec(body);
-    const supra = SUPRA_NOTE_REFERENCE.exec(body);
+    if (namesAuthority && !ibid) continue;
+    const supra = namesAuthority ? null : SUPRA_NOTE_REFERENCE.exec(body);
     if (!ibid && !supra) continue;
 
     // Both spellings in one segment ("Ibid., supra note 4") is not drafting we should
@@ -3146,7 +3264,7 @@ export function citedAuthorities(footnoteMatches: CitationMatch[][]): CitationCa
   for (const citation of footnoteMatches.flat()) {
     if (citation.status !== 'resolved') continue;
     const registered = toRegistered(citation);
-    if (!registered.ecli && !registered.celex && !registered.caseNumber) continue;
+    if (!registered.ecli && !registered.celex && !registered.caseNumber && !registered.oj) continue;
     const existing = authorities.findIndex((authority) => sameAuthority(authority, registered));
     if (existing >= 0) authorities[existing] = mergeCitations(authorities[existing], registered);
     else authorities.push(registered);

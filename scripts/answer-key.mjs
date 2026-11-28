@@ -164,7 +164,8 @@ function align(published, pane) {
 
 /** A key pinpoint, read into what detection could report for it. Anything else cannot be located. */
 function readPin(pin) {
-  let match = /^(?:paras?|points?|recitals?) (\d+)(?:-(\d+))?( et seq\.)?$/.exec(pin);
+  // A point inside a paragraph — "para 5(d)(bb)", "para 23(c)" — is found in that paragraph.
+  let match = /^(?:paras?|points?|recitals?) (\d+)(?:\([a-z]+\))*(?:-(\d+))?( et seq\.)?$/.exec(pin);
   if (match) {
     const from = Number(match[1]);
     const to = Number(match[2] ?? from);
@@ -272,7 +273,12 @@ function names(entry, citation) {
       return reported.some((id) => cited.includes(id)) || Boolean(entry.ecli && ecliId(citation.ecli) === ecliId(entry.ecli));
     }
     case 'legislation':
-      return citation.source === 'eur-lex' && citation.celex === entry.celex;
+      // "OJ L 24, 29.1.2004, p. 1." is the Merger Regulation cited by where it was published.
+      return citation.source === 'eur-lex' && (citation.celex === entry.celex || (entry.via === 'oj' && Boolean(citation.oj)));
+    case 'notice':
+      // A notice is found by the publication it was published as, which the key writes as the
+      // reference and detection reports as CELLAR's identifier for it. See `publicationOf`.
+      return citation.source === 'eur-lex' && Boolean(citation.oj) && citation.oj === entry.publication;
     case 'treaty': {
       // The Charter's own sector letter, without which its CELEX never matched and a Charter
       // article the key held and the pane read were counted as a miss and an extra at once.
@@ -297,6 +303,18 @@ function sameDocument(entry, citation) {
   if (!['judgment', 'opinion', 'order'].includes(entry.k)) return true;
   if (citation.ecli && entry.ecli) return ecliId(citation.ecli) === ecliId(entry.ecli);
   return (citation.documentType ?? 'judgment') === entry.k;
+}
+
+/**
+ * The identifier CELLAR files an Official Journal reference under, as the key writes the
+ * reference — "C 31, 5.2.2004, p. 5", "C/2024/1645, 22.2.2024" — and as detection builds it. A
+ * reference with no page names an issue and not one publication, and gives nothing.
+ */
+function publicationOf(reference) {
+  let match = /^([CL]) (\d{1,3}), (\d{1,2})\.(\d{1,2})\.(\d{4}), pp?\. ?(\d+)/.exec(reference ?? '');
+  if (match) return `JO${match[1]}_${match[5]}_${match[2].padStart(3, '0')}_R_${match[6].padStart(4, '0')}`;
+  match = /^([CL])\/(\d{4})\/(\d+)/.exec(reference ?? '');
+  return match ? `${match[1]}_${match[2]}${match[3].padStart(5, '0')}` : undefined;
 }
 
 const identity = (entry) => {
@@ -350,6 +368,10 @@ function check(key, published, pane) {
   const add = (note, outcome, what, detail) => outcomes.push({ note, outcome, identity: what, ...(detail ? { detail } : {}) });
 
   const entries = key.filter((line) => 'n' in line);
+  // A notice is identified by where it was published: its own reference, or for a short form the
+  // reference of the footnote that defined it (`ante`).
+  const noticeAt = new Map(entries.filter((entry) => entry.k === 'notice' && entry.oj).map((entry) => [entry.n, entry]));
+  for (const entry of entries.filter((e) => e.k === 'notice')) entry.publication = publicationOf(entry.oj ?? noticeAt.get(entry.ante)?.oj);
   // The notes first, then the parenthesised spans of the running text, so a key entry written
   // against either is checked by the same comparison.
   const places = [...pane.notes, ...pane.inText];
@@ -415,6 +437,7 @@ function check(key, published, pane) {
         if (shortForm >= 0) claimed.add(shortForm);
         if (hits.length || shortForm >= 0) add(note, 'unresolved', what);
         else if (['judgment', 'opinion', 'order', 'decision', 'legislation', 'treaty'].includes(entry.k)) add(note, 'missed', what);
+        else if (entry.k === 'notice') add(note, 'missed', what, entry.publication ? 'a notice' : 'a notice cited without a page or a number, which detection does not read');
         else add(note, 'missed', what, `a ${entry.k}, which detection does not read`);
         continue;
       }
