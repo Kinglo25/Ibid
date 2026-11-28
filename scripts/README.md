@@ -179,14 +179,16 @@ cited next to it, an annex's paragraph shown as the decision's recital, `Ibid.` 
 the wrong note. None of those produces a wrong identifier, and all of them were in the
 Commission's 2026 draft merger guidelines while every test passed.
 
-An answer key is a document read by hand, once, and kept. `answer-keys/` holds, per document:
+An answer key is one reading of a document, every citation in it, written once and kept.
+`answer-keys/` holds, per document:
 
 - `<name>.jsonl` — every citation in every footnote: the authority meant, the pinpoint as
   written, whether it was cited in full, by a short form or by `ibid.`, and any drafting
   error the text itself proves (a date contradicting its ECLI, a case number of another
-  case). Built from the published PDF **without looking at Ibid's output**, and locked by
-  hash before Ibid was run; any later change is recorded in the header's `amended` list with
-  its reason and the hash before it.
+  case). Meant to be built from the published PDF **without looking at Ibid's output**, and
+  locked by hash before Ibid is run, with any later change recorded in the header's `amended`
+  list with its reason and the hash before it. How far the six keys here meet that is under
+  "Who wrote the keys" below.
 - `<name>.notes.json` — the text of each footnote the key was built from, so any entry can be
   checked against its note, and so the pane's notes can be lined up with the PDF's.
 - `<name>.known.json` — the gaps accepted for now, each with a reason.
@@ -227,9 +229,33 @@ the words alone cannot say which occurrence an entry meant.
 A key written by one reader is one reading. Where a figure from it is going to be quoted, have
 a second marker check a sample of it blind, as `docs/ACCURACY.md` describes.
 
+## Who wrote the keys
+
+All six keys were written by Claude, the same model that wrote most of Ibid's detection code,
+and no person has checked any of them yet. None has had the blind second check above, so no
+figure from them should be quoted outside the project.
+
+That limits what they can show. A key is meant to be the independent reading, and
+`docs/ACCURACY.md` says a ground truth means a person reading footnotes. A reading by the same
+model can share a blind spot with the code it checks: a citation misread the same way in both
+passes. That each key was written without looking at Ibid's output is Claude's own account, and
+nothing in the repository proves it. Only the merger-guidelines key records a hash, in its
+`amended` list; the five consultation keys record none, and the date in their headers,
+2026-09-17, is two months before they first appear in the repository on 24 November 2026.
+
+What Claude did not write is the documents. Each `<name>.notes.json` holds the footnote text as
+`pdftotext` or `pdftohtml` extracted it from the Commission's published PDF. On 28 November 2026
+every footnote in all six files, and every parenthesis the Vogel & Vogel key quotes from the
+running text, was compared with a fresh download of the published PDF and found to be that
+text, differing only by extraction artifacts (a page number run into a note, a subscript read
+as a digit). So what a person needs to check is the key itself: which authority each citation
+means, which earlier note an `Ibid.` points to, which case number a typo stands for, and what
+counts as incidental. The footnotes are the real ones.
+
 ## What the keys say so far
 
-Six documents, 753 citations read by hand. Reading the known lists is most of what they have to
+Six documents, 753 citations, read by Claude and not yet checked by a person (above). Reading
+the known lists is most of what they have to
 say, and the largest thing in them by far is one gap seen from two sides: a notice, a set of
 guidelines or a communication is cited by where it was published and not by any number of its
 own, an Official Journal reference is not read, and so the instrument is never reported and
