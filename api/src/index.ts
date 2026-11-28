@@ -42,6 +42,15 @@ export type EuLookup = {
    * the CELEX shape before it is used, so a malformed one is dropped rather than fetched.
    */
   alternativeCelexes?: string[];
+  /**
+   * An Official Journal publication, by the identifier CELLAR files it under — `C_202401645`,
+   * `JOC_2004_031_R_0005` — where the citation names one by where it was published rather than
+   * by a CELEX: a Commission notice, a set of guidelines, a decision cited only by its OJ
+   * reference. Checked against its shape before it is used, like every identifier here.
+   */
+  oj?: string;
+  /** The date the citation gives for that publication, `d.m.yyyy` or a year, which the retrieved document must carry. */
+  ojDate?: string;
   ecli?: string;
   caseNumber?: string;
   /**
@@ -836,6 +845,32 @@ function cited(text: string): Excerpt {
   return { excerpt: shown.text, passage: 'cited', ...(shown.truncated ? { truncated: true } : {}) };
 }
 
+/** A paragraph number standing alone in its own cell, as Formex sets a notice's paragraphs: `<p class="oj-normal">17.</p>`, or `(17)`. */
+const FORMEX_NUMBERED_CELL = /<p[^>]*class="oj-normal"[^>]*>\s*\(?(\d+)\)?\.?\s*<\/p>/gi;
+
+/**
+ * The cited paragraph of a publication reached by its Official Journal reference.
+ *
+ * Three numbering conventions, told apart by the document rather than by the citation, which
+ * writes "paragraph" for all of them. Formex sets each paragraph number in its own cell. The
+ * classic rendition writes a notice's paragraphs "17. …" and an act's or a decision's recitals
+ * "(17) …" — and writes its footnotes "(17) …" too, as the last run in the document, so the
+ * footnotes are cut off first: the 2004 Horizontal Merger Guidelines hold 91 paragraphs and
+ * 112 footnotes, and a recital-shaped anchor would have answered paragraph 17 with footnote 17.
+ */
+function extractPublicationPoint(html: string, locator?: EuLookup['locator'], paragraphs?: number[]): Excerpt {
+  if (!locator || locator.kind !== 'point') return extractLegislativeLocator(html, locator, paragraphs);
+  const wanted = paragraphs?.length ? paragraphs : expandRange(locator.start, locator.end);
+  const count = (text: string, pattern: RegExp) => (text.match(new RegExp(pattern.source, 'gi')) ?? []).length;
+  if (count(html, FORMEX_NUMBERED_CELL) >= 5) {
+    return extractCitedRuns(html, FORMEX_NUMBERED_CELL, wanted) ?? documentOpening(html, true);
+  }
+  const notes = html.lastIndexOf('<p>(1) ');
+  const body = notes > html.length / 2 ? html.slice(0, notes) : html;
+  const pattern = count(body, RECITAL_HEADING) >= 5 ? RECITAL_HEADING : ARTICLE_PARAGRAPH_HEADING;
+  return extractCitedRuns(body, pattern, wanted) ?? documentOpening(html, true);
+}
+
 function extractLegislativeLocator(html: string, locator?: EuLookup['locator'], paragraphs?: number[]): Excerpt {
   // Sections are a Commission decision's structure; an act cited by one has no anchor here.
   if (!locator || locator.kind === 'section') return documentOpening(html, false);
@@ -1417,6 +1452,65 @@ function ecliUrl(ecli: string, baseUrl: string): string | undefined {
   return `${ecliBase}/${encodeURIComponent(ecli)}`;
 }
 
+/**
+ * The same CELLAR service, addressed by Official Journal reference. Built as `ecliUrl` is, with
+ * the same guarantee, and not attempted where no such base can be derived.
+ */
+function ojUrl(oj: string, baseUrl: string): string | undefined {
+  const base = baseUrl.replace(/\/$/, '');
+  const ojBase = base.replace(/\/celex$/i, '/oj');
+  if (ojBase === base) return undefined;
+  return `${ojBase}/${encodeURIComponent(oj)}`;
+}
+
+/** An Official Journal identifier as detection builds one, and nothing else. */
+const OJ_SHAPE = /^(?:JO[CL]_\d{4}_\d{3}_R_\d{4}|[CL]_\d{9})$/;
+
+/**
+ * Where a reader finds an Official Journal publication on EUR-Lex without Ibid: the publication
+ * itself in the numbering begun in October 2023, and the issue's table of contents before it,
+ * which is the one page an issue-and-page reference is certain to reach. `officialSourceUrl` in
+ * the pane builds the same link and must agree.
+ */
+function publicationUrl(oj: string): string {
+  const numbered = /^([CL])_(\d{4})(\d{5})$/.exec(oj);
+  if (numbered) return `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=OJ:${numbered[1]}_${numbered[2]}${numbered[3]}`;
+  const [, series, year, issue] = /^JO([CL])_(\d{4})_(\d{3})/.exec(oj) ?? [];
+  return `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=OJ:${series}:${year}:${issue}:TOC`;
+}
+
+/**
+ * Whether a publication is dated as the citation says. An issue and a page, or a number, name
+ * one publication — but a reference can be mistyped and still name one: the 2026 draft merger
+ * guidelines give the 2004 Horizontal Merger Guidelines as "OJ C 31, 5.2.2024" and the
+ * Non-Horizontal Merger Guidelines as "OJ C 26". A date the retrieved document does not carry
+ * is the sign that it is not the document meant.
+ */
+function publishedOn(text: string, date: string): boolean {
+  const head = text.slice(0, 3_000);
+  if (/^\d{4}$/.test(date)) return new RegExp(`\\b${date}\\b`).test(head);
+  const [day, month, year] = date.split('.');
+  return new RegExp(`\\b0?${day}\\.0?${month}\\.${year}\\b|\\b0?${day}\\/0?${month}\\/${year}\\b`).test(head);
+}
+
+/**
+ * The title a publication states, read from where each rendition puts it: between the CELEX and
+ * the Official Journal line in the classic one, and before the publication's own number —
+ * "(2023/C 160/01)", "(C/2024/1645)" — in Formex.
+ */
+function publicationTitle(text: string): string | undefined {
+  const head = text.slice(0, 4_000);
+  const classic = /Avis juridique important \| \S+ (.+?) Official Journal [CL] \d/.exec(head);
+  if (classic) return shorten(classic[1].trim());
+  const number = /\((?:\d{4}\/[CL] \d+\/\d+|[CL]\/\d{4}\/\d+)\)/.exec(head);
+  if (!number) return undefined;
+  const before = head.slice(0, number.index);
+  const lead = [...before.matchAll(/\b(?:\d{1,2}\.\d{1,2}\.\d{4}|[CL] \d+\/\d+)\s+/g)].at(-1);
+  const title = before.slice(lead ? (lead.index ?? 0) + lead[0].length : 0)
+    .replace(/^(?:Official Journal of the European Union\s*)?(?:COMMUNICATION FROM THE COMMISSION\s*[–-]?\s*)?/, '').trim();
+  return title.length >= 12 ? shorten(title) : undefined;
+}
+
 function curiaUrl(lookup: EuLookup): string {
   // CURIA's case-number search is its stable, official case record entry point.
   const query = lookup.caseNumber ?? lookup.ecli ?? lookup.value;
@@ -1525,10 +1619,12 @@ export function parseLookup(input: unknown): EuLookup | undefined {
     value === undefined || valid(value);
 
   if (!record(input)) return undefined;
-  const { source, value, celex, ecli, alternativeCelexes, caseNumber, caseName, decisionDate, documentType, locator, paragraphs } = input;
+  const { source, value, celex, ecli, alternativeCelexes, oj, ojDate, caseNumber, caseName, decisionDate, documentType, locator, paragraphs } = input;
   if (!LOOKUP_SOURCES.includes(source as EuLookup['source']) || !text(value, 500)) return undefined;
   if (!optional(celex, (v): v is string => typeof v === 'string' && CELEX_SHAPE.test(v))) return undefined;
   if (!optional(ecli, (v): v is string => typeof v === 'string' && ECLI_SHAPE.test(v))) return undefined;
+  if (!optional(oj, (v): v is string => typeof v === 'string' && OJ_SHAPE.test(v))) return undefined;
+  if (!optional(ojDate, (v): v is string => typeof v === 'string' && /^(?:\d{1,2}\.\d{1,2}\.)?\d{4}$/.test(v))) return undefined;
   if (!optional(caseNumber, (v): v is string => text(v, 40))) return undefined;
   if (!optional(caseName, (v): v is string => text(v, 600))) return undefined;
   if (!optional(decisionDate, (v): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v))) return undefined;
@@ -1548,6 +1644,8 @@ export function parseLookup(input: unknown): EuLookup | undefined {
     ...(celex !== undefined ? { celex } : {}),
     ...(ecli !== undefined ? { ecli } : {}),
     ...(alternativeCelexes !== undefined ? { alternativeCelexes } : {}),
+    ...(oj !== undefined ? { oj } : {}),
+    ...(ojDate !== undefined ? { ojDate } : {}),
     ...(caseNumber !== undefined ? { caseNumber } : {}),
     ...(caseName !== undefined ? { caseName } : {}),
     ...(decisionDate !== undefined ? { decisionDate } : {}),
@@ -2161,8 +2259,61 @@ export function createEuSourceResolver(options: ResolverOptions = {}) {
   }
 
   async function resolveEurLex(lookup: EuLookup): Promise<SourcePreview[]> {
-    if (!lookup.celex) return [];
-    return [await resolveCellarPreview(lookup.celex, lookup, 'EUR-Lex')];
+    if (lookup.celex) return [await resolveCellarPreview(lookup.celex, lookup, 'EUR-Lex')];
+    if (lookup.oj && OJ_SHAPE.test(lookup.oj)) return [await resolvePublicationPreview(lookup, lookup.oj)];
+    return [];
+  }
+
+  /**
+   * The identifiers an Official Journal publication may be filed under. The numbering begun in
+   * October 2023 is one; an issue-and-page reference is filed with a sequence suffix in older
+   * years and without one in newer ones — confirmed live on 2026-09-17 and 2026-11-28,
+   * `JOC_2004_031_R_0005_01` and `JOC_2023_160_R_0001` — so both are tried, the likelier first,
+   * and CELLAR answers the other in one request that it has never heard of it.
+   */
+  function publicationTargets(oj: string): CellarTarget[] {
+    const target = (id: string, year: string): CellarTarget[] => {
+      const url = ojUrl(id, cellarBaseUrl);
+      return url ? [{ id: `oj:${id}`, url, year }] : [];
+    };
+    if (/^[CL]_/.test(oj)) return target(oj, oj.slice(2, 6));
+    const year = oj.slice(4, 8);
+    const [plain, suffixed] = [target(oj, year), target(`${oj}_01`, year)];
+    return Number(year) >= 2010 ? [...plain, ...suffixed] : [...suffixed, ...plain];
+  }
+
+  async function resolvePublicationPreview(lookup: EuLookup, oj: string): Promise<SourcePreview> {
+    const key = previewKey(`oj:${oj}`, lookup, 'EUR-Lex');
+    const cached = previewCache.get(key);
+    if (cached) return cached;
+
+    const link = (excerpt: string): SourcePreview => ({
+      title: describeDocument(lookup), source: 'EUR-Lex', url: publicationUrl(oj), locator: locatorLabel(lookup), excerpt,
+    });
+    const targets = publicationTargets(oj);
+    if (!targets.length) return link('Open the Official Journal publication on EUR-Lex.');
+
+    let loaded: LoadedDocument;
+    try {
+      loaded = await loadHeldOrProbe(targets);
+    } catch (error) {
+      if (error instanceof Error && /\(404\)/.test(error.message)) {
+        return link(`The Official Journal holds no publication at ${lookup.value}. Check the reference: its series, issue, page and year.`);
+      }
+      throw error;
+    }
+    const text = decodeHtml(loaded.html);
+    if (lookup.ojDate && !publishedOn(text, lookup.ojDate)) {
+      return link(`The publication at ${lookup.value} is not dated ${lookup.ojDate}, so it is not shown: the reference may name a different document. Check the reference.`);
+    }
+    const preview = await translateIfNeeded({
+      title: publicationTitle(text) ?? describeDocument(lookup),
+      ...extractPublicationPoint(loaded.html, lookup.locator, lookup.paragraphs),
+      url: loaded.url, source: 'EUR-Lex', locator: locatorLabel(lookup), language: loaded.language,
+      verifiedAt: new Date(loaded.verifiedAt).toISOString(),
+    });
+    rememberPreview(key, preview);
+    return preview;
   }
 
   function resolveCuriaLink(lookup: EuLookup): SourcePreview {

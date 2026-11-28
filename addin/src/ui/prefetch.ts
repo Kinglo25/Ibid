@@ -21,7 +21,7 @@ import type { CitationContext } from '../../../shared/src';
  */
 
 export type PrefetchTarget = {
-  /** The document to warm. One entry per distinct authority, however many footnotes cite it. */
+  /** The document to warm, by its CELEX or, for a publication cited by where it appeared, its Official Journal reference. One entry per distinct authority, however many footnotes cite it. */
   celex: string;
   /** Where it was first cited, so a cursor landing on a footnote can promote what it holds. */
   footnote: number;
@@ -58,14 +58,16 @@ export function prefetchTargets(citationsByFootnote: readonly (readonly Citation
   const byCelex = new Map<string, PrefetchTarget>();
   citationsByFootnote.forEach((citations, index) => {
     for (const citation of citations) {
-      if (citation.status !== 'resolved' || !citation.celex) continue;
-      const document = citation.ecli ?? citation.celex;
+      // A notice or guidelines has no CELEX and is retrieved by its Official Journal reference.
+      const id = citation.celex ?? citation.oj;
+      if (citation.status !== 'resolved' || !id) continue;
+      const document = citation.ecli ?? id;
       const held = byCelex.get(document);
       if (held) {
         if (!held.footnotes.includes(index)) held.footnotes.push(index);
         continue;
       }
-      byCelex.set(document, { celex: citation.celex, footnote: index, footnotes: [index], citation });
+      byCelex.set(document, { celex: id, footnote: index, footnotes: [index], citation });
     }
   });
   return [...byCelex.values()];

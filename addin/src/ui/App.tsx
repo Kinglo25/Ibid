@@ -354,7 +354,7 @@ function meaningsOf(texts: readonly string[]): string[] {
   if (held) return held;
   const meanings = getCitationContextsForFootnotes(texts).map((citations, index) => JSON.stringify(citations.map((citation) =>
     citation.status === 'resolved'
-      ? [citation.source, citation.celex ?? citation.ecli ?? citation.caseNumber ?? citation.value, citation.locator?.start, citation.pinpoint?.paragraphs]
+      ? [citation.source, citation.celex ?? citation.oj ?? citation.ecli ?? citation.caseNumber ?? citation.value, citation.locator?.start, citation.pinpoint?.paragraphs]
       : ['unresolved', index])));
   meaningCache.set(texts, meanings);
   return meanings;
@@ -630,6 +630,9 @@ async function readCursorLocation(knownTexts: readonly string[]): Promise<Cursor
 function lookupFor(citation: CitationContext) {
   return {
     source: citation.source, value: citation.value, celex: citation.celex, ecli: citation.ecli,
+    // A notice or guidelines, and anything else cited only by where the Official Journal
+    // published it: the resolver retrieves it by this, and checks it carries this date.
+    oj: citation.oj, ojDate: citation.ojDate,
     // The other numbers a joined judgment may be filed under. Identifiers the document
     // itself stated, never anything read out of it — see `docs/DATA-FLOW.md`.
     alternativeCelexes: citation.alternativeCelexes,
